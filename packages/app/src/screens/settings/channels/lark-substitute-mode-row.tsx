@@ -42,7 +42,8 @@ export function LarkSubstituteModeRow({
           {mode.delaySeconds} 秒 · 机器人身份回答 ·{" "}
           {mode.privateScan.enabled
             ? `私聊每 ${mode.privateScan.intervalMinutes} 分钟扫描`
-            : "私聊扫描已关闭"}
+            : "私聊扫描已关闭"}{" "}
+          · {mode.autoArchiveAgent ? "回答后自动归档 Agent" : "保留 Agent"}
         </Text>
       </View>
       <View style={styles.actions}>

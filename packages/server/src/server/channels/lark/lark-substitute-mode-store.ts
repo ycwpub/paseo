@@ -178,6 +178,7 @@ export class LarkSubstituteModeStore {
           },
           customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
           delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+          autoArchiveAgent: false,
           activeTimeRanges: [],
           allowlist: [{ id: `legacy-${bot.id}-allow-all`, type: "all" }],
           denylist: [],

@@ -3,15 +3,9 @@ import type pino from "pino";
 import { LarkChannelService } from "./lark-channel-service.js";
 import { LarkBotApplicationService } from "./lark-bot-application-service.js";
 import {
-  emitLarkSubstituteSessionError,
-  handleLarkSubstituteSessionRequest,
-  isLarkSubstituteSessionRequest,
-} from "./lark-substitute-session-handler.js";
-import {
-  emitLarkSubstituteTaskSessionError,
-  handleLarkSubstituteTaskSessionRequest,
-  isLarkSubstituteTaskSessionRequest,
-} from "./lark-substitute-task-session-handler.js";
+  dispatchLarkSubstituteSessionRequest,
+  emitLarkSubstituteSessionRequestError,
+} from "./lark-substitute-session-router.js";
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
@@ -61,9 +55,11 @@ type LarkChannelResponse = Extract<
       | "channel.lark.substitute.update.response"
       | "channel.lark.substitute.set_enabled.response"
       | "channel.lark.substitute.delete.response"
+      | "channel.lark.substitute.reply.response"
       | "channel.lark.substitute_task.list.response"
       | "channel.lark.substitute_task.scan.response"
       | "channel.lark.substitute_task.pause.response"
+      | "channel.lark.substitute_task.retry.response"
       | "channel.lark.substitute_task.delete.response";
   }
 >;
@@ -161,16 +157,11 @@ export class LarkChannelSession {
         await this.handleDirectoryOrOAuthRequest(message);
         return;
       }
-      if (isLarkSubstituteSessionRequest(message)) {
-        handleLarkSubstituteSessionRequest(message, this.service, (response) =>
+      if (
+        await dispatchLarkSubstituteSessionRequest(message, this.service, (response) =>
           this.emitResponse(response),
-        );
-        return;
-      }
-      if (isLarkSubstituteTaskSessionRequest(message)) {
-        await handleLarkSubstituteTaskSessionRequest(message, this.service, (response) =>
-          this.emitResponse(response),
-        );
+        )
+      ) {
         return;
       }
       switch (message.type) {
@@ -574,22 +565,14 @@ export class LarkChannelSession {
       this.emitDirectoryErrorResponse(message, error);
       return;
     }
-    if (isLarkSubstituteSessionRequest(message)) {
-      emitLarkSubstituteSessionError(
+    if (
+      emitLarkSubstituteSessionRequestError(
         message,
         this.service,
         (response) => this.emitResponse(response),
         error,
-      );
-      return;
-    }
-    if (isLarkSubstituteTaskSessionRequest(message)) {
-      emitLarkSubstituteTaskSessionError(
-        message,
-        this.service,
-        (response) => this.emitResponse(response),
-        error,
-      );
+      )
+    ) {
       return;
     }
     const payload = {

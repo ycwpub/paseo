@@ -512,6 +512,7 @@ vi.mock("./lark-substitute-mode-section", () => ({
         disclosure: { enabled: true, prompt: "【机器人代答】" },
         customPrompt: "",
         delaySeconds: 10,
+        autoArchiveAgent: false,
         activeTimeRanges: [],
         allowlist: [],
         denylist: [],

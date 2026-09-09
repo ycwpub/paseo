@@ -111,6 +111,7 @@ function TaskRow({
   selected,
   disabled,
   onToggle,
+  onRetry,
 }: {
   serverId: string;
   botAppId: string | null;
@@ -118,8 +119,10 @@ function TaskRow({
   selected: boolean;
   disabled: boolean;
   onToggle: (taskId: string) => void;
+  onRetry: (taskId: string) => void;
 }) {
   const toggle = useCallback(() => onToggle(task.id), [onToggle, task.id]);
+  const retry = useCallback(() => onRetry(task.id), [onRetry, task.id]);
   const chat = task.chatName ? `${task.chatName}（${task.chatId}）` : task.chatId;
   const sender = task.senderName
     ? `${task.senderName}${task.senderOpenId ? `（${task.senderOpenId}）` : ""}`
@@ -170,6 +173,13 @@ function TaskRow({
             ) : null}
           </View>
         ) : null}
+        {task.status === "failed" ? (
+          <View style={styles.rowActions}>
+            <Button size="sm" variant="outline" disabled={disabled} onPress={retry}>
+              重试任务
+            </Button>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -196,6 +206,10 @@ export function LarkSubstituteTaskListPage({
   );
   const pendingIds = useMemo(
     () => selectedTasks.filter((task) => task.status === "pending").map((task) => task.id),
+    [selectedTasks],
+  );
+  const failedIds = useMemo(
+    () => selectedTasks.filter((task) => task.status === "failed").map((task) => task.id),
     [selectedTasks],
   );
   const isBusy = tasks.isMutating || tasks.isScanning;
@@ -237,6 +251,26 @@ export function LarkSubstituteTaskListPage({
       .then(() => setSelectedIds(new Set()))
       .catch((error) => setActionError(error instanceof Error ? error.message : String(error)));
   }, [pendingIds, tasks]);
+  const handleRetry = useCallback(
+    (taskIds: string[]) => {
+      if (taskIds.length === 0) return;
+      setActionError(null);
+      void tasks
+        .retryTasks(taskIds)
+        .then(() => setSelectedIds(new Set()))
+        .catch((error) => setActionError(error instanceof Error ? error.message : String(error)));
+    },
+    [tasks],
+  );
+  const handleRetrySelected = useCallback(() => {
+    handleRetry(failedIds);
+  }, [failedIds, handleRetry]);
+  const handleRetryOne = useCallback(
+    (taskId: string) => {
+      handleRetry([taskId]);
+    },
+    [handleRetry],
+  );
   const handleScanNow = useCallback(() => {
     setActionError(null);
     setScanMessage(null);
@@ -329,6 +363,14 @@ export function LarkSubstituteTaskListPage({
           <Button
             size="sm"
             variant="outline"
+            disabled={failedIds.length === 0 || isBusy}
+            onPress={handleRetrySelected}
+          >
+            重试任务
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             disabled={pendingIds.length === 0 || isBusy}
             onPress={handlePause}
           >
@@ -361,6 +403,7 @@ export function LarkSubstituteTaskListPage({
               selected={selectedIds.has(task.id)}
               disabled={isBusy}
               onToggle={handleToggle}
+              onRetry={handleRetryOne}
             />
           ))
         ) : (
@@ -502,6 +545,10 @@ const styles = StyleSheet.create((theme) => ({
   authorizationLabel: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  rowActions: {
+    alignItems: "flex-start",
+    marginTop: theme.spacing[2],
   },
   scanMessage: {
     color: theme.colors.statusSuccess,

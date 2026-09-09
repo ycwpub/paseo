@@ -266,6 +266,29 @@ export class LarkSubstituteTaskStore {
     );
   }
 
+  resetFailedForRetry(taskIds: readonly string[], now: string): string[] {
+    this.ensureLoaded();
+    const requested = new Set(taskIds);
+    const retriedTaskIds: string[] = [];
+    const tasks = this.payload.tasks.map((task) => {
+      if (!requested.has(task.id) || task.status !== "failed") return task;
+      retriedTaskIds.push(task.id);
+      return LarkSubstituteTaskSchema.parse({
+        ...task,
+        status: "pending",
+        scheduledAt: null,
+        startedAt: null,
+        completedAt: null,
+        agentId: null,
+        error: null,
+        failureStage: null,
+        updatedAt: now,
+      });
+    });
+    if (retriedTaskIds.length > 0) this.persistTasks(tasks);
+    return retriedTaskIds;
+  }
+
   deleteMany(taskIds: readonly string[]): string[] {
     this.ensureLoaded();
     const requested = new Set(taskIds);

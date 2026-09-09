@@ -475,14 +475,20 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const existing = bamboo
       ? await this.findByUniqueId(api, location, uniqueId, true)
       : await this.findByMessageId(api, location, input.event.messageId);
-    if (existing)
-      return this.backfillBambooTaskTime({
+    if (existing) {
+      await this.backfillBambooTaskTime({
         config: input.config,
         pluginId: input.pluginId,
         tableDate,
         existing,
         bambooRecord,
       });
+      return this.verifyMessageRecord(api, location, {
+        bamboo,
+        uniqueId,
+        messageId: input.event.messageId,
+      });
+    }
     const fields = messageRecordFields({
       primaryField,
       projectId: input.projectId,
@@ -509,10 +515,13 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         }),
       { identity: "bot", requiredScopes: ["base:record:create"] },
     );
-    const record = result.data?.record as LarkRecord | undefined;
-    const normalized = record ? toRecord(record, tableDate) : null;
-    if (!normalized) throw new Error("飞书多维表格新增记录后未返回 record_id");
-    return normalized;
+    const recordId = result.data?.record?.record_id;
+    if (!recordId) throw new Error("飞书多维表格新增记录后未返回 record_id");
+    return this.verifyMessageRecord(api, location, {
+      bamboo,
+      uniqueId,
+      messageId: input.event.messageId,
+    });
   }
 
   private async backfillBambooTaskTime(input: {
@@ -521,13 +530,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     existing: AlertTroubleshooterRecord;
     bambooRecord: ReturnType<typeof parseBambooAlertRecord>;
-  }): Promise<AlertTroubleshooterRecord> {
+  }): Promise<void> {
     const taskTime = input.bambooRecord ? bambooTaskTimeMs(input.bambooRecord) : null;
-    if (input.existing.taskTime || taskTime === null) return input.existing;
+    if (input.existing.taskTime || taskTime === null) return;
     await this.update(input.config, input.pluginId, input.tableDate, input.existing.recordId, {
       [BAMBOO_RECORD_FIELDS.taskTime]: taskTime,
     });
-    return { ...input.existing, taskTime: new Date(taskTime).toISOString() };
   }
 
   async listUnclaimed(input: {
@@ -790,10 +798,14 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         }),
       { identity: "bot", requiredScopes: ["base:record:create"] },
     );
-    const record = result.data?.record as LarkRecord | undefined;
-    const normalized = record ? toRecord(record, tableDate) : null;
-    if (!normalized) throw new Error("创建 Bamboo result_id 调试记录后未返回 record_id");
-    return normalized;
+    if (!result.data?.record?.record_id) {
+      throw new Error("创建 Bamboo result_id 调试记录后未返回 record_id");
+    }
+    const verified = await this.findByUniqueId(api, location, uniqueId, true);
+    if (!verified) {
+      throw new Error(`Bamboo result_id 调试记录写入后无法按 unique_id ${uniqueId} 读回`);
+    }
+    return verified;
   }
 
   updateBambooPreparedMetadata(input: {
@@ -1051,6 +1063,20 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     );
     const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
     return record ? toRecord(record, location.dateKey) : null;
+  }
+
+  private async verifyMessageRecord(
+    api: LarkAlertTroubleshooterApi,
+    location: AlertTroubleshooterTableLocation,
+    input: { bamboo: boolean; uniqueId: string; messageId: string },
+  ): Promise<AlertTroubleshooterRecord> {
+    const record = input.bamboo
+      ? await this.findByUniqueId(api, location, input.uniqueId, true)
+      : await this.findByMessageId(api, location, input.messageId);
+    if (!record) {
+      throw new Error(`日报多维表格记录写入后无法按 unique_id ${input.uniqueId} 读回`);
+    }
+    return record;
   }
 
   private async findByUniqueId(

@@ -75,6 +75,7 @@ const taskState = vi.hoisted(() => ({
       privateScanCount: 1,
     })),
     pauseTasks: vi.fn(async (_taskIds: string[]) => [] as LarkSubstituteTask[]),
+    retryTasks: vi.fn(async (_taskIds: string[]) => [] as LarkSubstituteTask[]),
     deleteTasks: vi.fn(async (_taskIds: string[]) => [] as LarkSubstituteTask[]),
   },
 }));
@@ -187,6 +188,7 @@ const substituteMode = {
   disclosure: { enabled: true, prompt: "【机器人代答】" },
   customPrompt: "",
   delaySeconds: 600,
+  autoArchiveAgent: false,
   activeTimeRanges: [],
   allowlist: [],
   denylist: [],
@@ -247,6 +249,8 @@ afterEach(() => {
   });
   taskState.current.pauseTasks.mockReset();
   taskState.current.pauseTasks.mockResolvedValue([]);
+  taskState.current.retryTasks.mockReset();
+  taskState.current.retryTasks.mockResolvedValue([]);
   taskState.current.deleteTasks.mockReset();
   taskState.current.deleteTasks.mockResolvedValue([]);
   confirmState.confirm.mockReset();
@@ -303,6 +307,28 @@ describe("LarkSubstituteTaskListPage", () => {
 
     await waitFor(() => {
       expect(taskState.current.pauseTasks).toHaveBeenCalledWith(["pending"]);
+    });
+  });
+
+  test("支持单条和批量重试失败任务", async () => {
+    taskState.current.tasks = [
+      task("failed-1", "failed", "group_scan"),
+      task("failed-2", "failed", "private_scan"),
+      task("completed", "completed", "group_listener"),
+    ];
+    renderTaskList();
+
+    const retryButtons = screen.getAllByRole("button", { name: "重试任务" });
+    fireEvent.click(retryButtons[1]!);
+    await waitFor(() => {
+      expect(taskState.current.retryTasks).toHaveBeenCalledWith(["failed-1"]);
+    });
+
+    taskState.current.retryTasks.mockClear();
+    fireEvent.click(screen.getByLabelText("选择全部替身任务"));
+    fireEvent.click(screen.getAllByRole("button", { name: "重试任务" })[0]!);
+    await waitFor(() => {
+      expect(taskState.current.retryTasks).toHaveBeenCalledWith(["failed-1", "failed-2"]);
     });
   });
 

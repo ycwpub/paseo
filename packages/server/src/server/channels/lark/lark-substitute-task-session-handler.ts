@@ -16,6 +16,7 @@ type LarkSubstituteTaskSessionService = Pick<
   | "listSubstituteTasks"
   | "scanSubstituteTasksNow"
   | "pauseSubstituteTasks"
+  | "retrySubstituteTasks"
   | "deleteSubstituteTasks"
 >;
 
@@ -69,6 +70,19 @@ export async function handleLarkSubstituteTaskSessionRequest(
       });
       return;
     }
+    case "channel.lark.substitute_task.retry.request": {
+      const retriedTaskIds = service.retrySubstituteTasks(message.taskIds, message.modeId);
+      emitResponse({
+        type: "channel.lark.substitute_task.retry.response",
+        payload: {
+          requestId: message.requestId,
+          retriedTaskIds,
+          tasks: service.listSubstituteTasks(message.modeId),
+          error: null,
+        },
+      });
+      return;
+    }
     case "channel.lark.substitute_task.delete.request": {
       const deletedTaskIds = service.deleteSubstituteTasks(message.taskIds, message.modeId);
       emitResponse({
@@ -116,6 +130,12 @@ export function emitLarkSubstituteTaskSessionError(
       emitResponse({
         type: "channel.lark.substitute_task.pause.response",
         payload: { requestId: message.requestId, pausedTaskIds: [], tasks, error },
+      });
+      return;
+    case "channel.lark.substitute_task.retry.request":
+      emitResponse({
+        type: "channel.lark.substitute_task.retry.response",
+        payload: { requestId: message.requestId, retriedTaskIds: [], tasks, error },
       });
       return;
     case "channel.lark.substitute_task.delete.request":

@@ -65,6 +65,38 @@ describe("LarkSubstituteTaskStore", () => {
     expect(store.get(second.id)?.status).toBe("pending");
   });
 
+  it("resets only failed tasks for manual retry", () => {
+    const store = createStore();
+    const failed = store.enqueue(input, "2026-09-07T06:00:00.000Z");
+    store.markCompleted(
+      failed.id,
+      "failed",
+      "2026-09-07T06:01:00.000Z",
+      "读取群消息失败",
+      "group_scan",
+    );
+    const completed = store.enqueue(
+      { ...input, chatId: "oc_other", messageId: "om_2" },
+      "2026-09-07T06:02:00.000Z",
+    );
+    store.markCompleted(completed.id, "completed", "2026-09-07T06:03:00.000Z");
+
+    expect(
+      store.resetFailedForRetry([failed.id, completed.id], "2026-09-07T06:04:00.000Z"),
+    ).toEqual([failed.id]);
+    expect(store.get(failed.id)).toMatchObject({
+      status: "pending",
+      scheduledAt: null,
+      startedAt: null,
+      completedAt: null,
+      agentId: null,
+      error: null,
+      failureStage: null,
+      updatedAt: "2026-09-07T06:04:00.000Z",
+    });
+    expect(store.get(completed.id)?.status).toBe("completed");
+  });
+
   it("records private-message scan failures as failed tasks", () => {
     const store = createStore();
     const task = store.recordPrivateScanFailure(

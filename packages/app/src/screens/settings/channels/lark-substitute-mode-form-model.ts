@@ -43,6 +43,7 @@ export interface LarkSubstituteModeFormState {
   disclosurePrompt: string;
   customPrompt: string;
   delaySeconds: string;
+  autoArchiveAgent: boolean;
   weekdays: number[];
   startTime: string;
   endTime: string;
@@ -128,6 +129,7 @@ function createDefaultFormState(
     disclosurePrompt: "【机器人代答】",
     customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
     delaySeconds: String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
+    autoArchiveAgent: false,
     weekdays: [1, 2, 3, 4, 5, 6, 7],
     startTime: "",
     endTime: "",
@@ -167,6 +169,7 @@ function createModeBehaviorFields(
   | "disclosurePrompt"
   | "customPrompt"
   | "delaySeconds"
+  | "autoArchiveAgent"
   | "audienceAllowRuleGroups"
   | "audienceDenyRuleGroups"
   | "questionAllowlist"
@@ -186,6 +189,7 @@ function createModeBehaviorFields(
     disclosurePrompt: mode.disclosure.prompt,
     customPrompt: mode.customPrompt,
     delaySeconds: String(mode.delaySeconds),
+    autoArchiveAgent: mode.autoArchiveAgent === true,
     ...createSubstituteRuleFormLists(mode),
   };
 }
@@ -363,6 +367,7 @@ export function buildSubstituteModeInput(input: {
     },
     customPrompt: form.customPrompt.trim(),
     delaySeconds: parseDelaySeconds(form.delaySeconds),
+    autoArchiveAgent: form.autoArchiveAgent,
     activeTimeRanges: buildActiveTimeRanges(form, mode),
     ...ruleLists,
     audienceAllowlist: [],

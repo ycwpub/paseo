@@ -771,6 +771,10 @@ type LarkSubstituteModeDeletePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.substitute.delete.response" }
 >["payload"];
+type LarkSubstituteReplyPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.reply.response" }
+>["payload"];
 type LarkSubstituteTaskListPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.substitute_task.list.response" }
@@ -782,6 +786,10 @@ type LarkSubstituteTaskScanPayload = Extract<
 type LarkSubstituteTaskPausePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.substitute_task.pause.response" }
+>["payload"];
+type LarkSubstituteTaskRetryPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute_task.retry.response" }
 >["payload"];
 type LarkSubstituteTaskDeletePayload = Extract<
   SessionOutboundMessage,
@@ -1225,6 +1233,11 @@ export interface DeleteLarkSubstituteModeOptions {
   modeId: string;
   requestId?: string;
 }
+export interface ReplyLarkSubstituteOptions {
+  agentId: string;
+  text: string;
+  requestId?: string;
+}
 export interface ListLarkSubstituteTasksOptions {
   modeId?: string;
   requestId?: string;
@@ -1235,6 +1248,11 @@ export interface ScanLarkSubstituteTasksOptions {
   requestId?: string;
 }
 export interface PauseLarkSubstituteTasksOptions {
+  modeId?: string;
+  taskIds: string[];
+  requestId?: string;
+}
+export interface RetryLarkSubstituteTasksOptions {
   modeId?: string;
   taskIds: string[];
   requestId?: string;
@@ -6670,6 +6688,16 @@ export class DaemonClient {
     return this.resourceRpc.enqueueAlertTroubleshooterRecord(input);
   }
 
+  async scanAlertTroubleshooterNow(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    lookbackMinutes: number;
+    excludeRecentMinutes: number;
+  }) {
+    return this.resourceRpc.scanAlertTroubleshooterNow(input);
+  }
+
   async listAlertTroubleshooterTasks(input: {
     pluginId: string;
     appId: string;
@@ -7007,6 +7035,12 @@ export class DaemonClient {
     return this.resourceRpc.deleteLarkSubstituteMode(options);
   }
 
+  async replyLarkSubstitute(
+    options: ReplyLarkSubstituteOptions,
+  ): Promise<LarkSubstituteReplyPayload> {
+    return this.resourceRpc.replyLarkSubstitute(options);
+  }
+
   async listLarkSubstituteTasks(
     options?: string | ListLarkSubstituteTasksOptions,
   ): Promise<LarkSubstituteTaskListPayload> {
@@ -7023,6 +7057,12 @@ export class DaemonClient {
     options: PauseLarkSubstituteTasksOptions,
   ): Promise<LarkSubstituteTaskPausePayload> {
     return this.resourceRpc.pauseLarkSubstituteTasks(options);
+  }
+
+  async retryLarkSubstituteTasks(
+    options: RetryLarkSubstituteTasksOptions,
+  ): Promise<LarkSubstituteTaskRetryPayload> {
+    return this.resourceRpc.retryLarkSubstituteTasks(options);
   }
 
   async deleteLarkSubstituteTasks(

@@ -2,6 +2,7 @@ import type pino from "pino";
 import type {
   LarkDirectory,
   LarkSubstituteMode,
+  LarkSubstituteTask,
   LarkSubstituteTaskFailureStage,
   LarkSubstituteTaskScanRange,
 } from "@getpaseo/protocol/messages";
@@ -14,6 +15,8 @@ import {
 } from "./lark-message-format.js";
 import { hasPrivateSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 import { LarkSubstitutePrivateRelayStore } from "./lark-substitute-private-relay-store.js";
+import { buildLarkSubstitutePrivateRelayMessage } from "./lark-substitute-private-relay-message.js";
+import { LarkSubstitutePrivateScanScheduler } from "./lark-substitute-private-scan-scheduler.js";
 import {
   matchLarkSubstituteMode,
   type MatchedLarkSubstituteMode,
@@ -28,6 +31,7 @@ interface LarkSubstitutePrivatePollerAdapter extends Pick<
 export interface LarkPrivateSubstituteReplyPreparationInput {
   botId: string;
   modeId: string;
+  taskId?: string;
   matchedMode: MatchedLarkSubstituteMode;
   event: NormalizedLarkMessageEvent;
   supplementalEvents: NormalizedLarkMessageEvent[];
@@ -119,11 +123,6 @@ function getLatestUnansweredMessages(
   return result;
 }
 
-function buildRelayMessage(event: NormalizedLarkMessageEvent): string {
-  const sender = event.displayName.trim() || event.openId || "飞书用户";
-  return [`【替身私聊转发】${sender}`, event.text, "", `来源消息：${event.messageId}`].join("\n");
-}
-
 function relayChatName(mode: LarkSubstituteMode, peerName: string): string {
   return `${mode.name} · ${peerName || "私聊用户"}`.slice(0, 100);
 }
@@ -173,10 +172,21 @@ export class LarkSubstitutePrivatePoller {
   >();
   private readonly running = new Set<string>();
   private readonly now: () => Date;
+  private readonly eligibilityScheduler: LarkSubstitutePrivateScanScheduler;
 
   constructor(private readonly options: LarkSubstitutePrivatePollerOptions) {
     this.store = new LarkSubstitutePrivateRelayStore(options.paseoHome);
     this.now = options.now ?? (() => new Date());
+    this.eligibilityScheduler = new LarkSubstitutePrivateScanScheduler({
+      now: () => this.now().getTime(),
+      run: async (mode) => {
+        if (this.running.has(mode.id)) {
+          this.eligibilityScheduler.schedule(mode, this.now().getTime() + 1_000);
+          return;
+        }
+        await this.runMode(mode);
+      },
+    });
   }
 
   sync(modes: readonly LarkSubstituteMode[]): void {
@@ -188,12 +198,14 @@ export class LarkSubstitutePrivatePoller {
         )
         .map((mode) => [mode.id, mode] as const),
     );
+    this.eligibilityScheduler.retain(new Set(activeModes.keys()));
     for (const [modeId, scheduled] of this.timers) {
       const mode = activeModes.get(modeId);
       const fingerprint = mode ? JSON.stringify(mode.privateScan) : null;
       if (fingerprint === scheduled.fingerprint) continue;
       clearInterval(scheduled.timer);
       this.timers.delete(modeId);
+      this.eligibilityScheduler.cancel(modeId);
     }
     for (const mode of activeModes.values()) {
       if (this.timers.has(mode.id)) continue;
@@ -210,12 +222,14 @@ export class LarkSubstitutePrivatePoller {
   stop(): void {
     for (const scheduled of this.timers.values()) clearInterval(scheduled.timer);
     this.timers.clear();
+    this.eligibilityScheduler.clear();
   }
 
   deleteMode(modeId: string): void {
     const scheduled = this.timers.get(modeId);
     if (scheduled) clearInterval(scheduled.timer);
     this.timers.delete(modeId);
+    this.eligibilityScheduler.cancel(modeId);
     this.store.deleteMode(modeId);
   }
 
@@ -260,7 +274,7 @@ export class LarkSubstitutePrivatePoller {
         .filter((event): event is NormalizedLarkMessageEvent => Boolean(event))
         .map((event) => Object.assign(event, { chatType: "p2p" as const }));
       await this.observePrivateMessages(bot.config, events, oauth.openId);
-      await this.processPrivateMessageCandidates({
+      const nextEligibleAt = await this.processPrivateMessageCandidates({
         config: bot.config,
         mode,
         authorizedUser: {
@@ -273,6 +287,13 @@ export class LarkSubstitutePrivatePoller {
         excludeRecentMinutes:
           scanRange?.excludeRecentMinutes ?? mode.privateScan.excludeRecentMinutes,
       });
+      if (!scanRange) {
+        if (nextEligibleAt === null) {
+          this.eligibilityScheduler.cancel(mode.id);
+        } else {
+          this.eligibilityScheduler.schedule(mode, nextEligibleAt);
+        }
+      }
     } catch (error) {
       const failure = formatPrivateScanFailure(error);
       this.options.logger.warn(
@@ -283,6 +304,51 @@ export class LarkSubstitutePrivatePoller {
     } finally {
       this.running.delete(mode.id);
     }
+  }
+
+  async retryTask(mode: LarkSubstituteMode, task: LarkSubstituteTask): Promise<void> {
+    const bot = this.options.channelStore.getBot(mode.botId);
+    if (!bot?.config.enabled || !bot.config.appId) {
+      throw new Error("替身绑定的飞书机器人不存在或未启用");
+    }
+    const oauth = this.options.userOAuthService.getStatus(bot.config.appId);
+    if (!oauth.authorized || !oauth.openId) {
+      throw new Error(
+        "飞书用户 OAuth 未授权、已过期或缺少替身私聊扫描、建群所需权限，请点击“立即授权”重新授权。",
+      );
+    }
+    if (!task.senderOpenId) throw new Error("原任务缺少私聊发送者 open_id，无法重试");
+    const event: NormalizedLarkMessageEvent = {
+      eventId: `private-retry:${task.id}`,
+      messageId: task.messageId,
+      chatId: task.chatId,
+      chatType: "p2p",
+      messageType: "text",
+      threadId: null,
+      rootMessageId: null,
+      openId: task.senderOpenId,
+      unionId: null,
+      displayName: task.senderName ?? "",
+      topicName: task.senderName ?? mode.name,
+      text: task.content,
+      createTime: Date.parse(task.createdAt),
+      mentions: [],
+    };
+    const matched = matchLarkSubstituteMode({
+      modes: [mode],
+      botId: mode.botId,
+      appId: bot.config.appId,
+      event,
+      directory: this.options.getDirectory?.() ?? null,
+      authorizedUser: {
+        openId: oauth.openId,
+        name: oauth.displayName,
+        email: oauth.email,
+      },
+      now: this.now(),
+    });
+    if (!matched) throw new Error("原消息不再命中当前替身名单或时间段配置");
+    await this.relayPrivateMessage(bot.config, mode, matched, oauth.openId, event, [], task.id);
   }
 
   private async observePrivateMessages(
@@ -305,12 +371,12 @@ export class LarkSubstitutePrivatePoller {
     events: NormalizedLarkMessageEvent[];
     now: number;
     excludeRecentMinutes: number;
-  }): Promise<void> {
+  }): Promise<number | null> {
     const { config, mode, authorizedUser, events, now, excludeRecentMinutes } = input;
     const eligibleBefore = now - excludeRecentMinutes * 60 * 1_000;
+    let nextEligibleAt: number | null = null;
     for (const candidate of getLatestUnansweredMessages(events, authorizedUser.openId)) {
       const candidateTime = candidate.latest.createTime ?? 0;
-      if (candidateTime <= 0 || candidateTime > eligibleBefore) continue;
       if (this.store.hasProcessed(candidate.latest.messageId) || !candidate.latest.openId) continue;
       const matched = matchLarkSubstituteMode({
         modes: [mode],
@@ -322,6 +388,13 @@ export class LarkSubstitutePrivatePoller {
         now: this.now(),
       });
       if (!matched) continue;
+      if (candidateTime <= 0) continue;
+      if (candidateTime > eligibleBefore) {
+        const eligibleAt = candidateTime + excludeRecentMinutes * 60 * 1_000;
+        nextEligibleAt =
+          nextEligibleAt === null ? eligibleAt : Math.min(nextEligibleAt, eligibleAt);
+        continue;
+      }
       try {
         await this.relayPrivateMessage(
           config,
@@ -348,6 +421,7 @@ export class LarkSubstitutePrivatePoller {
         await this.reportScanFailure(mode, failure, candidate.latest, stage);
       }
     }
+    return nextEligibleAt;
   }
 
   private async reportScanFailure(
@@ -373,6 +447,7 @@ export class LarkSubstitutePrivatePoller {
     authorizedUserOpenId: string,
     source: NormalizedLarkMessageEvent,
     context: NormalizedLarkMessageEvent[],
+    taskId?: string,
   ): Promise<void> {
     if (!source.openId || !config.appId) return;
     let prepared: LarkPrivateSubstituteReplyPreparation;
@@ -380,6 +455,7 @@ export class LarkSubstitutePrivatePoller {
       prepared = await this.options.prepareReply({
         botId: mode.botId,
         modeId: mode.id,
+        ...(taskId ? { taskId } : {}),
         matchedMode,
         event: {
           ...source,
@@ -411,7 +487,7 @@ export class LarkSubstitutePrivatePoller {
           this.options.adapter,
           config,
           relay.chatId,
-          buildRelayMessage(source),
+          buildLarkSubstitutePrivateRelayMessage(source),
         );
       } catch {
         this.store.remove(mode.id, source.openId);
@@ -420,7 +496,7 @@ export class LarkSubstitutePrivatePoller {
           this.options.adapter,
           config,
           relay.chatId,
-          buildRelayMessage(source),
+          buildLarkSubstitutePrivateRelayMessage(source),
         );
       }
       if (!forwarded.messageId) throw new Error("转发私聊消息后未返回 message_id");

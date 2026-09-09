@@ -79,6 +79,91 @@ describe("PluginSession alert troubleshooter RPC", () => {
     });
   });
 
+  it("routes a one-off scan range and returns the refreshed tasks", async () => {
+    const emit = vi.fn();
+    const scanAlertTroubleshooterNow = vi.fn(async () => ({
+      matchedCount: 2,
+      failureCount: 1,
+      auditFile: "/tmp/manual-scan.json",
+    }));
+    const listAlertTroubleshooterTasks = vi.fn(() => []);
+    const session = new PluginSession({
+      host: { emit },
+      service: { scanAlertTroubleshooterNow, listAlertTroubleshooterTasks } as never,
+      mcpStore: {} as never,
+      skillStore: {} as never,
+      logger: createTestLogger(),
+    });
+
+    await session.handleRequest({
+      type: "plugin.alert_troubleshooter.scan_now.request",
+      requestId: "request-scan",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      appId: "bamboo-troubleshooter-console",
+      projectId: "prj_1",
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
+
+    expect(scanAlertTroubleshooterNow).toHaveBeenCalledWith({
+      type: "plugin.alert_troubleshooter.scan_now.request",
+      requestId: "request-scan",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      appId: "bamboo-troubleshooter-console",
+      projectId: "prj_1",
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
+    expect(emit).toHaveBeenCalledWith({
+      type: "plugin.alert_troubleshooter.scan_now.response",
+      payload: {
+        requestId: "request-scan",
+        tasks: [],
+        matchedCount: 2,
+        failureCount: 1,
+        auditFile: "/tmp/manual-scan.json",
+        error: null,
+      },
+    });
+  });
+
+  it("returns a one-off scan error instead of leaving the client waiting", async () => {
+    const emit = vi.fn();
+    const session = new PluginSession({
+      host: { emit },
+      service: {
+        scanAlertTroubleshooterNow: vi.fn(async () => {
+          throw new Error("扫描失败");
+        }),
+      } as never,
+      mcpStore: {} as never,
+      skillStore: {} as never,
+      logger: createTestLogger(),
+    });
+
+    await session.handleRequest({
+      type: "plugin.alert_troubleshooter.scan_now.request",
+      requestId: "request-scan-error",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      appId: "bamboo-troubleshooter-console",
+      projectId: "prj_1",
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
+
+    expect(emit).toHaveBeenCalledWith({
+      type: "plugin.alert_troubleshooter.scan_now.response",
+      payload: {
+        requestId: "request-scan-error",
+        tasks: [],
+        matchedCount: 0,
+        failureCount: 0,
+        auditFile: null,
+        error: "扫描失败",
+      },
+    });
+  });
+
   it("returns an RPC error instead of leaving the client waiting", async () => {
     const emit = vi.fn();
     const session = new PluginSession({

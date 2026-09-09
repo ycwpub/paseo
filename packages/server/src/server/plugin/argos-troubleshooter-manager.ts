@@ -9,6 +9,7 @@ import {
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
 import {
   ProjectAlertTroubleshooterManager,
+  type AlertManualScanSummary,
   type AlertScanWindow,
   type AlertTroubleshooterTrigger,
 } from "./alert-troubleshooter-manager.js";
@@ -85,6 +86,13 @@ export class ArgosTroubleshooterManager {
 
   enqueueRecord(projectId: string, uniqueId: string): Promise<boolean> {
     return this.manager.enqueueRecord(projectId, uniqueId);
+  }
+
+  scanNow(
+    projectId: string,
+    range: { lookbackMinutes: number; excludeRecentMinutes: number },
+  ): Promise<AlertManualScanSummary> {
+    return this.manager.scanNow(projectId, range);
   }
 
   listTasks(projectId: string) {

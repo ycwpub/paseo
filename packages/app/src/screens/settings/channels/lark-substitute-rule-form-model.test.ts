@@ -23,6 +23,7 @@ function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
     disclosure: { enabled: true, prompt: "【机器人代答】" },
     customPrompt: "",
     delaySeconds: 60,
+    autoArchiveAgent: false,
     activeTimeRanges: [],
     allowlist: [],
     denylist: [],

@@ -78,6 +78,14 @@ interface AlertScanExecutionOptions {
   persistStageFailures?: boolean;
   throwOnPartialFailure?: boolean;
   allowTablePollWhenDisabled?: boolean;
+  trigger?: Extract<AlertTroubleshooterTrigger, "schedule" | "manual_scan">;
+  window?: AlertScanWindow;
+}
+
+export interface AlertManualScanSummary {
+  matchedCount: number;
+  failureCount: number;
+  auditFile: string | null;
 }
 
 export type {
@@ -111,7 +119,13 @@ export interface AlertTroubleshooterDefinition {
     config: AlertTroubleshooterConfig;
     window: AlertScanWindow;
     cwd: string;
+    trigger: Extract<AlertTroubleshooterTrigger, "schedule" | "manual_scan">;
   }): Promise<NormalizedLarkMessageEvent[] | AlertScanResult>;
+  recoverScannedMessage?(input: {
+    config: AlertTroubleshooterConfig;
+    cwd: string;
+    messageId: string;
+  }): Promise<NormalizedLarkMessageEvent | null>;
   buildDefaultPrompt(input: {
     config: AlertTroubleshooterConfig;
     trigger: AlertTroubleshooterTrigger;
@@ -355,6 +369,43 @@ export class ProjectAlertTroubleshooterManager {
     return true;
   }
 
+  async scanNow(
+    projectId: string,
+    range: { lookbackMinutes: number; excludeRecentMinutes: number },
+  ): Promise<AlertManualScanSummary> {
+    if (
+      !Number.isInteger(range.lookbackMinutes) ||
+      range.lookbackMinutes < 1 ||
+      range.lookbackMinutes > 10_080
+    ) {
+      throw new Error("扫描范围必须是 1 到 10080 之间的整数分钟");
+    }
+    if (
+      !Number.isInteger(range.excludeRecentMinutes) ||
+      range.excludeRecentMinutes < 0 ||
+      range.excludeRecentMinutes >= range.lookbackMinutes
+    ) {
+      throw new Error("排除最近必须是非负整数，并且小于扫描范围");
+    }
+    const state = this.listConfiguredProjects().find(
+      (candidate) => candidate.projectId === projectId,
+    );
+    if (!state) throw new Error(`Project ${projectId} 未配置该自动排查插件`);
+    const config = this.readConfig(state);
+    if (!config?.enabled) throw new Error("自动排查未启用");
+    const now = this.now();
+    const summary = await this.scanProject(state, config, now, {
+      trigger: "manual_scan",
+      window: {
+        start: new Date(now.getTime() - range.lookbackMinutes * 60_000),
+        end: new Date(now.getTime() - range.excludeRecentMinutes * 60_000),
+      },
+      allowTablePollWhenDisabled: true,
+    });
+    this.queueProjectProcessing(state, config, true);
+    return summary;
+  }
+
   async enqueueResultId(projectId: string, resultId: string): Promise<boolean> {
     const state = this.listConfiguredProjects().find(
       (candidate) => candidate.projectId === projectId,
@@ -526,23 +577,26 @@ export class ProjectAlertTroubleshooterManager {
     config: AlertTroubleshooterConfig,
     now: Date,
     options: AlertScanExecutionOptions = {},
-  ): Promise<void> {
-    if (!state.projectId) return;
+  ): Promise<AlertManualScanSummary> {
+    if (!state.projectId) throw new Error("自动排查项目缺少 Project ID");
     const project = await this.options.projectRegistry.get(state.projectId);
     if (!project || project.archivedAt) throw new Error(`Project ${state.projectId} 不存在`);
     const source = resolveProjectSourceDirectory({ paseoHome: this.options.paseoHome, project });
+    const trigger = options.trigger ?? "schedule";
+    const window = options.window ?? buildScheduledAlertScanWindow(now, config);
     await this.updateRuntime(state, {
       status: "scanning",
       lastScanStartedAt: now.toISOString(),
       lastError: null,
-      lastTrigger: "schedule",
+      lastTrigger: trigger,
     });
     let scanResult: AlertScanResult;
     try {
       const result = await this.options.definition.scanMessages({
         config,
-        window: buildScheduledAlertScanWindow(now, config),
+        window,
         cwd: source.path,
+        trigger,
       });
       scanResult = Array.isArray(result) ? { events: result, failures: [] } : result;
     } catch (error) {
@@ -550,7 +604,7 @@ export class ProjectAlertTroubleshooterManager {
       if (options.persistStageFailures !== false) {
         this.queueStore.recordFailure(state.projectId, {
           uniqueId: `scan:${now.toISOString()}`,
-          trigger: "schedule",
+          trigger,
           error: failure.message,
         });
       }
@@ -563,7 +617,7 @@ export class ProjectAlertTroubleshooterManager {
       if (options.persistStageFailures !== false) {
         this.queueStore.recordFailure(state.projectId, {
           uniqueId: `scan:${failure.chatId}:${now.toISOString()}`,
-          trigger: "schedule",
+          trigger,
           error: message,
         });
       }
@@ -576,7 +630,7 @@ export class ProjectAlertTroubleshooterManager {
         await this.ingestMessage(
           state,
           config,
-          "schedule",
+          trigger,
           event,
           matchedEvents.length || 1,
           options.persistStageFailures !== false,
@@ -604,6 +658,11 @@ export class ProjectAlertTroubleshooterManager {
     if (options.throwOnPartialFailure && partialFailures.length > 0) {
       throw new Error(partialFailures.join("\n"));
     }
+    return {
+      matchedCount: matchedEvents.length,
+      failureCount: partialFailures.length,
+      auditFile: scanResult.auditFile ?? null,
+    };
   }
 
   private async ingestMessage(
@@ -613,8 +672,8 @@ export class ProjectAlertTroubleshooterManager {
     event: NormalizedLarkMessageEvent,
     matchedCount = 1,
     persistStageFailure = true,
-  ): Promise<void> {
-    if (!state.projectId) return;
+  ): Promise<AlertTroubleshooterRecord | null> {
+    if (!state.projectId) return null;
     await this.updateRuntime(state, { status: "ingesting", lastError: null, lastTrigger: trigger });
     let record: AlertTroubleshooterRecord;
     try {
@@ -651,6 +710,7 @@ export class ProjectAlertTroubleshooterManager {
       status: "idle",
       queuedCount: this.queueStore.countQueued(state.projectId),
     });
+    return record;
   }
 
   private async pollUnclaimedRecords(
@@ -743,12 +803,17 @@ export class ProjectAlertTroubleshooterManager {
       state.projectId,
       manualOnly
         ? {
-            trigger: "manual",
+            triggers: ["manual", "manual_scan"],
             maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
           }
         : { maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0 },
     );
-    while (item && (currentConfig.troubleshootingEnabled || item.trigger === "manual")) {
+    while (
+      item &&
+      (currentConfig.troubleshootingEnabled ||
+        item.trigger === "manual" ||
+        item.trigger === "manual_scan")
+    ) {
       await this.processQueueItem(state, currentConfig, item);
       const latest = this.listConfiguredProjects().find(
         (candidate) => candidate.projectId === state.projectId,
@@ -761,7 +826,7 @@ export class ProjectAlertTroubleshooterManager {
         state.projectId,
         manualOnly
           ? {
-              trigger: "manual",
+              triggers: ["manual", "manual_scan"],
               maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
             }
           : { maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0 },
@@ -785,8 +850,14 @@ export class ProjectAlertTroubleshooterManager {
     try {
       const localStage = alertTroubleshooterLocalStage(activeItem);
       if (localStage) {
-        await this.processLocalStageQueueItem(state, config, activeItem, localStage);
-        return;
+        const recoveredItem = await this.processLocalStageQueueItem(
+          state,
+          config,
+          activeItem,
+          localStage,
+        );
+        if (!recoveredItem) return;
+        activeItem = recoveredItem;
       }
       if (!state.defaultAgent) throw new Error("自动排查项目未配置 Provider 和模型");
       const project = await this.options.projectRegistry.get(state.projectId);
@@ -923,19 +994,71 @@ export class ProjectAlertTroubleshooterManager {
     config: AlertTroubleshooterConfig,
     item: AlertTroubleshooterQueueItem,
     stage: AlertTroubleshooterLocalStage,
-  ): Promise<void> {
-    if (!state.projectId) return;
+  ): Promise<AlertTroubleshooterQueueItem | null> {
+    if (!state.projectId) return null;
     if (stage === "table_poll") {
       await this.pollUnclaimedRecords(state, config, {
         persistStageFailures: false,
         allowWhenDisabled: true,
       });
-    } else {
+    } else if (stage === "scan") {
       await this.scanProject(state, config, this.now(), {
         persistStageFailures: false,
         throwOnPartialFailure: true,
         allowTablePollWhenDisabled: true,
       });
+    } else {
+      const project = await this.options.projectRegistry.get(state.projectId);
+      if (!project || project.archivedAt) throw new Error(`Project ${state.projectId} 不存在`);
+      const source = resolveProjectSourceDirectory({ paseoHome: this.options.paseoHome, project });
+      const messageId = item.messageId ?? item.uniqueId.replace(/^message_id:/u, "");
+      const recoveredEvent = this.options.definition.recoverScannedMessage
+        ? await this.options.definition.recoverScannedMessage({
+            config,
+            cwd: source.path,
+            messageId,
+          })
+        : null;
+      let record: AlertTroubleshooterRecord | null = null;
+      if (recoveredEvent) {
+        record = await this.ingestMessage(
+          state,
+          config,
+          item.trigger,
+          recoveredEvent,
+          item.matchedCount,
+          false,
+        );
+      } else if (this.options.definition.recoverScannedMessage) {
+        throw new Error(
+          `未能从扫描审计恢复目标消息 ${messageId}，无法重试写入归因记录表，任务未完成`,
+        );
+      } else {
+        await this.scanProject(state, config, this.now(), {
+          persistStageFailures: false,
+          throwOnPartialFailure: true,
+          allowTablePollWhenDisabled: true,
+        });
+        record = await this.options.recordStore.getRecordByUniqueId({
+          config,
+          pluginId: this.options.definition.pluginId,
+          uniqueId: item.uniqueId,
+        });
+      }
+      if (!record) {
+        throw new Error(
+          `重试写入日报多维表格后仍无法按 unique_id ${item.uniqueId} 读回记录，任务未完成`,
+        );
+      }
+      return (
+        this.queueStore.replaceRecordReference(state.projectId, item.id, {
+          recordId: record.recordId,
+          uniqueId: record.uniqueId,
+          resultId: record.resultId,
+          tableDate: record.tableDate,
+          messageId: record.messageId,
+        }) ?? item
+      );
     }
     this.queueStore.complete(state.projectId, item.id, null);
     await this.updateRuntime(state, {
@@ -945,6 +1068,7 @@ export class ProjectAlertTroubleshooterManager {
       activeAgentId: null,
       lastError: null,
     });
+    return null;
   }
 
   private async resolveQueueRecord(

@@ -12,8 +12,10 @@ import {
   buildRealtimeAlertScanWindow,
   buildScheduledAlertScanWindow,
   type AlertScanFailure,
+  type AlertManualScanSummary,
   type AlertScanResult,
   type AlertScanWindow,
+  type AlertTroubleshooterTrigger,
 } from "./alert-troubleshooter-manager.js";
 import type {
   AlertTroubleshooterRecord,
@@ -34,6 +36,7 @@ import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolv
 import type { LarkChannelClientAdapter } from "../channels/lark/lark-client-adapter.js";
 import {
   buildBambooGroupScanAudit,
+  recoverBambooMessageFromScanAudit,
   writeBambooScanAudit,
   type BambooGroupScanAudit,
 } from "./bamboo-scan-audit.js";
@@ -98,14 +101,17 @@ export class BambooTroubleshooterManager {
           }
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
-        scanMessages: ({ config, window, cwd }) =>
+        scanMessages: ({ config, window, cwd, trigger }) =>
           collectScheduledBambooAlerts(
             options.listChatMessages,
             options.recordStore,
             config,
             window,
             cwd,
+            trigger === "schedule",
           ),
+        recoverScannedMessage: ({ cwd, messageId }) =>
+          recoverBambooMessageFromScanAudit({ cwd, messageId }),
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
           buildBambooPrompt(config, trigger, record, wikiTarget),
         buildPromptAppendix: ({ wikiTarget }) => buildBambooPromptAppendix(wikiTarget),
@@ -160,6 +166,13 @@ export class BambooTroubleshooterManager {
     return this.manager.enqueueResultId(projectId, resultId);
   }
 
+  scanNow(
+    projectId: string,
+    range: { lookbackMinutes: number; excludeRecentMinutes: number },
+  ): Promise<AlertManualScanSummary> {
+    return this.manager.scanNow(projectId, range);
+  }
+
   listTasks(projectId: string) {
     return this.manager.listTasks(projectId);
   }
@@ -183,6 +196,7 @@ async function collectScheduledBambooAlerts(
   config: AlertTroubleshooterConfig,
   window: AlertScanWindow,
   cwd: string,
+  resumeFromLatestMessage = true,
 ): Promise<AlertScanResult> {
   const startedAt = new Date();
   const alerts = new Map<string, NormalizedLarkMessageEvent>();
@@ -191,11 +205,13 @@ async function collectScheduledBambooAlerts(
   for (const chat of config.chats) {
     let effectiveWindow = window;
     try {
-      const latestMessageTime = await recordStore.getLatestMessageTimeByChat?.({
-        config,
-        pluginId: BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
-        chatId: chat.chatId,
-      });
+      const latestMessageTime = resumeFromLatestMessage
+        ? await recordStore.getLatestMessageTimeByChat?.({
+            config,
+            pluginId: BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
+            chatId: chat.chatId,
+          })
+        : null;
       const start =
         latestMessageTime === undefined || latestMessageTime === null
           ? window.start
@@ -254,7 +270,7 @@ async function collectScheduledBambooAlerts(
 
 function buildBambooPrompt(
   config: AlertTroubleshooterConfig,
-  trigger: "message" | "schedule" | "table" | "manual",
+  trigger: AlertTroubleshooterTrigger,
   record: AlertTroubleshooterRecord,
   wikiTarget?: { spaceId: string; parentNodeToken: string },
 ): string {

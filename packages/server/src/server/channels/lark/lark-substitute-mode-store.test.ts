@@ -77,6 +77,7 @@ describe("LarkSubstituteModeStore", () => {
         },
         customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
         delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+        autoArchiveAgent: false,
         allowlist: [{ id: "legacy-bot-1-allow-all", type: "all" }],
       }),
     ]);
@@ -120,6 +121,7 @@ describe("LarkSubstituteModeStore", () => {
 
     const disabled = store.setEnabled(created.id, false, "2026-09-04T01:00:00.000Z");
     expect(disabled?.enabled).toBe(false);
+    expect(disabled?.autoArchiveAgent).toBe(false);
     expect(disabled?.target.projectId).toBe("prj-substitute");
     expect(store.delete(created.id)).toBe(true);
     expect(store.list()).toEqual([]);

@@ -107,17 +107,39 @@ describe("LarkChannelService", () => {
 
     const lastMessages = new Map<string, string | null>();
     const agents = new Map<string, ManagedAgent>();
+    const archivedAtByAgent = new Map<string, string>();
     const agentManager = {
       subscribe: vi.fn(() => () => undefined),
       getLastAssistantMessage: vi.fn(async (agentId: string) => lastMessages.get(agentId) ?? null),
       getAgent: vi.fn((agentId: string) => agents.get(agentId) ?? makeAgent(agentId, "idle")),
       tryRunOutOfBand: vi.fn(() => false),
       hasInFlightRun: vi.fn(() => false),
+      clearAgentAttention: vi.fn(async () => undefined),
+      archiveAgent: vi.fn(async (agentId: string) => {
+        const archivedAt = "2026-09-09T00:00:00.000Z";
+        archivedAtByAgent.set(agentId, archivedAt);
+        return { archivedAt };
+      }),
       replaceAgentRun: vi.fn(() => emptyAgentStream()),
       streamAgent: vi.fn(() => emptyAgentStream()),
     } as unknown as AgentManager;
     const agentStorage = {
-      get: vi.fn(async () => null),
+      get: vi.fn(async (agentId: string) => {
+        const archivedAt = archivedAtByAgent.get(agentId);
+        return archivedAt
+          ? ({
+              id: agentId,
+              provider: "claude",
+              cwd: "/repo",
+              createdAt: "2026-09-09T00:00:00.000Z",
+              updatedAt: archivedAt,
+              archivedAt,
+              labels: {},
+              lastStatus: "idle",
+              config: null,
+            } as const)
+          : null;
+      }),
     } as unknown as AgentStorage;
     const adapter: LarkChannelClientAdapter = {
       testConnection: vi.fn(async () => ({
@@ -962,6 +984,7 @@ describe("LarkChannelService", () => {
       disclosure: { enabled: true, prompt: "【代授权用户回复】" },
       customPrompt: "只回答工作相关问题",
       delaySeconds: 600,
+      autoArchiveAgent: true,
       activeTimeRanges: [],
       audienceAllowlist: [
         {
@@ -1015,12 +1038,12 @@ describe("LarkChannelService", () => {
     expect(harness.adapter.sendTextWithResult).toHaveBeenCalledWith(
       expect.anything(),
       "oc_private_relay",
-      expect.stringContaining("一个商家可以同时使用两种分账方式吗？"),
+      expect.stringContaining('【替身私聊转发】<at user_id="ou_private_peer"></at>'),
     );
     expect(harness.adapter.replyToMessageInThread).toHaveBeenCalledWith(
       expect.anything(),
       "om_forwarded_private_question",
-      "【代授权用户回复】可以，具体取决于业务和支付渠道配置。",
+      '<at user_id="ou_private_peer"></at> 【代授权用户回复】可以，具体取决于业务和支付渠道配置。',
     );
     expect(harness.service.listSubstituteTasks(storedMode.id)).toEqual([
       expect.objectContaining({
@@ -1029,6 +1052,7 @@ describe("LarkChannelService", () => {
         error: null,
       }),
     ]);
+    expect(harness.agentManager.archiveAgent).toHaveBeenCalledWith("agent-created");
   });
 
   test("does not forward a private message when the agent rejects it by question policy", async () => {
@@ -1072,6 +1096,7 @@ describe("LarkChannelService", () => {
       disclosure: { enabled: true, prompt: "【代授权用户回复】" },
       customPrompt: "不要代替用户做承诺",
       delaySeconds: 600,
+      autoArchiveAgent: true,
       activeTimeRanges: [],
       audienceAllowlist: [
         {
@@ -1119,6 +1144,7 @@ describe("LarkChannelService", () => {
         error: null,
       }),
     ]);
+    expect(harness.agentManager.archiveAgent).toHaveBeenCalledWith("agent-created");
   });
 
   test("combines OAuth identity fields with the cached directory identity", async () => {
@@ -1814,6 +1840,7 @@ describe("LarkChannelService", () => {
       agentId: "agent-created",
       rootMessageId: "om_new_substitute_topic",
     });
+    expect(harness.agentManager.archiveAgent).not.toHaveBeenCalled();
   });
 
   test("uses an independent substitute mode target and question policies", async () => {
@@ -1840,6 +1867,7 @@ describe("LarkChannelService", () => {
       disclosure: { enabled: true, prompt: "【AI 协助回答】" },
       customPrompt: "回答前先核对发布规范",
       delaySeconds: 0,
+      autoArchiveAgent: true,
       activeTimeRanges: [],
       allowlist: [
         {
@@ -1935,6 +1963,7 @@ describe("LarkChannelService", () => {
     expect(harness.service.listSubstituteTasks()[0]).toEqual(
       expect.objectContaining({ status: "completed" }),
     );
+    expect(harness.agentManager.archiveAgent).toHaveBeenCalledWith("agent-created");
   });
 
   test("records realtime substitute listener failures in the task list", async () => {
@@ -2112,6 +2141,75 @@ describe("LarkChannelService", () => {
     });
     expect(runMode).toHaveBeenCalledTimes(1);
     expect(runMode).toHaveBeenCalledWith(expect.objectContaining({ id: firstMode.id }), scanRange);
+  });
+
+  test("manually retries a failed substitute scan task and updates the same record", async () => {
+    const harness = createHarness();
+    const mode = harness.service.createSubstituteMode({
+      name: "可重试替身",
+      enabled: true,
+      botId: harness.botId,
+      privateScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      customPrompt: "",
+      delaySeconds: 0,
+      activeTimeRanges: [],
+      allowlist: [
+        {
+          id: "group-retry",
+          type: "group",
+          chatId: "oc_retry",
+          groupId: null,
+          name: "重试群",
+        },
+      ],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+    const taskStore = (
+      harness.service as unknown as { substituteTaskStore: LarkSubstituteTaskStore }
+    ).substituteTaskStore;
+    const failed = taskStore.recordOperationalFailure(
+      {
+        modeId: mode.id,
+        modeName: mode.name,
+        botId: mode.botId,
+        source: "group_scan",
+        stage: "group_scan",
+        error: "飞书用户 OAuth 未授权",
+      },
+      "2026-09-09T10:00:00.000Z",
+    );
+    const groupPoller = (
+      harness.service as unknown as { substituteGroupPoller: LarkSubstituteGroupPoller }
+    ).substituteGroupPoller;
+    const runMode = vi.spyOn(groupPoller, "runMode").mockResolvedValue();
+
+    expect(harness.service.retrySubstituteTasks([failed.id], mode.id)).toEqual([failed.id]);
+    await vi.waitFor(() => {
+      expect(taskStore.get(failed.id)).toMatchObject({
+        status: "completed",
+        error: null,
+        failureStage: null,
+      });
+    });
+    expect(runMode).toHaveBeenCalledWith(expect.objectContaining({ id: mode.id }));
+    expect(
+      harness.service
+        .listSubstituteTasks(mode.id)
+        .filter((task) => task.messageId === failed.messageId),
+    ).toHaveLength(1);
   });
 
   test("requires OAuth authorization before an enabled substitute mode can be saved", () => {

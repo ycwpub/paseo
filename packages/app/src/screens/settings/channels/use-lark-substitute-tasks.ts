@@ -68,6 +68,18 @@ export function useLarkSubstituteTasks(serverId: string, modeId: string, enabled
     [client, modeId, mutation],
   );
 
+  const retryTasks = useCallback(
+    async (taskIds: string[]) => {
+      if (!client) throw new Error("主机未连接");
+      return mutation.mutateAsync(async () => {
+        const result = await client.retryLarkSubstituteTasks({ modeId, taskIds });
+        if (result.error) throw new Error(result.error);
+        return result.tasks;
+      });
+    },
+    [client, modeId, mutation],
+  );
+
   return {
     tasks: (query.data ?? []) as LarkSubstituteTask[],
     isLoading: query.isLoading,
@@ -77,6 +89,7 @@ export function useLarkSubstituteTasks(serverId: string, modeId: string, enabled
     scanError: scanMutation.error,
     scanNow: scanMutation.mutateAsync,
     pauseTasks,
+    retryTasks,
     deleteTasks,
   };
 }

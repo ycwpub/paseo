@@ -173,6 +173,11 @@ describe("LarkSubstitutePrivatePoller", () => {
       }),
       "user-token",
     );
+    expect(adapter.sendTextWithResult).toHaveBeenCalledWith(
+      expect.anything(),
+      "oc_relay",
+      expect.stringContaining('【替身私聊转发】<at user_id="ou_peer"></at>'),
+    );
     expect(prepareReply).toHaveBeenCalledTimes(2);
     expect(deliverReply).toHaveBeenCalledTimes(2);
     expect(onPrivateMessageObserved).toHaveBeenCalledTimes(2);

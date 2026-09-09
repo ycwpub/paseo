@@ -249,7 +249,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
   });
 
   it("reuses an existing daily record for the same result_id", async () => {
-    mocks.search.mockResolvedValueOnce({
+    mocks.search.mockResolvedValue({
       code: 0,
       data: {
         items: [
@@ -283,15 +283,23 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
 
   it("creates today's daily record before enqueueing a new result_id", async () => {
     mocks.search.mockResolvedValue({ code: 0, data: { items: [] } });
-    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => ({
-      code: 0,
-      data: {
-        record: {
-          record_id: "rec_created",
-          fields: data.fields,
+    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => {
+      mocks.search.mockResolvedValue({
+        code: 0,
+        data: {
+          items: [{ record_id: "rec_created", fields: data.fields }],
         },
-      },
-    }));
+      });
+      return {
+        code: 0,
+        data: {
+          record: {
+            record_id: "rec_created",
+            fields: data.fields,
+          },
+        },
+      };
+    });
 
     const record = await createStore().upsertManualResult({
       config: config(),
@@ -334,15 +342,23 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
 
   it("uses a valid UUID v4 idempotency token when writing a scanned Lark message", async () => {
     mocks.search.mockResolvedValue({ code: 0, data: { items: [] } });
-    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => ({
-      code: 0,
-      data: {
-        record: {
-          record_id: "rec_message",
-          fields: data.fields,
+    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => {
+      mocks.search.mockResolvedValue({
+        code: 0,
+        data: {
+          items: [{ record_id: "rec_message", fields: data.fields }],
         },
-      },
-    }));
+      });
+      return {
+        code: 0,
+        data: {
+          record: {
+            record_id: "rec_message",
+            fields: data.fields,
+          },
+        },
+      };
+    });
 
     await createStore().upsertMessage({
       config: config(),
@@ -376,22 +392,40 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
   });
 
   it("backfills a missing task_time when a duplicate Bamboo alert is scanned again", async () => {
-    mocks.search.mockResolvedValueOnce({
-      code: 0,
-      data: {
-        items: [
-          {
-            record_id: "rec_19630485",
-            fields: {
-              unique_id: "19630485",
-              result_id: "19630485",
-              task_name: "触发单未按时生成父分账单",
-              status: "init",
+    mocks.search
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          items: [
+            {
+              record_id: "rec_19630485",
+              fields: {
+                unique_id: "19630485",
+                result_id: "19630485",
+                task_name: "触发单未按时生成父分账单",
+                status: "init",
+              },
             },
-          },
-        ],
-      },
-    });
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          items: [
+            {
+              record_id: "rec_19630485",
+              fields: {
+                unique_id: "19630485",
+                result_id: "19630485",
+                task_name: "触发单未按时生成父分账单",
+                task_time: Date.parse("2026-09-09T14:41:59.230"),
+                status: "init",
+              },
+            },
+          ],
+        },
+      });
 
     const record = await createStore().upsertMessage({
       config: config(),
@@ -433,6 +467,43 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     });
     expect(record.taskTime).toBe(new Date("2026-09-09T14:41:59.230").toISOString());
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("fails the message ingestion when the created row cannot be read back by unique_id", async () => {
+    mocks.search.mockResolvedValue({ code: 0, data: { items: [] } });
+    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => ({
+      code: 0,
+      data: {
+        record: {
+          record_id: "rec_unverified",
+          fields: data.fields,
+        },
+      },
+    }));
+
+    await expect(
+      createStore().upsertMessage({
+        config: config(),
+        projectId: "prj_4491f78e4a562498",
+        pluginId: "bamboo-reconciliation-troubleshooter",
+        trigger: "schedule",
+        event: {
+          eventId: "evt_unverified",
+          messageId: "om_unverified",
+          chatId: "oc_alerts",
+          chatType: "group",
+          messageType: "interactive",
+          threadId: null,
+          rootMessageId: null,
+          openId: null,
+          unionId: null,
+          displayName: "Bamboo",
+          topicName: "报警",
+          text: "Bamboo 对账报警 result_id=19630485",
+          createTime: Date.parse("2026-09-09T07:25:27.965Z"),
+        },
+      }),
+    ).rejects.toThrow("日报多维表格记录写入后无法按 unique_id 19630485 读回");
   });
 
   it("polls init and failed Bamboo records with result_id without creating tables", async () => {

@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 import * as lark from "@larksuiteoapi/node-sdk";
 import type { LarkUserOAuthStatus } from "@getpaseo/protocol/messages";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
-import { PASEO_LARK_USER_SCOPES } from "./lark-bot-capability-requirements.js";
+import {
+  PASEO_LARK_SUBSTITUTE_USER_SCOPES,
+  PASEO_LARK_USER_SCOPES,
+} from "./lark-bot-capability-requirements.js";
 import { LarkUserOAuthStore, type StoredLarkUserOAuthCredential } from "./lark-user-oauth-store.js";
 
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const AUTHORIZATION_STATE_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
 const USER_OAUTH_SCOPE_LIST = PASEO_LARK_USER_SCOPES;
+const USER_OAUTH_REQUIRED_SCOPE_LIST = PASEO_LARK_SUBSTITUTE_USER_SCOPES;
 const USER_OAUTH_SCOPES = USER_OAUTH_SCOPE_LIST.join(" ");
 
 interface PendingAuthorization {
@@ -93,7 +97,7 @@ function addSeconds(timestamp: number, seconds: number | undefined): string {
 
 function hasRequiredScopes(
   scope: string | null | undefined,
-  requiredScopes: readonly string[] = USER_OAUTH_SCOPE_LIST,
+  requiredScopes: readonly string[] = USER_OAUTH_REQUIRED_SCOPE_LIST,
 ): boolean {
   const grantedScopes = new Set(scope?.split(/\s+/u).filter(Boolean) ?? []);
   return requiredScopes.every((requiredScope) => grantedScopes.has(requiredScope));
@@ -259,7 +263,7 @@ export class LarkUserOAuthService {
 
   async getValidUserAccessToken(
     appId: string,
-    requiredScopes: readonly string[] = USER_OAUTH_SCOPE_LIST,
+    requiredScopes: readonly string[] = USER_OAUTH_REQUIRED_SCOPE_LIST,
   ): Promise<string> {
     const normalizedAppId = appId.trim();
     const credential = this.store.get(normalizedAppId);

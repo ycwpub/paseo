@@ -48,6 +48,8 @@ export {
 export {
   AlertTroubleshooterEnqueueRecordRequestSchema,
   AlertTroubleshooterEnqueueRecordResponseSchema,
+  AlertTroubleshooterScanNowRequestSchema,
+  AlertTroubleshooterScanNowResponseSchema,
   AlertTroubleshooterTaskDeleteRequestSchema,
   AlertTroubleshooterTaskDeleteResponseSchema,
   AlertTroubleshooterTaskListRequestSchema,
@@ -219,6 +221,7 @@ export {
   type LarkSubstituteTimeRange,
 } from "./channel/lark/substitute-types.js";
 export * from "./channel/lark/substitute-rpc-schemas.js";
+export * from "./channel/lark/substitute-reply-rpc-schemas.js";
 export {
   LarkSubstituteTaskFailureStageSchema,
   LarkSubstituteTaskSchema,

@@ -39,6 +39,25 @@ const AlertTroubleshooterTaskRequestBaseSchema = z.object({
   projectId: z.string().trim().min(1),
 });
 
+export const AlertTroubleshooterScanNowRequestSchema =
+  AlertTroubleshooterTaskRequestBaseSchema.extend({
+    type: z.literal("plugin.alert_troubleshooter.scan_now.request"),
+    lookbackMinutes: z.number().int().min(1).max(10_080),
+    excludeRecentMinutes: z.number().int().min(0).max(10_079),
+  }).refine((value) => value.excludeRecentMinutes < value.lookbackMinutes, {
+    message: "excludeRecentMinutes must be less than lookbackMinutes",
+    path: ["excludeRecentMinutes"],
+  });
+
+export const AlertTroubleshooterScanNowResponseSchema = z.object({
+  type: z.literal("plugin.alert_troubleshooter.scan_now.response"),
+  payload: AlertTroubleshooterTaskListPayloadSchema.extend({
+    matchedCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    auditFile: z.string().nullable(),
+  }),
+});
+
 export const AlertTroubleshooterTaskListRequestSchema =
   AlertTroubleshooterTaskRequestBaseSchema.extend({
     type: z.literal("plugin.alert_troubleshooter.task.list.request"),

@@ -52,6 +52,7 @@ import type {
   LarkUserOAuthGetStatusOptions,
   LarkUserOAuthStartOptions,
   RejectLarkPairingOptions,
+  ReplyLarkSubstituteOptions,
   ResolveLarkDirectoryChatsOptions,
   ResolveLarkDirectoryUserOptions,
   ResolveLarkDirectoryUsersOptions,
@@ -63,6 +64,7 @@ import type {
   SetLarkReminderEnabledOptions,
   SetLarkSubstituteModeEnabledOptions,
   PauseLarkSubstituteTasksOptions,
+  RetryLarkSubstituteTasksOptions,
   ScanLarkSubstituteTasksOptions,
   UpdateAssistantOptions,
   UpdateLarkReminderOptions,
@@ -516,6 +518,19 @@ export class DaemonResourceRpcClient {
     return this.request({
       message: { type: "plugin.alert_troubleshooter.enqueue_record.request", ...input },
       responseType: "plugin.alert_troubleshooter.enqueue_record.response",
+    });
+  }
+
+  async scanAlertTroubleshooterNow(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    lookbackMinutes: number;
+    excludeRecentMinutes: number;
+  }) {
+    return this.request({
+      message: { type: "plugin.alert_troubleshooter.scan_now.request", ...input },
+      responseType: "plugin.alert_troubleshooter.scan_now.response",
     });
   }
 
@@ -1120,6 +1135,18 @@ export class DaemonResourceRpcClient {
     });
   }
 
+  replyLarkSubstitute(options: ReplyLarkSubstituteOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute.reply.request",
+        agentId: options.agentId,
+        text: options.text,
+      },
+      responseType: "channel.lark.substitute.reply.response",
+    });
+  }
+
   listLarkSubstituteTasks(options?: string | ListLarkSubstituteTasksOptions) {
     const requestId = typeof options === "string" ? options : options?.requestId;
     const modeId = typeof options === "string" ? undefined : options?.modeId;
@@ -1157,6 +1184,18 @@ export class DaemonResourceRpcClient {
         taskIds: options.taskIds,
       },
       responseType: "channel.lark.substitute_task.pause.response",
+    });
+  }
+
+  retryLarkSubstituteTasks(options: RetryLarkSubstituteTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute_task.retry.request",
+        ...(options.modeId ? { modeId: options.modeId } : {}),
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.substitute_task.retry.response",
     });
   }
 

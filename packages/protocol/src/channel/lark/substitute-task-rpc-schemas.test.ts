@@ -4,6 +4,7 @@ import {
   LarkSubstituteTaskListRequestSchema,
   LarkSubstituteTaskListResponseSchema,
   LarkSubstituteTaskPauseRequestSchema,
+  LarkSubstituteTaskRetryRequestSchema,
   LarkSubstituteTaskScanRequestSchema,
   LarkSubstituteTaskScanResponseSchema,
 } from "./substitute-task-rpc-schemas.js";
@@ -44,7 +45,7 @@ describe("Lark substitute task RPC schemas", () => {
     });
   });
 
-  it("accepts bounded batch pause and delete requests", () => {
+  it("accepts bounded batch pause, retry and delete requests", () => {
     expect(
       LarkSubstituteTaskPauseRequestSchema.parse({
         type: "channel.lark.substitute_task.pause.request",
@@ -53,6 +54,14 @@ describe("Lark substitute task RPC schemas", () => {
         taskIds: ["task_1", "task_2"],
       }),
     ).toMatchObject({ modeId: "mode_1", taskIds: ["task_1", "task_2"] });
+    expect(
+      LarkSubstituteTaskRetryRequestSchema.parse({
+        type: "channel.lark.substitute_task.retry.request",
+        requestId: "req_retry",
+        modeId: "mode_1",
+        taskIds: ["task_1"],
+      }),
+    ).toMatchObject({ modeId: "mode_1", taskIds: ["task_1"] });
     expect(
       LarkSubstituteTaskDeleteRequestSchema.parse({
         type: "channel.lark.substitute_task.delete.request",

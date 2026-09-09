@@ -17,6 +17,7 @@ describe("createSubstituteModeFormState", () => {
     expect(form.delaySeconds).toBe(String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS));
     expect(form.delaySeconds).toBe("600");
     expect(form.customPrompt).toBe(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT);
+    expect(form.autoArchiveAgent).toBe(false);
     expect(form.groupScanEnabled).toBe(true);
     expect(form.groupScanExcludeRecentMinutes).toBe(
       String(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES),
@@ -36,6 +37,7 @@ describe("createSubstituteModeFormState", () => {
     form.provider = "aiden_codex";
     form.model = "gpt-5.6";
     form.cwd = "/repo";
+    form.autoArchiveAgent = true;
     form.audienceAllowRuleGroups = [
       {
         id: "allow",
@@ -76,6 +78,7 @@ describe("createSubstituteModeFormState", () => {
     expect(input.audienceDenylist).toEqual([]);
     expect(input.questionAllowlist).toEqual([{ id: "question-allow", description: "研发问题" }]);
     expect(input.questionDenylist).toEqual([{ id: "question-deny", description: "人事问题" }]);
+    expect(input.autoArchiveAgent).toBe(true);
     expect(input.groupScan).toEqual({
       enabled: true,
       intervalMinutes: 30,

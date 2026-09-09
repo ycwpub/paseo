@@ -129,6 +129,7 @@ export type AlertTroubleshooterConfig = z.infer<typeof AlertTroubleshooterConfig
 export const AlertTroubleshooterTaskTriggerSchema = z.enum([
   "message",
   "schedule",
+  "manual_scan",
   "table",
   "manual",
 ]);
@@ -195,6 +196,6 @@ export const AlertTroubleshooterRuntimeSchema = z.object({
   activeRecordId: z.string().nullable().default(null),
   lastError: z.string().nullable().default(null),
   activeAgentId: z.string().nullable().default(null),
-  lastTrigger: z.enum(["message", "schedule", "table", "manual"]).nullable().default(null),
+  lastTrigger: AlertTroubleshooterTaskTriggerSchema.nullable().default(null),
 });
 export type AlertTroubleshooterRuntime = z.infer<typeof AlertTroubleshooterRuntimeSchema>;

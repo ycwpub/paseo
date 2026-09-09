@@ -48,7 +48,8 @@ describe("Lark bot capability requirements", () => {
     expect(requirements.userScopes).toContain("im:message.p2p_msg:get_as_user");
     expect(requirements.userScopes).toContain("im:message:readonly");
     expect(requirements.userScopes).toContain("search:message");
-    expect(requirements.userScopes).toContain("search:user");
+    expect(requirements.userScopes).toContain("contact:user:search");
+    expect(requirements.userScopes).not.toContain("search:user");
     expect(requirements.userScopes).toContain("wiki:wiki:readonly");
     expect(requirements.userScopes).not.toContain("bitable:app");
     expect(requirements.userScopes).not.toContain("wiki:wiki");
@@ -83,6 +84,7 @@ describe("Lark bot capability requirements", () => {
       "base:dashboard:delete",
       "base:workflow:read",
       "base:workflow:update",
+      "search:user",
     ]) {
       expect(allScopes).not.toContain(unsupportedScope);
     }

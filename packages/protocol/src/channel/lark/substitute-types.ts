@@ -172,6 +172,7 @@ export const LarkSubstituteModeSchema = z.object({
   disclosure: LarkSubstituteDisclosureSchema,
   customPrompt: z.string().max(10_000).default(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT),
   delaySeconds: z.number().int().min(0).max(3_600).default(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
+  autoArchiveAgent: z.boolean().default(false),
   activeTimeRanges: z.array(LarkSubstituteTimeRangeSchema).max(32).default([]),
   audienceAllowlist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
   audienceDenylist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
@@ -195,6 +196,10 @@ export const LarkSubstituteModeCreateInputSchema = LarkSubstituteModeSchema.omit
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  // Keep the request field optional for older app/daemon pairs. The persisted
+  // mode schema applies the default so runtime consumers always receive false.
+  autoArchiveAgent: z.boolean().optional(),
 });
 export type LarkSubstituteModeCreateInput = z.infer<typeof LarkSubstituteModeCreateInputSchema>;
 

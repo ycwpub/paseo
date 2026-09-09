@@ -96,10 +96,11 @@ describe("LarkUserOAuthService", () => {
         "im:message.p2p_msg:get_as_user",
         "im:message:readonly",
         "search:message",
-        "search:user",
+        "contact:user:search",
         "wiki:wiki:readonly",
       ]),
     );
+    expect(requestedScopes).not.toContain("search:user");
     expect(requestedScopes).not.toContain("im:chat");
 
     await expect(
@@ -215,6 +216,31 @@ describe("LarkUserOAuthService", () => {
     await expect(service.getValidUserAccessToken("cli_test")).rejects.toBeInstanceOf(
       LarkUserAuthorizationRequiredError,
     );
+  });
+
+  it("keeps substitute mode authorized when optional directory and Wiki scopes are absent", async () => {
+    const { service, store } = createHarness();
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-current",
+      refreshToken: "r-token-current",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope:
+        "offline_access im:chat:create_by_user im:chat.members:write_only im:chat:read im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+      openId: "ou_test",
+      email: "test@example.com",
+      displayName: "张三",
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(service.getStatus("cli_test")).toMatchObject({
+      authorized: true,
+      needsAuthorization: false,
+      openId: "ou_test",
+    });
+    await expect(service.getValidUserAccessToken("cli_test")).resolves.toBe("u-token-current");
   });
 
   it("requires reauthorization when a grant lacks user message read permission", async () => {

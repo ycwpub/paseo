@@ -68,6 +68,14 @@ import {
 import { buildLarkDirectoryUserSeeds } from "./lark-directory-user-seeds.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
+import { archiveLarkSubstituteAgentForTask } from "./lark-substitute-agent-archive.js";
+import { sendLarkSubstituteAgentReply } from "./lark-substitute-agent-reply.js";
+import { LarkSubstituteProjectSkillSync } from "./lark-substitute-project-skill.js";
+import {
+  createLarkSubstituteRetryEvent,
+  isLarkSubstituteOperationalFailure,
+  retryFailureStage,
+} from "./lark-substitute-task-retry.js";
 import { LarkSubstituteDebouncer } from "./lark-substitute-debounce.js";
 import {
   appendLarkSubstituteMessageContext,
@@ -235,6 +243,8 @@ interface LarkReplyMentionOptions {
 
 interface LarkIncomingEventInternalOptions {
   bypassSubstituteDelay?: boolean;
+  bypassEventDedupe?: boolean;
+  bypassReconnectCutoff?: boolean;
   modeId?: string;
   matchedSubstituteMode?: MatchedLarkSubstituteMode;
   supplementalEvents?: NormalizedLarkMessageEvent[];
@@ -496,6 +506,7 @@ export class LarkChannelService {
   private readonly userOAuthService: LarkUserOAuthService | null;
   private readonly substituteModeStore: LarkSubstituteModeStore;
   private readonly substituteTaskStore: LarkSubstituteTaskStore;
+  private readonly substituteProjectSkillSync: LarkSubstituteProjectSkillSync;
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
   private readonly substituteBotLoopGuard = new LarkSubstituteBotLoopGuard();
@@ -549,6 +560,10 @@ export class LarkChannelService {
     this.substituteTaskStore = new LarkSubstituteTaskStore(
       options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
     );
+    this.substituteProjectSkillSync = new LarkSubstituteProjectSkillSync({
+      paseoHome: this.paseoHome,
+      logger: this.logger,
+    });
     this.substituteReplySender = new LarkSubstituteReplySender(this.adapter);
     this.substituteGroupPoller = new LarkSubstituteGroupPoller({
       logger: this.logger,
@@ -841,6 +856,7 @@ export class LarkChannelService {
     this.reconnectEventCutoff ??= Date.now() - RECONNECT_EVENT_GRACE_MS;
     const bots = this.store.getBots();
     this.substituteModeStore.migrateLegacyBots(bots, new Date().toISOString());
+    this.syncSubstituteProjectSkills();
     this.substitutePrivatePoller?.sync(this.substituteModeStore.list());
     this.substituteGroupPoller.sync(this.substituteModeStore.list());
     if (bots.length === 0) {
@@ -1012,6 +1028,25 @@ export class LarkChannelService {
     return modeId ? tasks.filter((task) => task.modeId === modeId) : tasks;
   }
 
+  async replyToSubstituteConversation(agentId: string, text: string) {
+    return sendLarkSubstituteAgentReply(
+      {
+        paseoHome: this.paseoHome,
+        listTasks: () => this.substituteTaskStore.list(),
+        getMode: (modeId) => this.substituteModeStore.get(modeId),
+        getBots: () => this.store.getBots(),
+        getAgent: (currentAgentId) => this.agentStorage.get(currentAgentId),
+        send: ({ botId, config, replyMessageId, text: replyText, mentionOpenId }) =>
+          this.sendThreadTextSafe(botId, config, replyMessageId, replyText, {
+            mention: { openId: mentionOpenId },
+          }),
+        markOutbound: ({ botId, agentId: currentAgentId, chatId, threadId, outboundAt }) =>
+          this.store.markConversationOutbound(botId, currentAgentId, chatId, threadId, outboundAt),
+      },
+      { agentId, text },
+    );
+  }
+
   async scanSubstituteTasksNow(
     modeId?: string,
     scanRange?: LarkSubstituteTaskScanRange,
@@ -1052,6 +1087,30 @@ export class LarkChannelService {
     return pausedTaskIds;
   }
 
+  retrySubstituteTasks(taskIds: readonly string[], modeId?: string): string[] {
+    const scopedTaskIds = this.getScopedSubstituteTaskIds(taskIds, modeId);
+    const originalTasks = new Map(
+      scopedTaskIds
+        .map((taskId) => this.substituteTaskStore.get(taskId))
+        .filter((task): task is LarkSubstituteTask => task?.status === "failed")
+        .map((task) => [task.id, task]),
+    );
+    const retriedTaskIds = this.substituteTaskStore.resetFailedForRetry(
+      scopedTaskIds,
+      new Date().toISOString(),
+    );
+    for (const taskId of retriedTaskIds) {
+      const originalTask = originalTasks.get(taskId);
+      if (!originalTask) continue;
+      void this.executeSubstituteTaskRetry(originalTask).catch((error) => {
+        const failure = formatLarkProcessingError(error);
+        this.completeSubstituteTask(taskId, "failed", failure, retryFailureStage(originalTask));
+        this.logger.error({ err: error, taskId }, "Failed to retry Lark substitute task");
+      });
+    }
+    return retriedTaskIds;
+  }
+
   deleteSubstituteTasks(taskIds: readonly string[], modeId?: string): string[] {
     const scopedTaskIds = this.getScopedSubstituteTaskIds(taskIds, modeId);
     for (const taskId of scopedTaskIds) {
@@ -1066,6 +1125,73 @@ export class LarkChannelService {
     return taskIds.filter((taskId) => modeTaskIds.has(taskId));
   }
 
+  private async executeSubstituteTaskRetry(task: LarkSubstituteTask): Promise<void> {
+    const current = this.substituteTaskStore.get(task.id);
+    if (!current || current.status !== "pending") return;
+    const mode = this.substituteModeStore.get(task.modeId);
+    if (!mode) throw new Error("替身模式不存在");
+    if (!mode.enabled) throw new Error("替身模式已停用，无法重试任务");
+    this.substituteTaskStore.markRunning(task.id, new Date().toISOString());
+
+    if (isLarkSubstituteOperationalFailure(task)) {
+      await this.retrySubstituteOperationalFailure(mode, task);
+      return;
+    }
+    if (task.source === "private_scan") {
+      if (!this.substitutePrivatePoller) throw new Error("替身私聊扫描不可用");
+      await this.substitutePrivatePoller.retryTask(mode, task);
+      return;
+    }
+
+    const storedBot = this.store.getBot(task.botId);
+    if (!storedBot) throw new Error("替身绑定的飞书机器人不存在");
+    const rawMessage = await this.adapter.getMessage(storedBot.config, task.messageId);
+    const event =
+      normalizeLarkApiMessage(rawMessage, `substitute-retry:${task.id}`) ??
+      createLarkSubstituteRetryEvent(task);
+    await this.handleIncomingEvent(task.botId, event, {
+      bypassSubstituteDelay: true,
+      bypassEventDedupe: true,
+      bypassReconnectCutoff: true,
+      modeId: task.modeId,
+      substituteTaskId: task.id,
+    });
+  }
+
+  private async retrySubstituteOperationalFailure(
+    mode: LarkSubstituteMode,
+    task: LarkSubstituteTask,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    if (task.source === "private_scan") {
+      if (!this.substitutePrivatePoller) throw new Error("替身私聊扫描不可用");
+      await this.substitutePrivatePoller.runMode(mode);
+    } else {
+      await this.substituteGroupPoller.runMode(mode);
+    }
+    const replacementFailure = this.listSubstituteTasks(mode.id).find(
+      (candidate) =>
+        candidate.id !== task.id &&
+        candidate.status === "failed" &&
+        candidate.source === task.source &&
+        candidate.failureStage === task.failureStage &&
+        Date.parse(candidate.updatedAt) >= startedAt,
+    );
+    if (replacementFailure) {
+      this.completeSubstituteTask(
+        task.id,
+        "failed",
+        replacementFailure.error,
+        replacementFailure.failureStage,
+      );
+      this.substituteTaskStore.deleteMany([replacementFailure.id]);
+      return;
+    }
+    if (this.substituteTaskStore.get(task.id)?.status === "running") {
+      this.completeSubstituteTask(task.id, "completed");
+    }
+  }
+
   createSubstituteMode(input: LarkSubstituteModeCreateInput): LarkSubstituteMode {
     if (input.enabled) {
       this.requireSubstituteAuthorizedUser(input.botId);
@@ -1073,12 +1199,14 @@ export class LarkChannelService {
       this.requireStoredBot(input.botId);
     }
     const mode = this.substituteModeStore.create(input, new Date().toISOString());
+    this.syncSubstituteProjectSkills();
     void this.refreshSubstituteModeDirectory(mode);
     this.emitSubstituteModesChanged();
     return mode;
   }
 
   updateSubstituteMode(modeId: string, input: LarkSubstituteModeUpdateInput): LarkSubstituteMode {
+    const previousCwd = this.substituteModeStore.get(modeId)?.target.cwd?.trim() ?? null;
     if (input.enabled) {
       this.requireSubstituteAuthorizedUser(input.botId);
     } else {
@@ -1086,6 +1214,7 @@ export class LarkChannelService {
     }
     const mode = this.substituteModeStore.update(modeId, input, new Date().toISOString());
     if (!mode) throw new Error("替身模式不存在");
+    this.syncSubstituteProjectSkills(previousCwd ? [previousCwd] : []);
     void this.refreshSubstituteModeDirectory(mode);
     this.substituteDebouncer.cancelMode(modeId);
     this.substituteTaskStore.pausePendingForMode(modeId, new Date().toISOString());
@@ -1107,12 +1236,16 @@ export class LarkChannelService {
   }
 
   deleteSubstituteMode(modeId: string): boolean {
+    const previousCwd = this.substituteModeStore.get(modeId)?.target.cwd?.trim() ?? null;
     this.substituteDebouncer.cancelMode(modeId);
     this.substituteTaskStore.pausePendingForMode(modeId, new Date().toISOString());
     this.substitutePrivatePoller?.deleteMode(modeId);
     this.substituteGroupPoller.deleteMode(modeId);
     const deleted = this.substituteModeStore.delete(modeId);
-    if (deleted) this.emitSubstituteModesChanged();
+    if (deleted) {
+      this.syncSubstituteProjectSkills(previousCwd ? [previousCwd] : []);
+      this.emitSubstituteModesChanged();
+    }
     return deleted;
   }
 
@@ -1147,7 +1280,10 @@ export class LarkChannelService {
       return;
     }
     const dedupeKey = getLarkEventDedupeKey(enrichedEvent);
-    if (!this.store.claimIncomingEvent(botId, dedupeKey, new Date(now).toISOString())) {
+    if (
+      !internal.bypassEventDedupe &&
+      !this.store.claimIncomingEvent(botId, dedupeKey, new Date(now).toISOString())
+    ) {
       this.logger.debug(
         {
           botId,
@@ -1160,6 +1296,7 @@ export class LarkChannelService {
       return;
     }
     if (
+      !internal.bypassReconnectCutoff &&
       this.reconnectEventCutoff !== null &&
       enrichedEvent.createTime !== null &&
       enrichedEvent.createTime < this.reconnectEventCutoff
@@ -1331,12 +1468,14 @@ export class LarkChannelService {
   ): Promise<LarkPrivateSubstituteReplyPreparation> {
     const storedBot = this.store.getBot(input.botId);
     if (!storedBot) throw new Error("飞书机器人不存在");
-    const taskId = this.enqueueSubstituteTask(
-      input.botId,
-      input.event,
-      input.matchedMode,
-      createLarkSubstituteScanDispatchOptions(input.modeId),
-    );
+    const taskId =
+      input.taskId ??
+      this.enqueueSubstituteTask(
+        input.botId,
+        input.event,
+        input.matchedMode,
+        createLarkSubstituteScanDispatchOptions(input.modeId),
+      );
     this.substituteTaskStore.markRunning(taskId, new Date().toISOString());
     let pendingAgentId: string | null = null;
     let answerPromise: Promise<PreparedLarkPrivateSubstituteAnswer> | null = null;
@@ -1408,6 +1547,7 @@ export class LarkChannelService {
       const answer = await answerPromise;
       if (answer.kind === "skip") {
         this.completeSubstituteTask(taskId, "skipped");
+        await this.autoArchiveSubstituteAgent(taskId, snapshot.id);
         return answer;
       }
       const userDirective = extractLarkUserMentionDirective(answer.text);
@@ -1444,6 +1584,7 @@ export class LarkChannelService {
       input.forwardedMessageId,
       input.prepared.text,
       {
+        mention: { openId: input.source.openId },
         substituteTrigger: input.prepared.trigger,
         createThreadOnFirstReply: true,
       },
@@ -1473,6 +1614,7 @@ export class LarkChannelService {
       new Date().toISOString(),
     );
     this.completeSubstituteTask(input.prepared.taskId, "completed");
+    await this.autoArchiveSubstituteAgent(input.prepared.taskId, input.prepared.agentId);
   }
 
   private async prepareIncomingEvent(
@@ -1766,6 +1908,18 @@ export class LarkChannelService {
       error,
       failureStage,
     );
+  }
+
+  private async autoArchiveSubstituteAgent(taskId: string | null, agentId: string): Promise<void> {
+    await archiveLarkSubstituteAgentForTask({
+      taskId,
+      agentId,
+      modeStore: this.substituteModeStore,
+      taskStore: this.substituteTaskStore,
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.logger,
+    });
   }
 
   private logLarkRouting(input: LarkRoutingDiagnosticInput): void {
@@ -2698,6 +2852,7 @@ export class LarkChannelService {
         relay.threadId,
         new Date().toISOString(),
       );
+      await this.autoArchiveSubstituteAgent(relay.substituteTaskId, agent.id);
       return;
     }
     const userDirective = extractLarkUserMentionDirective(text);
@@ -2770,6 +2925,9 @@ export class LarkChannelService {
       sent ? null : "发送飞书回复失败",
       sent ? null : "reply",
     );
+    if (sent) {
+      await this.autoArchiveSubstituteAgent(relay.substituteTaskId, agent.id);
+    }
   }
 
   private async sendTextSafe(
@@ -2978,6 +3136,14 @@ export class LarkChannelService {
         this.refreshDirectoryChat(appId, chatId, true),
       ),
     ]);
+  }
+
+  private syncSubstituteProjectSkills(additionalCwds: readonly string[] = []): void {
+    try {
+      this.substituteProjectSkillSync.sync(this.substituteModeStore.list(), additionalCwds);
+    } catch (error) {
+      this.logger.warn({ err: error }, "同步替身 Project 回复 Skill 失败");
+    }
   }
 
   private async relayLocalSubstituteMention(input: {

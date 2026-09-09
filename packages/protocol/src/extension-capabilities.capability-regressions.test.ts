@@ -83,6 +83,7 @@ describe("extension protocol capability regressions", () => {
       "pluginAppJobList",
       "pluginAppJobMutation",
       "pluginAppJobDrafts",
+      "alertTroubleshooterManualScan",
       "pluginHttpServiceSubmit",
       "pluginHttpServiceManagement",
       "pluginHttpServiceLocalTesting",

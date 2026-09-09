@@ -223,6 +223,10 @@ function useSubstituteModeForm(
     (value: string) => updateField("delaySeconds", value),
     [updateField],
   );
+  const setAutoArchiveAgent = useCallback(
+    (value: boolean) => updateField("autoArchiveAgent", value),
+    [updateField],
+  );
   const setWeekdays = useCallback(
     (value: number[]) => updateField("weekdays", value),
     [updateField],
@@ -279,6 +283,7 @@ function useSubstituteModeForm(
     setDisclosurePrompt,
     setCustomPrompt,
     setDelaySeconds,
+    setAutoArchiveAgent,
     setWeekdays,
     setStartTime,
     setEndTime,
@@ -639,6 +644,19 @@ export function LarkSubstituteModeEditor({
               keyboardType="number-pad"
             />
           </Field>
+          <View style={styles.switchRow}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>回答后自动归档 Agent</Text>
+              <Text style={settingsStyles.rowHint}>
+                Agent 完成回答或判断无需回答后自动归档；处理或回复失败时保留 Agent，方便排查。
+              </Text>
+            </View>
+            <Switch
+              value={form.autoArchiveAgent}
+              onValueChange={controller.setAutoArchiveAgent}
+              accessibilityLabel="回答后自动归档 Agent"
+            />
+          </View>
           <Text style={settingsStyles.rowTitle}>生效时间段（留空表示全天）</Text>
           <View style={styles.inlineFields}>
             <WeekdayMultiSelectField value={form.weekdays} onChange={controller.setWeekdays} />

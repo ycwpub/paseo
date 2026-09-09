@@ -3705,6 +3705,8 @@ export const ServerInfoStatusPayloadSchema = z
         pluginAppJobMutation: z.boolean().optional(),
         // COMPAT(pluginAppJobDrafts): added on 2026-08-20.
         pluginAppJobDrafts: z.boolean().optional(),
+        // COMPAT(alertTroubleshooterManualScan): added in v0.7.0, remove gate after 2027-09-09.
+        alertTroubleshooterManualScan: z.boolean().optional(),
         // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
         pluginHttpServiceSubmit: z.boolean().optional(),
         // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.

@@ -26,6 +26,7 @@ function mode(): LarkSubstituteMode {
     disclosure: { enabled: true, prompt: "【机器人代答】" },
     customPrompt: "",
     delaySeconds: 600,
+    autoArchiveAgent: false,
     activeTimeRanges: [],
     audienceAllowlist: [],
     audienceDenylist: [],

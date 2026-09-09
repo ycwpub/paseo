@@ -79,6 +79,7 @@ function createHarness(input?: {
   archiveAgent?: (agentId: string) => Promise<void>;
   matchesAlert?: AlertTroubleshooterDefinition["matchesAlert"];
   scanMessages?: AlertTroubleshooterDefinition["scanMessages"];
+  recoverScannedMessage?: AlertTroubleshooterDefinition["recoverScannedMessage"];
 }) {
   const options = input ?? {};
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
@@ -170,6 +171,9 @@ function createHarness(input?: {
     ...(options.classifyFailure ? { classifyFailure: options.classifyFailure } : {}),
     matchesAlert: options.matchesAlert ?? (() => true),
     scanMessages,
+    ...(options.recoverScannedMessage
+      ? { recoverScannedMessage: options.recoverScannedMessage }
+      : {}),
     buildDefaultPrompt: ({ record }) => `处理 ${record.recordId}`,
     ...(options.buildPromptAppendix ? { buildPromptAppendix: options.buildPromptAppendix } : {}),
     ...(options.parseCompletion ? { parseCompletion: options.parseCompletion } : {}),
@@ -308,6 +312,71 @@ describe("ProjectAlertTroubleshooterManager", () => {
     await harness.manager.stop();
   });
 
+  it("runs a one-off scan with the requested time range even when scheduled scanning is disabled", async () => {
+    const auditFile = "/tmp/project/.tmp/bamboo-scan-audits/manual-scan.json";
+    const harness = createHarness({
+      config: config({
+        troubleshootingEnabled: false,
+        schedule: {
+          enabled: false,
+          intervalMinutes: 30,
+          lookbackMinutes: 30,
+          excludeRecentMinutes: 0,
+        },
+      }),
+      scanMessages: async () => ({
+        events: [message()],
+        failures: [{ chatId: "oc_failed", chatName: "失败群", error: "读取失败" }],
+        auditFile,
+      }),
+    });
+
+    await expect(
+      harness.manager.scanNow("prj_1", {
+        lookbackMinutes: 120,
+        excludeRecentMinutes: 1,
+      }),
+    ).resolves.toEqual({
+      matchedCount: 1,
+      failureCount: 1,
+      auditFile,
+    });
+
+    expect(harness.scanMessages).toHaveBeenCalledWith({
+      config: expect.any(Object),
+      cwd: expect.any(String),
+      trigger: "manual_scan",
+      window: {
+        start: new Date("2026-09-06T06:00:00.000Z"),
+        end: new Date("2026-09-06T07:59:00.000Z"),
+      },
+    });
+    expect(harness.recordStore.upsertMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "manual_scan" }),
+    );
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            uniqueId: "message_id:om-1",
+            trigger: "manual_scan",
+            status: "succeeded",
+          }),
+          expect.objectContaining({
+            uniqueId: expect.stringContaining("scan:oc_failed:"),
+            trigger: "manual_scan",
+            status: "failed",
+          }),
+        ]),
+      ),
+    );
+    expect(harness.getState().data.alertRuntime).toMatchObject({
+      lastTrigger: "manual_scan",
+      lastScanAuditFile: auditFile,
+    });
+    await harness.manager.stop();
+  });
+
   it("keeps listening, scheduled scanning, and troubleshooting independently switchable", async () => {
     const harness = createHarness({
       config: config({
@@ -442,6 +511,118 @@ describe("ProjectAlertTroubleshooterManager", () => {
       status: "failed",
       error: `写入日报多维表格失败：${permissionError}`,
     });
+  });
+
+  it("does not complete a failed message-ingestion retry when the target record is still absent", async () => {
+    const harness = createHarness({
+      scanMessages: async () => [],
+    });
+
+    await expect(harness.manager.enqueueRecord("prj_1", "message_id:om-missing")).resolves.toBe(
+      true,
+    );
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        uniqueId: "message_id:om-missing",
+        status: "failed",
+        error:
+          "重试写入日报多维表格后仍无法按 unique_id message_id:om-missing 读回记录，任务未完成",
+      }),
+    );
+
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("replays the exact audited message and promotes the local retry to the verified Base record", async () => {
+    const recoverScannedMessage = vi.fn(async () => message());
+    const harness = createHarness({
+      recoverScannedMessage,
+    });
+
+    await expect(harness.manager.enqueueRecord("prj_1", "message_id:om-1")).resolves.toBe(true);
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")).toEqual([
+        expect.objectContaining({
+          recordId: "rec_om-1",
+          uniqueId: "message_id:om-1",
+          status: "succeeded",
+        }),
+      ]),
+    );
+
+    expect(recoverScannedMessage).toHaveBeenCalledWith({
+      config: expect.any(Object),
+      cwd: expect.any(String),
+      messageId: "om-1",
+    });
+    expect(harness.scanMessages).not.toHaveBeenCalled();
+    expect(harness.recordStore.upsertMessage).toHaveBeenCalledTimes(1);
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    await harness.manager.stop();
+  });
+
+  it("promotes a message-id retry to the Bamboo result-id returned by replay ingestion", async () => {
+    const recoveredRecord: AlertTroubleshooterRecord = {
+      recordId: "rec_result_19630485",
+      uniqueId: "19630485",
+      resultId: "19630485",
+      tableDate: "20260909",
+      messageId: "om-1",
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "Bamboo 报警",
+      messageTime: "2026-09-06T08:00:00.000Z",
+      trigger: "manual",
+    };
+    const harness = createHarness({
+      recoverScannedMessage: async () => message(),
+      recordStoreOverrides: {
+        upsertMessage: vi.fn(async () => recoveredRecord),
+        getRecord: vi.fn(async ({ recordId }) =>
+          recordId === recoveredRecord.recordId ? recoveredRecord : null,
+        ),
+      },
+    });
+
+    await expect(harness.manager.enqueueRecord("prj_1", "message_id:om-1")).resolves.toBe(true);
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")).toEqual([
+        expect.objectContaining({
+          recordId: "rec_result_19630485",
+          uniqueId: "19630485",
+          resultId: "19630485",
+          messageId: "om-1",
+          status: "succeeded",
+        }),
+      ]),
+    );
+
+    expect(harness.recordStore.getRecordByUniqueId).toHaveBeenCalledTimes(1);
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    await harness.manager.stop();
+  });
+
+  it("keeps a message-ingestion retry failed when its audited source message is unavailable", async () => {
+    const harness = createHarness({
+      recoverScannedMessage: async () => null,
+    });
+
+    await expect(harness.manager.enqueueRecord("prj_1", "message_id:om-missing")).resolves.toBe(
+      true,
+    );
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        uniqueId: "message_id:om-missing",
+        status: "failed",
+        error: "未能从扫描审计恢复目标消息 om-missing，无法重试写入归因记录表，任务未完成",
+      }),
+    );
+
+    expect(harness.scanMessages).not.toHaveBeenCalled();
+    expect(harness.recordStore.upsertMessage).not.toHaveBeenCalled();
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    await harness.manager.stop();
   });
 
   it("retries a local table-poll failure without treating its synthetic id as a Base record", async () => {

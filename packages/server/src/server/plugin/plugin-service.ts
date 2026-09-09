@@ -438,6 +438,17 @@ export class PluginService {
       uniqueId?: string;
       resultId?: string;
     }): Promise<boolean>;
+    scanNow(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      lookbackMinutes: number;
+      excludeRecentMinutes: number;
+    }): Promise<{
+      matchedCount: number;
+      failureCount: number;
+      auditFile: string | null;
+    }>;
     listTasks(input: {
       pluginId: string;
       appId: string;
@@ -527,6 +538,17 @@ export class PluginService {
       uniqueId?: string;
       resultId?: string;
     }): Promise<boolean>;
+    scanNow(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      lookbackMinutes: number;
+      excludeRecentMinutes: number;
+    }): Promise<{
+      matchedCount: number;
+      failureCount: number;
+      auditFile: string | null;
+    }>;
     listTasks(input: {
       pluginId: string;
       appId: string;
@@ -559,6 +581,23 @@ export class PluginService {
       throw new Error("自动排查运行时尚未就绪");
     }
     return this.alertTroubleshooterRuntime.enqueueRecord(input);
+  }
+
+  scanAlertTroubleshooterNow(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    lookbackMinutes: number;
+    excludeRecentMinutes: number;
+  }): Promise<{
+    matchedCount: number;
+    failureCount: number;
+    auditFile: string | null;
+  }> {
+    if (!this.alertTroubleshooterRuntime) {
+      throw new Error("自动排查运行时尚未就绪");
+    }
+    return this.alertTroubleshooterRuntime.scanNow(input);
   }
 
   listAlertTroubleshooterTasks(input: {

@@ -75,7 +75,7 @@ export const PASEO_LARK_DIRECTORY_USER_SCOPES = [
   "im:message.p2p_msg:get_as_user",
   "im:message:readonly",
   "search:message",
-  "search:user",
+  "contact:user:search",
 ] as const;
 
 export const PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES = [
@@ -191,7 +191,7 @@ export const PASEO_LARK_CHAT_LOOKUP_USER_SCOPES = [
 export const PASEO_LARK_USER_LOOKUP_USER_SCOPES = [
   "offline_access",
   // Search visible users by name when configuring an open_id audience rule.
-  "search:user",
+  "contact:user:search",
 ] as const;
 
 export const PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES = [

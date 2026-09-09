@@ -65,6 +65,8 @@ export type {
   SetLarkReminderEnabledOptions,
   SetLarkSubstituteModeEnabledOptions,
   PauseLarkSubstituteTasksOptions,
+  ReplyLarkSubstituteOptions,
+  RetryLarkSubstituteTasksOptions,
   ScanLarkSubstituteTasksOptions,
   UpdateLarkReminderOptions,
   UpdateLarkSubstituteModeOptions,

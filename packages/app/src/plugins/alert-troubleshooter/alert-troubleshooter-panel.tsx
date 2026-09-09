@@ -746,6 +746,7 @@ export function AlertTroubleshooterPanel({
   initialProjectId?: string;
 }) {
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
+  const supportsManualScan = useHostFeature(serverId, "alertTroubleshooterManualScan");
   const channel = useLarkChannel(serverId, { enabled: active });
   const botAppIds = useMemo(
     () => new Map((channel.status?.bots ?? []).map((bot) => [bot.id, bot.appId])),
@@ -798,6 +799,17 @@ export function AlertTroubleshooterPanel({
               }
               projectId={project.projectId}
               projectName={project.projectName}
+              manualScanLookbackMinutes={
+                config.success
+                  ? config.data.schedule.lookbackMinutes
+                  : DEFAULT_CONFIG.schedule.lookbackMinutes
+              }
+              manualScanExcludeRecentMinutes={
+                config.success
+                  ? config.data.schedule.excludeRecentMinutes
+                  : DEFAULT_CONFIG.schedule.excludeRecentMinutes
+              }
+              manualScanSupported={supportsManualScan}
               onBack={closeTasks}
             />
           ) : (

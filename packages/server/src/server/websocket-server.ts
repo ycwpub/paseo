@@ -2186,6 +2186,8 @@ export class VoiceAssistantWebSocketServer {
         pluginAppJobMutation: true,
         // COMPAT(pluginAppJobDrafts): added on 2026-08-20.
         pluginAppJobDrafts: true,
+        // COMPAT(alertTroubleshooterManualScan): added in v0.7.0, remove gate after 2027-09-09.
+        alertTroubleshooterManualScan: true,
         // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
         pluginHttpServiceSubmit: true,
         // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.

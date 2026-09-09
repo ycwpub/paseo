@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
 import type { AlertScanFailure, AlertScanWindow } from "./alert-troubleshooter-manager.js";
@@ -104,4 +104,47 @@ export async function writeBambooScanAudit(input: {
   await writeFile(temporaryFile, `${JSON.stringify(audit, null, 2)}\n`, "utf8");
   await rename(temporaryFile, auditFile);
   return auditFile;
+}
+
+export async function recoverBambooMessageFromScanAudit(input: {
+  cwd: string;
+  messageId: string;
+}): Promise<NormalizedLarkMessageEvent | null> {
+  const directory = path.join(input.cwd, ".tmp", "bamboo-scan-audits");
+  let files: string[];
+  try {
+    files = (await readdir(directory))
+      .filter((file) => file.endsWith(".json"))
+      .sort((left, right) => right.localeCompare(left));
+  } catch {
+    return null;
+  }
+  for (const file of files) {
+    let audit: BambooScanAudit;
+    try {
+      audit = JSON.parse(await readFile(path.join(directory, file), "utf8")) as BambooScanAudit;
+    } catch {
+      continue;
+    }
+    for (const group of audit.groups ?? []) {
+      const message = group.messages?.find((candidate) => candidate.message_id === input.messageId);
+      if (!message) continue;
+      return {
+        eventId: `bamboo-scan-audit:${file}:${message.message_id}`,
+        messageId: message.message_id,
+        chatId: group.chat_id,
+        chatType: "group",
+        messageType: message.message_type,
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        displayName: "Bamboo",
+        topicName: "报警",
+        text: message.text,
+        createTime: message.create_time,
+      };
+    }
+  }
+  return null;
 }

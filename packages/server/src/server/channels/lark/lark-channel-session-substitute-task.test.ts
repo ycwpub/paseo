@@ -54,8 +54,24 @@ function selectTaskIdsForMode(
   return taskIds.filter((taskId) => includesTaskForMode(tasks, taskId, modeId));
 }
 
+function retryTasksForMode(
+  tasks: readonly LarkSubstituteTask[],
+  taskIds: readonly string[],
+  modeId?: string,
+): { tasks: LarkSubstituteTask[]; retriedTaskIds: string[] } {
+  const retriedTaskIds = selectTaskIdsForMode(tasks, taskIds, modeId);
+  return {
+    retriedTaskIds,
+    tasks: tasks.map((entry) =>
+      retriedTaskIds.includes(entry.id)
+        ? { ...entry, status: "pending" as const, error: null, failureStage: null }
+        : entry,
+    ),
+  };
+}
+
 describe("LarkChannelSession substitute task RPC", () => {
-  test("lists, scans, pauses and deletes tasks for one substitute mode", async () => {
+  test("lists, scans, pauses, retries and deletes tasks for one substitute mode", async () => {
     let tasks = [
       task(),
       {
@@ -84,6 +100,11 @@ describe("LarkChannelSession substitute task RPC", () => {
         }
         tasks = updatedTasks;
         return selectTaskIdsForMode(tasks, taskIds, modeId);
+      }),
+      retrySubstituteTasks: vi.fn((taskIds: readonly string[], modeId?: string) => {
+        const result = retryTasksForMode(tasks, taskIds, modeId);
+        tasks = result.tasks;
+        return result.retriedTaskIds;
       }),
       deleteSubstituteTasks: vi.fn((taskIds: readonly string[], modeId?: string) => {
         const retainedTasks: LarkSubstituteTask[] = [];
@@ -127,12 +148,27 @@ describe("LarkChannelSession substitute task RPC", () => {
       taskIds: ["task-1"],
     });
     await session.handleRequest({
+      type: "channel.lark.substitute_task.retry.request",
+      requestId: "retry",
+      modeId: "mode-1",
+      taskIds: ["task-1"],
+    });
+    await session.handleRequest({
       type: "channel.lark.substitute_task.delete.request",
       requestId: "delete",
       modeId: "mode-1",
       taskIds: ["task-1"],
     });
 
+    expect(emit).toHaveBeenCalledWith({
+      type: "channel.lark.substitute_task.retry.response",
+      payload: {
+        requestId: "retry",
+        retriedTaskIds: ["task-1"],
+        tasks: [task()],
+        error: null,
+      },
+    });
     expect(emit).toHaveBeenCalledWith({
       type: "channel.lark.substitute_task.list.response",
       payload: { requestId: "list", tasks: [task()], error: null },
@@ -172,6 +208,7 @@ describe("LarkChannelSession substitute task RPC", () => {
       excludeRecentMinutes: 1,
     });
     expect(service.pauseSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
+    expect(service.retrySubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
     expect(service.deleteSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
   });
 });

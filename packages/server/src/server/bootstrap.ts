@@ -2006,6 +2006,19 @@ export async function createPaseoDaemon(
       }
       throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
     },
+    scanNow: ({ pluginId, appId, projectId, lookbackMinutes, excludeRecentMinutes }) => {
+      const range = { lookbackMinutes, excludeRecentMinutes };
+      if (
+        pluginId === "bamboo-reconciliation-troubleshooter" &&
+        appId === "bamboo-troubleshooter-console"
+      ) {
+        return bambooTroubleshooterManager!.scanNow(projectId, range);
+      }
+      if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
+        return argosTroubleshooterManager!.scanNow(projectId, range);
+      }
+      throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
+    },
     listTasks: ({ pluginId, appId, projectId }) => {
       if (
         pluginId === "bamboo-reconciliation-troubleshooter" &&

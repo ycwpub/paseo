@@ -1,13 +1,14 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Task-row actions bind the selected persisted task id. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { Pause, RefreshCw, RotateCcw, Trash2 } from "lucide-react-native";
+import { Pause, Play, RefreshCw, RotateCcw, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   AlertTroubleshooterTask,
   AlertTroubleshooterTaskStatus,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { BackHeader } from "@/components/headers/back-header";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
@@ -23,6 +24,10 @@ import {
   deleteAllAlertTroubleshooterTasks,
   retryAlertTroubleshooterTask,
 } from "./alert-troubleshooter-task-actions";
+import {
+  getAlertTroubleshooterManualScanRangeDefaults,
+  parseAlertTroubleshooterManualScanRange,
+} from "./alert-troubleshooter-manual-scan-range";
 
 function triggerLabel(task: AlertTroubleshooterTask): string {
   if (task.uniqueId.startsWith("table_poll:")) return "从日报表轮询认领";
@@ -221,6 +226,9 @@ export function AlertTroubleshooterTaskListPage({
   larkBotId,
   projectId,
   projectName,
+  manualScanLookbackMinutes,
+  manualScanExcludeRecentMinutes,
+  manualScanSupported,
   onBack,
 }: {
   active: boolean;
@@ -231,6 +239,9 @@ export function AlertTroubleshooterTaskListPage({
   larkBotId: string;
   projectId: string;
   projectName: string;
+  manualScanLookbackMinutes: number;
+  manualScanExcludeRecentMinutes: number;
+  manualScanSupported: boolean;
   onBack: () => void;
 }) {
   const client = useHostRuntimeClient(serverId);
@@ -238,6 +249,14 @@ export function AlertTroubleshooterTaskListPage({
   const [loading, setLoading] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanRange, setScanRange] = useState(() =>
+    getAlertTroubleshooterManualScanRangeDefaults({
+      lookbackMinutes: manualScanLookbackMinutes,
+      excludeRecentMinutes: manualScanExcludeRecentMinutes,
+    }),
+  );
   const [error, setError] = useState<string | null>(null);
   const request = useMemo(() => ({ pluginId, appId, projectId }), [appId, pluginId, projectId]);
 
@@ -262,6 +281,51 @@ export function AlertTroubleshooterTaskListPage({
     const timer = setInterval(() => void refresh(), 5_000);
     return () => clearInterval(timer);
   }, [active, refresh]);
+
+  useEffect(() => {
+    setScanRange(
+      getAlertTroubleshooterManualScanRangeDefaults({
+        lookbackMinutes: manualScanLookbackMinutes,
+        excludeRecentMinutes: manualScanExcludeRecentMinutes,
+      }),
+    );
+  }, [manualScanExcludeRecentMinutes, manualScanLookbackMinutes]);
+
+  const changeScanLookback = useCallback((lookbackMinutes: string) => {
+    setScanRange((current) => ({ ...current, lookbackMinutes }));
+  }, []);
+
+  const changeScanExcludeRecent = useCallback((excludeRecentMinutes: string) => {
+    setScanRange((current) => ({ ...current, excludeRecentMinutes }));
+  }, []);
+
+  const scanNow = useCallback(async () => {
+    if (!client) return;
+    setError(null);
+    setScanMessage(null);
+    const parsed = parseAlertTroubleshooterManualScanRange(scanRange);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setScanning(true);
+    try {
+      const response = await client.scanAlertTroubleshooterNow({
+        ...request,
+        ...parsed.value,
+      });
+      if (response.error) throw new Error(response.error);
+      setTasks(response.tasks);
+      const audit = response.auditFile ? ` 审计文件：${response.auditFile}` : "";
+      setScanMessage(
+        `扫描完成：匹配 ${response.matchedCount} 条，失败 ${response.failureCount} 条。${audit}`,
+      );
+    } catch (scanError) {
+      setError(scanError instanceof Error ? scanError.message : String(scanError));
+    } finally {
+      setScanning(false);
+    }
+  }, [client, request, scanRange]);
 
   const pauseTask = useCallback(
     async (taskId: string) => {
@@ -349,6 +413,55 @@ export function AlertTroubleshooterTaskListPage({
   return (
     <View style={styles.root}>
       <BackHeader title={`${projectName} · 任务执行记录`} onBack={onBack} />
+      {manualScanSupported ? (
+        <View style={styles.scanPanel}>
+          <Text style={styles.taskTitle}>本次手动扫描</Text>
+          <View style={styles.scanControls}>
+            <View style={styles.scanField}>
+              <Field label="扫描范围（分钟）">
+                <FormTextInput
+                  value={scanRange.lookbackMinutes}
+                  onChangeText={changeScanLookback}
+                  keyboardType="number-pad"
+                  placeholder="120"
+                  testID="alert-troubleshooter-scan-lookback"
+                />
+              </Field>
+            </View>
+            <View style={styles.scanField}>
+              <Field label="排除最近（分钟）">
+                <FormTextInput
+                  value={scanRange.excludeRecentMinutes}
+                  onChangeText={changeScanExcludeRecent}
+                  keyboardType="number-pad"
+                  placeholder="1"
+                  testID="alert-troubleshooter-scan-exclude-recent"
+                />
+              </Field>
+            </View>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={Play}
+              loading={scanning}
+              disabled={scanning || deletingAll || busyTaskId !== null}
+              onPress={scanNow}
+            >
+              立刻执行一次扫描
+            </Button>
+          </View>
+          <Text style={styles.description}>仅影响本次扫描，不会修改定时扫描配置。</Text>
+          {scanMessage ? (
+            <Text selectable style={styles.scanMessage}>
+              {scanMessage}
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.scanPanel}>
+          <Text style={styles.description}>当前 Host 版本不支持手动扫描，请更新 Host。</Text>
+        </View>
+      )}
       <View style={styles.toolbar}>
         <Text style={styles.description}>
           查看监听、扫描、日报入表及 Agent 排查状态；失败原因会直接显示在对应任务中。
@@ -438,6 +551,28 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[3],
+  },
+  scanPanel: {
+    gap: theme.spacing[3],
+    padding: theme.spacing[4],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  scanControls: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+  },
+  scanField: {
+    flexBasis: 180,
+    flexGrow: 1,
+    minWidth: 160,
+    maxWidth: 260,
+  },
+  scanMessage: {
+    color: theme.colors.success,
+    fontSize: theme.fontSize.sm,
   },
   taskCard: {
     gap: theme.spacing[2],

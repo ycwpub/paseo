@@ -60,6 +60,20 @@ export const LarkSubstituteTaskPauseResponseSchema = z.object({
   }),
 });
 
+export const LarkSubstituteTaskRetryRequestSchema = z.object({
+  type: z.literal("channel.lark.substitute_task.retry.request"),
+  requestId: z.string(),
+  modeId: z.string().trim().min(1).optional(),
+  taskIds: z.array(z.string().min(1)).min(1).max(500),
+});
+
+export const LarkSubstituteTaskRetryResponseSchema = z.object({
+  type: z.literal("channel.lark.substitute_task.retry.response"),
+  payload: LarkSubstituteTaskListPayloadSchema.extend({
+    retriedTaskIds: z.array(z.string()),
+  }),
+});
+
 export const LarkSubstituteTaskDeleteRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.delete.request"),
   requestId: z.string(),

@@ -137,6 +137,7 @@ export class AlertTroubleshooterQueueStore {
     projectId: string,
     options?: {
       trigger?: AlertTroubleshooterQueueTrigger;
+      triggers?: readonly AlertTroubleshooterQueueTrigger[];
       maxAutomaticRetries?: number;
     },
   ): AlertTroubleshooterQueueItem | null {
@@ -145,7 +146,8 @@ export class AlertTroubleshooterQueueStore {
       (candidate) =>
         candidate.status === "queued" &&
         candidate.attempts <= (options?.maxAutomaticRetries ?? 0) &&
-        (options?.trigger === undefined || candidate.trigger === options.trigger),
+        (options?.trigger === undefined || candidate.trigger === options.trigger) &&
+        (options?.triggers === undefined || options.triggers.includes(candidate.trigger)),
     );
     if (!item) return null;
     item.status = "running";
@@ -290,6 +292,12 @@ export class AlertTroubleshooterQueueStore {
     const state = this.read(projectId);
     const item = state.items.find((candidate) => candidate.id === itemId);
     if (!item) return null;
+    state.items = state.items.filter(
+      (candidate) =>
+        candidate.id === itemId ||
+        candidate.recordId !== input.recordId ||
+        candidate.status !== "queued",
+    );
     Object.assign(item, input, { updatedAt: this.now().toISOString() });
     this.write(projectId, state);
     return cloneTask(item);

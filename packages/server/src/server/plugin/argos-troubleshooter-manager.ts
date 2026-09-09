@@ -9,7 +9,9 @@ import {
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
 import {
   ProjectAlertTroubleshooterManager,
+  type AlertScanFailure,
   type AlertManualScanSummary,
+  type AlertScanResult,
   type AlertScanWindow,
   type AlertTroubleshooterTrigger,
 } from "./alert-troubleshooter-manager.js";
@@ -17,6 +19,19 @@ import type {
   AlertTroubleshooterRecord,
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
+import {
+  executeArgosAgentPipeline,
+  type ArgosAgentOrchestrator,
+  type ArgosAgentOrchestratorDependencies,
+} from "./argos-agent-orchestrator.js";
+import { parseArgosAlertRecord } from "./argos-alert-record.js";
+import { classifyArgosExecutionFailure } from "./argos-execution-failure-policy.js";
+import {
+  buildArgosGroupScanAudit,
+  recoverArgosMessageFromScanAudit,
+  writeArgosScanAudit,
+  type ArgosGroupScanAudit,
+} from "./argos-scan-audit.js";
 
 type ManagerOptions = ConstructorParameters<typeof ProjectAlertTroubleshooterManager>[0];
 
@@ -42,11 +57,14 @@ export class ArgosTroubleshooterManager {
   constructor(
     options: Omit<ManagerOptions, "definition"> & {
       recordStore: AlertTroubleshooterRecordStore;
+      agentOrchestratorDependencies?: ArgosAgentOrchestratorDependencies;
+      agentOrchestrator?: ArgosAgentOrchestrator;
       listChatMessages: (
-        botId: string,
+        bot: string | AlertTroubleshooterConfig,
         chatId: string,
         window: AlertScanWindow,
       ) => Promise<NormalizedLarkMessageEvent[]>;
+      resolveCommandEnvironment?: (config: AlertTroubleshooterConfig) => NodeJS.ProcessEnv;
     },
   ) {
     this.manager = new ProjectAlertTroubleshooterManager({
@@ -59,15 +77,36 @@ export class ArgosTroubleshooterManager {
         logModule: "argos-troubleshooter-manager",
         agentTitle: "Argos 报警自动排查",
         labelKey: "argosTroubleshooter",
+        maxAutomaticRetries: 3,
+        supportsAgentAutoArchive: true,
+        classifyFailure: classifyArgosExecutionFailure,
         parseConfig: (value) => {
           const parsed = ArgosTroubleshooterConfigSchema.safeParse(value);
           return parsed.success ? parsed.data : null;
         },
-        matchesAlert: (event) => isArgosAlertMessage(event.text, event.messageType),
-        scanMessages: ({ config, window }) =>
-          collectScheduledAlerts(options.listChatMessages, config, window),
-        buildDefaultPrompt: ({ config, trigger, record }) =>
-          buildArgosPrompt(config, trigger, record),
+        matchesAlert: (event) => parseArgosAlertRecord(event) !== null,
+        scanMessages: ({ config, window, cwd }) =>
+          collectScheduledAlerts(options.listChatMessages, config, window, cwd),
+        recoverScannedMessage: ({ cwd, messageId }) =>
+          recoverArgosMessageFromScanAudit({ cwd, messageId }),
+        validateRecord: (record) => {
+          if (!record.resultId?.trim() || !record.ruleId?.trim()) {
+            throw new Error(
+              `Argos 排查记录 ${record.recordId} 缺少 result_id 或 rule_id，请确认报警卡片包含有效详情链接`,
+            );
+          }
+        },
+        buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
+          buildArgosPrompt(config, trigger, record, wikiTarget),
+        buildPromptAppendix: ({ wikiTarget }) => buildArgosPromptAppendix(wikiTarget),
+        executeRecord: (input) =>
+          (options.agentOrchestrator ?? executeArgosAgentPipeline)(
+            {
+              ...input,
+              commandEnvironment: options.resolveCommandEnvironment?.(input.config),
+            },
+            options.agentOrchestratorDependencies,
+          ),
       },
     });
   }
@@ -110,49 +149,117 @@ export class ArgosTroubleshooterManager {
 
 async function collectScheduledAlerts(
   listChatMessages: (
-    botId: string,
+    bot: string | AlertTroubleshooterConfig,
     chatId: string,
     window: AlertScanWindow,
   ) => Promise<NormalizedLarkMessageEvent[]>,
   config: AlertTroubleshooterConfig,
   window: AlertScanWindow,
-): Promise<NormalizedLarkMessageEvent[]> {
+  cwd: string,
+): Promise<AlertScanResult> {
+  const startedAt = new Date();
   const alerts = new Map<string, NormalizedLarkMessageEvent>();
+  const failures: AlertScanFailure[] = [];
+  const groupAudits: ArgosGroupScanAudit[] = [];
   for (const chat of config.chats) {
-    const messages = await listChatMessages(config.botId, chat.chatId, window);
-    for (const message of messages) {
-      if (isArgosAlertMessage(message.text, message.messageType)) {
-        alerts.set(message.messageId, message);
+    try {
+      const messages = await listChatMessages(
+        config.bot.kind === "existing" ? config.bot.botId : config,
+        chat.chatId,
+        window,
+      );
+      groupAudits.push(
+        buildArgosGroupScanAudit({
+          chatId: chat.chatId,
+          ...(chat.name ? { chatName: chat.name } : {}),
+          window,
+          messages,
+        }),
+      );
+      for (const message of messages) {
+        if (parseArgosAlertRecord(message)) alerts.set(message.messageId, message);
       }
+    } catch (error) {
+      const failure = {
+        chatId: chat.chatId,
+        ...(chat.name ? { chatName: chat.name } : {}),
+        error: error instanceof Error ? error.message : String(error),
+      };
+      failures.push(failure);
+      groupAudits.push(
+        buildArgosGroupScanAudit({
+          chatId: chat.chatId,
+          ...(chat.name ? { chatName: chat.name } : {}),
+          window,
+          messages: [],
+          error: failure.error,
+        }),
+      );
     }
   }
-  return [...alerts.values()];
+  const auditFile = await writeArgosScanAudit({
+    cwd,
+    startedAt,
+    finishedAt: new Date(),
+    window,
+    groups: groupAudits,
+    failures,
+  });
+  return { events: [...alerts.values()], failures, auditFile };
 }
 
 function buildArgosPrompt(
   config: AlertTroubleshooterConfig,
   trigger: AlertTroubleshooterTrigger,
   record: AlertTroubleshooterRecord,
+  wikiTarget?: { spaceId: string; parentNodeToken: string },
 ): string {
   return [
-    "执行单条 Argos 报警自动排查，并自主完成从告警识别、证据收集、根因分析到归因记录的闭环。",
-    "先读取排查 SOP 飞书文档，再根据告警中的服务、规则、指标、日志、trace、变更和代码线索选择可用工具逐层排查。",
-    "不得仅复述告警；必须给出证据、根因或明确的待验证假设、影响范围、处置建议和后续行动。",
-    "无法访问某项数据时，记录缺失权限或缺失工具并继续使用其余证据，不要卡住。",
+    "执行单条 Argos 报警自动排查。",
+    "先运行 `life-settle-ai-assistant argos_alarm guide alert-troubleshooter` 读取最新指引，再基于代码准备的本地输入文件完成单条归因。",
     `多维表格记录 ID：${record.recordId}`,
     `多维表格 unique_id：${record.uniqueId}`,
     record.resultId ? `result_id：${record.resultId}` : "",
+    record.ruleId ? `rule_id：${record.ruleId}` : "",
     `触发方式：${trigger}`,
-    `排查 SOP：${config.troubleshootingSopDoc}`,
     `归因记录根目录：${config.attributionRecordRoot}`,
-    `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
-    `群：${record.chatName ?? record.chatId ?? ""} (${record.chatId ?? ""})`,
-    `消息 ID：${record.messageId ?? ""}`,
-    record.messageTime ? `时间：${record.messageTime}` : "",
-    "以下为本次需要排查的 Argos 告警原始证据：",
-    record.messageText,
-    "完成后更新归因记录飞书文档；保留排查过程、关键查询条件、证据链接和最终结论，避免重复处理同一消息 ID。",
+    wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
+    wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
+    `排查 SOP：${config.troubleshootingSopDoc}`,
+    config.troubleshootingSkills.length > 0
+      ? `增强排查 Skills：${config.troubleshootingSkills.join("、")}`
+      : "",
+    config.referenceFeishuDocs.length > 0
+      ? `参考飞书文档：${config.referenceFeishuDocs.join("、")}`
+      : "",
+    `监听群：${config.chats
+      .map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`)
+      .join("、")}`,
+    `触发消息：chat_id=${record.chatId ?? ""}, message_id=${
+      record.messageId ?? ""
+    }\n${record.messageText}`,
+    "只处理上述指定记录，不要批量扫描、认领或关闭其他记录。",
+    "只允许读取排查所需证据并生成编排器指定的本地临时文件；不得更新 Base、飞书文档、SOP、卡片或群消息。",
+    "文档发布、SOP 写回、状态更新和群消息回复统一由父编排代码在独立审核通过后执行。",
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function buildArgosPromptAppendix(wikiTarget?: {
+  spaceId: string;
+  parentNodeToken: string;
+}): string {
+  return [
+    "Paseo Argos 自动执行约束：",
+    wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
+    wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
+    wikiTarget
+      ? "日报 Base Wiki 目标仅作为本地结果上下文；Agent 不得直接发布文档。"
+      : "当前无法解析日报 Base Wiki 目标；Agent 仍只生成本地文件，不得尝试其它归档位置。",
+    "只允许读取证据并写入父编排器指定的本地临时文件，不得调用任何写入型 Runner 或飞书接口。",
+    "父编排代码负责校验、独立审核、文档与 SOP 发布以及最终状态回写。",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

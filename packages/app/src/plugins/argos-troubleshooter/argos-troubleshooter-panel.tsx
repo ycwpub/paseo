@@ -21,6 +21,8 @@ const SPEC: AlertTroubleshooterPanelSpec = {
   configDataKey: ARGOS_TROUBLESHOOTER_CONFIG_DATA_KEY,
   runtimeDataKey: ARGOS_TROUBLESHOOTER_RUNTIME_DATA_KEY,
   productName: "Argos",
+  allowAgentAutoArchive: true,
+  showRunnerOptions: true,
   configSchema: ArgosTroubleshooterConfigSchema,
   runtimeSchema: ArgosTroubleshooterRuntimeSchema,
 };

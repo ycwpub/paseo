@@ -1,6 +1,8 @@
 import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api.js";
 import { ensureBambooAttributionTable } from "./bamboo-attribution-table.js";
 import { createBambooDailyBase } from "./bamboo-daily-base-creator.js";
+import { ensureArgosAttributionTable } from "./argos-attribution-table.js";
+import { createArgosDailyBase } from "./argos-daily-base-creator.js";
 import { isStaleAlertTroubleshooterTableLocation } from "./alert-troubleshooter-table-location-error.js";
 
 export interface AlertTroubleshooterTableLocation {
@@ -38,6 +40,10 @@ function dailyTitle(pluginId: string, dateKey: string): string {
   return pluginId.includes("bamboo")
     ? `${dateKey}-bamboo对账归因记录`
     : `${dateKey}-argos报警归因记录`;
+}
+
+function isArgosPlugin(pluginId: string): boolean {
+  return pluginId.includes("argos");
 }
 
 export function alertTableDateKey(date: Date): string {
@@ -145,6 +151,14 @@ async function createDailyNode(
       title,
     });
   }
+  if (isArgosPlugin(pluginId)) {
+    return createArgosDailyBase({
+      api,
+      spaceId: root.spaceId,
+      parentNodeToken: root.nodeToken,
+      title,
+    });
+  }
   const result = await api.request(
     () =>
       api.client.wiki.v2.spaceNode.create({
@@ -188,9 +202,9 @@ function resolveTableId(
   appToken: string,
   pluginId: string,
 ): Promise<string> {
-  return pluginId.includes("bamboo")
-    ? ensureBambooAttributionTable(api, appToken)
-    : resolveDefaultTableId(api, appToken);
+  if (pluginId.includes("bamboo")) return ensureBambooAttributionTable(api, appToken);
+  if (isArgosPlugin(pluginId)) return ensureArgosAttributionTable(api, appToken);
+  return resolveDefaultTableId(api, appToken);
 }
 
 export async function resolveDailyAlertTable(input: {

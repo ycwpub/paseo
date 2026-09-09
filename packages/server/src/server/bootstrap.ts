@@ -1931,7 +1931,9 @@ export async function createPaseoDaemon(
     createAgent,
     waitForAgentCompletion: waitForAlertTroubleshooterAgent,
     continueAgent: async (agentId, prompt, outputSchema) => {
-      const result = await agentManager.runAgent(agentId, prompt, { outputSchema });
+      const result = await agentManager.runAgent(agentId, prompt, {
+        outputSchema,
+      });
       return { lastMessage: result.finalText || null };
     },
     cancelAgent: async (agentId) => {
@@ -1941,7 +1943,10 @@ export async function createPaseoDaemon(
       await archiveAgentCommand({ agentManager, agentStorage, logger }, agentId);
     },
     createProjectWorkspace: async (project, title) => {
-      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
+      const source = resolveProjectSourceDirectory({
+        paseoHome: config.paseoHome,
+        project,
+      });
       const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
         source.path,
         title,
@@ -1973,11 +1978,23 @@ export async function createPaseoDaemon(
     recordStore: alertTroubleshooterRecordStore,
     createAgent,
     waitForAgentCompletion: waitForAlertTroubleshooterAgent,
+    continueAgent: async (agentId, prompt, outputSchema) => {
+      const result = await agentManager.runAgent(agentId, prompt, {
+        outputSchema,
+      });
+      return { lastMessage: result.finalText || null };
+    },
     cancelAgent: async (agentId) => {
       await cancelAgentRunCommand({ agentManager, logger }, agentId);
     },
+    archiveAgent: async (agentId) => {
+      await archiveAgentCommand({ agentManager, agentStorage, logger }, agentId);
+    },
     createProjectWorkspace: async (project, title) => {
-      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
+      const source = resolveProjectSourceDirectory({
+        paseoHome: config.paseoHome,
+        project,
+      });
       const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
         source.path,
         title,
@@ -1986,8 +2003,16 @@ export async function createPaseoDaemon(
       await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
       return workspace;
     },
-    listChatMessages: (botId, chatId, window) =>
-      larkChannelService.listChatMessages(botId, chatId, window),
+    listChatMessages: (bot, chatId, window) =>
+      typeof bot === "string"
+        ? larkChannelService.listChatMessages(bot, chatId, window)
+        : larkChannelService.listChatMessagesWithConfig(
+            bambooBotCredentialResolver.resolve(bot).config,
+            chatId,
+            window,
+          ),
+    resolveCommandEnvironment: (alertConfig) =>
+      bambooBotCredentialResolver.commandEnvironment(alertConfig),
     logger,
   });
   pluginService.attachAlertTroubleshooterRuntime({

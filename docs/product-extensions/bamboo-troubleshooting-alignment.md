@@ -51,8 +51,8 @@ record states, evidence validation, Agent separation, close operations, and drai
   alone may declare the entire scan round complete.
 - A daemon restart restores its own locally persisted running task immediately. Cross-session Base
   recovery remains subject to the Runner's stale-processing safeguards.
-- Enhanced troubleshooting Skills, reference Feishu documents, and Runner date lookback are Bamboo
-  options. The shared Argos form must not expose controls that its execution path does not consume.
+- Argos owns a separate alignment contract. See
+  [`argos-troubleshooting-alignment.md`](./argos-troubleshooting-alignment.md).
 
 Do not replace these adaptations with copied Runner code or a second plugin lifecycle. Keep the
 Runner scripts byte-for-byte aligned with their packaged source and express Paseo behavior through

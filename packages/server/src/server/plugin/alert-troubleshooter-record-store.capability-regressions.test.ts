@@ -101,6 +101,7 @@ vi.mock("./alert-troubleshooter-daily-table.js", async (importOriginal) => ({
 
 import { LarkAlertTroubleshooterRecordStore } from "./alert-troubleshooter-record-store.js";
 import { BAMBOO_ATTRIBUTION_FIELD_NAMES } from "./bamboo-attribution-table.js";
+import { ARGOS_ATTRIBUTION_FIELD_NAMES } from "./argos-alert-record.js";
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -386,6 +387,83 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
       expect.objectContaining({
         params: {
           client_token: expect.stringMatching(UUID_V4_PATTERN),
+        },
+      }),
+    );
+  });
+
+  it("writes and reads back the canonical Argos record by rule_id", async () => {
+    mocks.listFields.mockResolvedValue({
+      code: 0,
+      data: {
+        items: ARGOS_ATTRIBUTION_FIELD_NAMES.map((field_name, index) => ({
+          field_name,
+          is_primary: index === 0,
+        })),
+      },
+    });
+    mocks.search.mockResolvedValue({ code: 0, data: { items: [] } });
+    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => {
+      mocks.search.mockResolvedValue({
+        code: 0,
+        data: {
+          items: [{ record_id: "rec_argos", fields: data.fields }],
+        },
+      });
+      return {
+        code: 0,
+        data: { record: { record_id: "rec_argos", fields: data.fields } },
+      };
+    });
+
+    const record = await createStore().upsertMessage({
+      config: config(),
+      projectId: "prj_1",
+      pluginId: "argos-alert-troubleshooter",
+      trigger: "schedule",
+      event: {
+        eventId: "evt_argos",
+        messageId: "om_argos",
+        chatId: "oc_alerts",
+        chatType: "group",
+        messageType: "interactive",
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        displayName: "Argos",
+        topicName: "报警",
+        text: [
+          '<card title="[Argos-CRITICAL] 消费积压">',
+          "服务: life.settle.demo",
+          "报警时间: 2026-09-08 23:58:00",
+          "https://cloud.bytedance.net/argos/alarm/detail/event/rule-42/alert-99",
+          "**Tags:** cluster=default",
+          "**Argos根因分析** 下游超时",
+          "</card>",
+        ].join("\n"),
+        createTime: Date.parse("2026-09-09T00:05:00+08:00"),
+      },
+    });
+
+    expect(record).toMatchObject({
+      recordId: "rec_argos",
+      uniqueId: "rule-42",
+      resultId: "alert-99",
+      ruleId: "rule-42",
+      tableDate: "20260908",
+    });
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: { client_token: expect.stringMatching(UUID_V4_PATTERN) },
+        data: {
+          fields: expect.objectContaining({
+            unique_id: "rule-42",
+            result_id: "alert-99",
+            rule_id: "rule-42",
+            psm: "life.settle.demo",
+            status: "init",
+          }),
         },
       }),
     );

@@ -5,6 +5,7 @@ documentation files.
 
 - [Agent lifecycle](./agent-lifecycle.md)
 - [Architecture](./architecture.md)
+- [Argos troubleshooting alignment](./argos-troubleshooting-alignment.md)
 - [Bamboo troubleshooting alignment](./bamboo-troubleshooting-alignment.md)
 - [Data model](./data-model.md)
 - [Glossary](./glossary.md)

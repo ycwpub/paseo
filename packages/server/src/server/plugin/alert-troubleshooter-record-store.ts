@@ -21,7 +21,6 @@ import {
 import {
   bambooManualFields,
   bambooMessageFields,
-  bambooStatusFields,
   bambooTaskTimeMs,
   parseBambooExtra,
   type BitableWritableFields,
@@ -31,6 +30,30 @@ import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolv
 import { isMissingAlertTroubleshooterRecordError } from "./alert-troubleshooter-task-reference.js";
 import { isStaleAlertTroubleshooterTableLocation } from "./alert-troubleshooter-table-location-error.js";
 import { collectAlertTroubleshooterRecordPages } from "./alert-troubleshooter-record-pagination.js";
+import {
+  ARGOS_ATTRIBUTION_FIELD_NAMES,
+  ARGOS_RECORD_FIELDS,
+  argosMessageFields,
+  parseArgosAlertRecord,
+} from "./argos-alert-record.js";
+import {
+  alertRecordKind,
+  failedRecordFields,
+  firstFiniteTimestamp,
+  isCanonicalAlertRecordPlugin,
+  latestMessageSearchData,
+  outcomeRecordFields,
+  parseAlertMessageDescriptor,
+  pausedRecordFields,
+  pendingRecordFields,
+  recordCanonicalTimeField,
+  recordExtraField,
+  recordFieldNames,
+  recordSortField,
+  retryScheduledRecordFields,
+  runningRecordFields,
+  succeededRecordFields,
+} from "./alert-troubleshooter-record-profile.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -52,10 +75,6 @@ const FIELDS = {
 } as const;
 
 const STATUS_UNCLAIMED = "未认领";
-const STATUS_RUNNING = "处理中";
-const STATUS_PAUSED = "已暂停";
-const STATUS_SUCCEEDED = "已完成";
-const STATUS_FAILED = "失败";
 
 type RecordFields = Record<string, unknown>;
 
@@ -257,7 +276,66 @@ function firstText(...values: unknown[]): string | null {
   return null;
 }
 
-function toRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRecord | null {
+function isArgosPlugin(pluginId: string): boolean {
+  return alertRecordKind(pluginId) === "argos";
+}
+
+function isCanonicalAlertPlugin(pluginId: string): boolean {
+  return isCanonicalAlertRecordPlugin(pluginId);
+}
+
+function toArgosRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRecord | null {
+  const recordId = record.record_id?.trim();
+  if (!recordId) return null;
+  const extra = parseBambooExtra(record.fields[ARGOS_RECORD_FIELDS.extra]);
+  const resultId = textValue(record.fields[ARGOS_RECORD_FIELDS.resultId]);
+  const ruleId = textValue(record.fields[ARGOS_RECORD_FIELDS.ruleId]);
+  const messageId = firstText(extra.message_id, record.fields[FIELDS.messageId]);
+  return {
+    recordId,
+    uniqueId:
+      textValue(record.fields[ARGOS_RECORD_FIELDS.uniqueId]) ??
+      ruleId ??
+      (messageId ? `message_id:${messageId}` : `record_id:${recordId}`),
+    resultId,
+    ruleId: ruleId ?? undefined,
+    taskName: textValue(record.fields[ARGOS_RECORD_FIELDS.ruleName]) ?? undefined,
+    taskTime: dateTimeValue(record.fields[ARGOS_RECORD_FIELDS.resultTime]) ?? undefined,
+    extra: {
+      ...extra,
+      psm: textValue(record.fields[ARGOS_RECORD_FIELDS.psm]) ?? "",
+      level: textValue(record.fields[ARGOS_RECORD_FIELDS.level]) ?? "",
+      rule_name: textValue(record.fields[ARGOS_RECORD_FIELDS.ruleName]) ?? "",
+      result_url: textValue(record.fields[ARGOS_RECORD_FIELDS.resultUrl]) ?? "",
+      rule_url: textValue(record.fields[ARGOS_RECORD_FIELDS.ruleUrl]) ?? "",
+      rule_content: textValue(record.fields[ARGOS_RECORD_FIELDS.ruleContent]) ?? "",
+      result_content: textValue(record.fields[ARGOS_RECORD_FIELDS.resultContent]) ?? "",
+    },
+    tableDate,
+    messageId,
+    chatId: firstText(extra.chat_id, extra.group_id, record.fields[FIELDS.chatId]),
+    chatName: firstText(extra.chat_name, record.fields[FIELDS.chatName]),
+    messageText:
+      firstText(
+        record.fields[ARGOS_RECORD_FIELDS.resultContent],
+        record.fields[ARGOS_RECORD_FIELDS.ruleContent],
+        record.fields[FIELDS.content],
+      ) ?? "",
+    messageTime: firstText(
+      dateTimeValue(record.fields[ARGOS_RECORD_FIELDS.createTime]),
+      dateTimeValue(record.fields[ARGOS_RECORD_FIELDS.resultTime]),
+      record.fields[FIELDS.messageTime],
+    ),
+    trigger: normalizeTrigger(extra.trigger ?? record.fields[FIELDS.trigger]),
+  };
+}
+
+function toRecord(
+  record: LarkRecord,
+  tableDate: string,
+  pluginId?: string,
+): AlertTroubleshooterRecord | null {
+  if (pluginId && isArgosPlugin(pluginId)) return toArgosRecord(record, tableDate);
   const recordId = record.record_id?.trim();
   if (!recordId) return null;
   const extra = parseBambooExtra(record.fields[BAMBOO_RECORD_FIELDS.extra]);
@@ -291,7 +369,7 @@ function toRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRec
 }
 
 function isBambooPlugin(pluginId: string): boolean {
-  return pluginId.includes("bamboo");
+  return alertRecordKind(pluginId) === "bamboo";
 }
 
 function recentDateKeys(now = new Date(), days = 2): string[] {
@@ -310,8 +388,8 @@ function recordStatus(record: LarkRecord): string | null {
   );
 }
 
-function isClaimableStatus(status: string | null, bamboo: boolean): boolean {
-  return bamboo
+function isClaimableStatus(status: string | null, canonical: boolean): boolean {
+  return canonical
     ? !status || status === "init" || status === "failed" || status === STATUS_UNCLAIMED
     : !status || status === STATUS_UNCLAIMED;
 }
@@ -320,15 +398,15 @@ function isUnclaimedRecordForProject(input: {
   record: LarkRecord;
   projectId: string;
   pluginId: string;
-  bamboo: boolean;
+  canonical: boolean;
 }): boolean {
-  if (!isClaimableStatus(recordStatus(input.record), input.bamboo)) return false;
+  if (!isClaimableStatus(recordStatus(input.record), input.canonical)) return false;
   const extra = parseBambooExtra(input.record.fields[BAMBOO_RECORD_FIELDS.extra]);
   const recordProjectId =
     textValue(input.record.fields[FIELDS.projectId]) ?? textValue(extra.project_id);
   const recordPluginId =
     textValue(input.record.fields[FIELDS.pluginId]) ?? textValue(extra.plugin_id);
-  if (!input.bamboo) {
+  if (!input.canonical) {
     return recordProjectId === input.projectId && recordPluginId === input.pluginId;
   }
   return (
@@ -347,9 +425,19 @@ function messageRecordFields(input: {
   uniqueId: string;
   resultId: string | null;
   bambooRecord: ReturnType<typeof parseBambooAlertRecord>;
+  argosRecord: ReturnType<typeof parseArgosAlertRecord>;
 }): BitableWritableFields {
   if (input.bambooRecord) {
     return bambooMessageFields(input.bambooRecord, {
+      projectId: input.projectId,
+      pluginId: input.pluginId,
+      trigger: input.trigger,
+      chatName: input.chatName,
+    });
+  }
+  if (input.argosRecord) {
+    return argosMessageFields(input.argosRecord, {
+      event: input.event,
       projectId: input.projectId,
       pluginId: input.pluginId,
       trigger: input.trigger,
@@ -398,7 +486,10 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
             resolve: (config) => {
               const bot = resolverOrChannelStore.getBot(config.botId);
               if (!bot) throw new Error(`飞书机器人 ${config.botId} 不存在`);
-              return { identity: `existing:${config.botId}`, config: bot.config };
+              return {
+                identity: `existing:${config.botId}`,
+                config: bot.config,
+              };
             },
           };
   }
@@ -450,30 +541,16 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     trigger: AlertTroubleshooterQueueTrigger;
     event: NormalizedLarkMessageEvent;
   }): Promise<AlertTroubleshooterRecord> {
-    const tableDate = alertTableDateKey(
-      input.event.createTime === null
-        ? new Date()
-        : new Date(
-            input.event.createTime < 10_000_000_000
-              ? input.event.createTime * 1000
-              : input.event.createTime,
-          ),
-    );
+    const descriptor = parseAlertMessageDescriptor(input.pluginId, input.event);
+    const tableDate = alertTableDateKey(descriptor.recordDate);
     const { api, location, primaryField } = await this.context(
       input.config,
       input.pluginId,
       tableDate,
     );
     const chat = input.config.chats.find((candidate) => candidate.chatId === input.event.chatId);
-    const bamboo = isBambooPlugin(input.pluginId);
-    const bambooRecord = bamboo ? parseBambooAlertRecord(input.event) : null;
-    if (bamboo && !bambooRecord) {
-      throw new Error(`Bamboo 报警消息 ${input.event.messageId} 无法提取 result_id，已跳过入表`);
-    }
-    const resultId = bambooRecord?.resultId ?? null;
-    const uniqueId = bambooRecord?.uniqueId ?? `message_id:${input.event.messageId}`;
-    const existing = bamboo
-      ? await this.findByUniqueId(api, location, uniqueId, true)
+    const existing = descriptor.canonical
+      ? await this.findByUniqueId(api, location, descriptor.uniqueId, input.pluginId)
       : await this.findByMessageId(api, location, input.event.messageId);
     if (existing) {
       await this.backfillBambooTaskTime({
@@ -481,11 +558,11 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         pluginId: input.pluginId,
         tableDate,
         existing,
-        bambooRecord,
+        bambooRecord: descriptor.bambooRecord,
       });
       return this.verifyMessageRecord(api, location, {
-        bamboo,
-        uniqueId,
+        pluginId: input.pluginId,
+        uniqueId: descriptor.uniqueId,
         messageId: input.event.messageId,
       });
     }
@@ -496,9 +573,10 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       trigger: input.trigger,
       event: input.event,
       chatName: chat?.name ?? "",
-      uniqueId,
-      resultId,
-      bambooRecord,
+      uniqueId: descriptor.uniqueId,
+      resultId: descriptor.resultId,
+      bambooRecord: descriptor.bambooRecord,
+      argosRecord: descriptor.argosRecord,
     });
     const result = await api.request(
       () =>
@@ -507,8 +585,8 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           params: {
             client_token: createLarkRecordClientToken({
               pluginId: input.pluginId,
-              projectId: bamboo ? `table:${location.tableId}` : input.projectId,
-              uniqueId,
+              projectId: descriptor.canonical ? `table:${location.tableId}` : input.projectId,
+              uniqueId: descriptor.uniqueId,
             }),
           },
           data: { fields },
@@ -518,8 +596,8 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const recordId = result.data?.record?.record_id;
     if (!recordId) throw new Error("飞书多维表格新增记录后未返回 record_id");
     return this.verifyMessageRecord(api, location, {
-      bamboo,
-      uniqueId,
+      pluginId: input.pluginId,
+      uniqueId: descriptor.uniqueId,
       messageId: input.event.messageId,
     });
   }
@@ -545,7 +623,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     limit: number;
   }): Promise<AlertTroubleshooterRecord[]> {
     const records: AlertTroubleshooterRecord[] = [];
-    const bamboo = isBambooPlugin(input.pluginId);
+    const canonical = isCanonicalAlertPlugin(input.pluginId);
     for (const tableDate of configuredRecentDateKeys(input.config)) {
       const context = await this.existingContext(input.config, input.pluginId, tableDate);
       if (!context) continue;
@@ -556,16 +634,19 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           const result = await api.request(
             () =>
               api.client.bitable.v1.appTableRecord.search({
-                path: { app_token: location.appToken, table_id: location.tableId },
+                path: {
+                  app_token: location.appToken,
+                  table_id: location.tableId,
+                },
                 params: {
                   page_size: pageSize,
                   ...(pageToken ? { page_token: pageToken } : {}),
                 },
                 data: {
-                  field_names: bamboo ? [...BAMBOO_ATTRIBUTION_FIELD_NAMES] : Object.values(FIELDS),
+                  field_names: recordFieldNames(input.pluginId, FIELDS),
                   sort: [
                     {
-                      field_name: bamboo ? BAMBOO_RECORD_FIELDS.taskTime : FIELDS.messageTime,
+                      field_name: recordSortField(input.pluginId, FIELDS),
                       desc: true,
                     },
                   ],
@@ -586,12 +667,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
             record,
             projectId: input.projectId,
             pluginId: input.pluginId,
-            bamboo,
+            canonical,
           })
         )
           continue;
-        const normalized = toRecord(record, tableDate);
-        if (!normalized || (bamboo && !normalized.resultId)) continue;
+        const normalized = toRecord(record, tableDate, input.pluginId);
+        if (!normalized || (canonical && !normalized.resultId)) continue;
         records.push(normalized);
         if (records.length >= input.limit) return records;
       }
@@ -609,33 +690,21 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       const context = await this.existingContext(input.config, input.pluginId, tableDate);
       if (!context) continue;
       const { api, location } = context;
-      const bamboo = isBambooPlugin(input.pluginId);
+      const canonical = isCanonicalAlertPlugin(input.pluginId);
       const pageRecords = await collectAlertTroubleshooterRecordPages<LarkRecord>({
         fetchPage: async (pageToken) => {
           const result = await api.request(
             () =>
               api.client.bitable.v1.appTableRecord.search({
-                path: { app_token: location.appToken, table_id: location.tableId },
-                params: { page_size: 200, ...(pageToken ? { page_token: pageToken } : {}) },
-                data: bamboo
-                  ? {
-                      field_names: [BAMBOO_RECORD_FIELDS.extra, BAMBOO_RECORD_FIELDS.taskTime],
-                      sort: [{ field_name: BAMBOO_RECORD_FIELDS.taskTime, desc: true }],
-                    }
-                  : {
-                      field_names: [FIELDS.chatId, FIELDS.messageTime],
-                      filter: {
-                        conjunction: "and",
-                        conditions: [
-                          {
-                            field_name: FIELDS.chatId,
-                            operator: "is",
-                            value: [input.chatId],
-                          },
-                        ],
-                      },
-                      sort: [{ field_name: FIELDS.messageTime, desc: true }],
-                    },
+                path: {
+                  app_token: location.appToken,
+                  table_id: location.tableId,
+                },
+                params: {
+                  page_size: 200,
+                  ...(pageToken ? { page_token: pageToken } : {}),
+                },
+                data: latestMessageSearchData(input.pluginId, input.chatId, FIELDS),
               }),
             { identity: "bot", requiredScopes: ["base:record:read"] },
           );
@@ -647,17 +716,20 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         },
       });
       for (const record of pageRecords) {
-        const extra = parseBambooExtra(record.fields[BAMBOO_RECORD_FIELDS.extra]);
+        const extra = parseBambooExtra(record.fields[recordExtraField(input.pluginId)]);
         if (
-          bamboo &&
+          canonical &&
           textValue(extra.chat_id) !== input.chatId &&
           textValue(extra.group_id) !== input.chatId
         ) {
           continue;
         }
-        const fromExtra = bambooMessageSentAtMs(record.fields[BAMBOO_RECORD_FIELDS.extra]);
+        const fromExtra = bambooMessageSentAtMs(record.fields[recordExtraField(input.pluginId)]);
+        const fromCanonical = Date.parse(
+          textValue(record.fields[recordCanonicalTimeField(input.pluginId)]) ?? "",
+        );
         const fromLegacy = Date.parse(textValue(record.fields[FIELDS.messageTime]) ?? "");
-        const timestamp = fromExtra ?? (Number.isFinite(fromLegacy) ? fromLegacy : null);
+        const timestamp = firstFiniteTimestamp(fromExtra, fromCanonical, fromLegacy);
         if (timestamp !== null && (latest === null || timestamp > latest)) latest = timestamp;
       }
     }
@@ -683,7 +755,9 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         }),
       { identity: "bot", requiredScopes: ["base:record:read"] },
     );
-    return result.data?.record ? toRecord(result.data.record as LarkRecord, input.tableDate) : null;
+    return result.data?.record
+      ? toRecord(result.data.record as LarkRecord, input.tableDate, input.pluginId)
+      : null;
   }
 
   async getRecordByUniqueId(input: {
@@ -719,7 +793,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           throw error;
         }
         const record = result.data?.record
-          ? toRecord(result.data.record as LarkRecord, tableDate)
+          ? toRecord(result.data.record as LarkRecord, tableDate, input.pluginId)
           : null;
         if (record) return record;
       }
@@ -739,7 +813,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           context.api,
           context.location,
           uniqueId,
-          isBambooPlugin(input.pluginId),
+          input.pluginId,
         );
         if (record) return record;
       }
@@ -801,7 +875,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     if (!result.data?.record?.record_id) {
       throw new Error("创建 Bamboo result_id 调试记录后未返回 record_id");
     }
-    const verified = await this.findByUniqueId(api, location, uniqueId, true);
+    const verified = await this.findByUniqueId(api, location, uniqueId, input.pluginId);
     if (!verified) {
       throw new Error(`Bamboo result_id 调试记录写入后无法按 unique_id ${uniqueId} 读回`);
     }
@@ -836,24 +910,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     claimId: string;
   }): Promise<void> {
-    const bamboo = isBambooPlugin(input.pluginId);
     return this.update(
       input.config,
       input.pluginId,
       input.tableDate,
       input.recordId,
-      bamboo
-        ? {
-            ...bambooStatusFields("processing"),
-            [BAMBOO_RECORD_FIELDS.aiSessionId]: input.claimId,
-            [BAMBOO_RECORD_FIELDS.lastError]: "",
-          }
-        : {
-            [FIELDS.status]: STATUS_RUNNING,
-            [FIELDS.claimId]: input.claimId,
-            [FIELDS.claimedAt]: new Date().toISOString(),
-            [FIELDS.error]: "",
-          },
+      runningRecordFields(input.pluginId, input.claimId, FIELDS),
     );
   }
 
@@ -864,25 +926,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     agentId: string;
   }): Promise<void> {
-    const bamboo = isBambooPlugin(input.pluginId);
     return this.update(
       input.config,
       input.pluginId,
       input.tableDate,
       input.recordId,
-      bamboo
-        ? {
-            ...bambooStatusFields("succeeded"),
-            [BAMBOO_RECORD_FIELDS.aiSessionId]: input.agentId,
-            [BAMBOO_RECORD_FIELDS.aiFinishedAt]: Date.now(),
-            [BAMBOO_RECORD_FIELDS.lastError]: "",
-          }
-        : {
-            [FIELDS.status]: STATUS_SUCCEEDED,
-            [FIELDS.agentId]: input.agentId,
-            [FIELDS.completedAt]: new Date().toISOString(),
-            [FIELDS.error]: "",
-          },
+      succeededRecordFields(input.pluginId, input.agentId, FIELDS),
     );
   }
 
@@ -896,14 +945,13 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     summary: string;
     documentUrl?: string;
   }): Promise<void> {
-    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
-      ...bambooStatusFields(input.status),
-      [BAMBOO_RECORD_FIELDS.aiSessionId]: input.agentId,
-      [BAMBOO_RECORD_FIELDS.aiSummary]: input.summary,
-      [BAMBOO_RECORD_FIELDS.aiResult]: input.documentUrl ?? "",
-      [BAMBOO_RECORD_FIELDS.aiFinishedAt]: Date.now(),
-      [BAMBOO_RECORD_FIELDS.lastError]: "",
-    });
+    return this.update(
+      input.config,
+      input.pluginId,
+      input.tableDate,
+      input.recordId,
+      outcomeRecordFields(input),
+    );
   }
 
   markPaused(input: {
@@ -917,16 +965,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       input.pluginId,
       input.tableDate,
       input.recordId,
-      isBambooPlugin(input.pluginId)
-        ? {
-            ...bambooStatusFields("pending"),
-            [BAMBOO_RECORD_FIELDS.lastError]: "任务已暂停",
-          }
-        : {
-            [FIELDS.status]: STATUS_PAUSED,
-            [FIELDS.completedAt]: new Date().toISOString(),
-            [FIELDS.error]: "",
-          },
+      pausedRecordFields(input.pluginId, FIELDS),
     );
   }
 
@@ -937,23 +976,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     error: string;
   }): Promise<void> {
-    const bamboo = isBambooPlugin(input.pluginId);
     return this.update(
       input.config,
       input.pluginId,
       input.tableDate,
       input.recordId,
-      bamboo
-        ? {
-            ...bambooStatusFields("failed"),
-            [BAMBOO_RECORD_FIELDS.aiFinishedAt]: Date.now(),
-            [BAMBOO_RECORD_FIELDS.lastError]: input.error.slice(0, 10_000),
-          }
-        : {
-            [FIELDS.status]: STATUS_FAILED,
-            [FIELDS.completedAt]: new Date().toISOString(),
-            [FIELDS.error]: input.error.slice(0, 10_000),
-          },
+      failedRecordFields(input.pluginId, input.error, FIELDS),
     );
   }
 
@@ -964,25 +992,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     error: string;
   }): Promise<void> {
-    const bamboo = isBambooPlugin(input.pluginId);
     return this.update(
       input.config,
       input.pluginId,
       input.tableDate,
       input.recordId,
-      bamboo
-        ? {
-            ...bambooStatusFields("init"),
-            [BAMBOO_RECORD_FIELDS.aiSessionId]: "",
-            [BAMBOO_RECORD_FIELDS.lastError]: input.error.slice(0, 10_000),
-          }
-        : {
-            [FIELDS.status]: STATUS_UNCLAIMED,
-            [FIELDS.claimId]: "",
-            [FIELDS.claimedAt]: "",
-            [FIELDS.completedAt]: "",
-            [FIELDS.error]: input.error.slice(0, 10_000),
-          },
+      retryScheduledRecordFields(input.pluginId, input.error, FIELDS),
     );
   }
 
@@ -993,23 +1008,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     tableDate: string;
     error: string;
   }): Promise<void> {
-    const bamboo = isBambooPlugin(input.pluginId);
     return this.update(
       input.config,
       input.pluginId,
       input.tableDate,
       input.recordId,
-      bamboo
-        ? {
-            ...bambooStatusFields("pending"),
-            [BAMBOO_RECORD_FIELDS.aiFinishedAt]: Date.now(),
-            [BAMBOO_RECORD_FIELDS.lastError]: input.error.slice(0, 10_000),
-          }
-        : {
-            [FIELDS.status]: "待处理",
-            [FIELDS.completedAt]: new Date().toISOString(),
-            [FIELDS.error]: input.error.slice(0, 10_000),
-          },
+      pendingRecordFields(input.pluginId, input.error, FIELDS),
     );
   }
 
@@ -1068,10 +1072,10 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
   private async verifyMessageRecord(
     api: LarkAlertTroubleshooterApi,
     location: AlertTroubleshooterTableLocation,
-    input: { bamboo: boolean; uniqueId: string; messageId: string },
+    input: { pluginId: string; uniqueId: string; messageId: string },
   ): Promise<AlertTroubleshooterRecord> {
-    const record = input.bamboo
-      ? await this.findByUniqueId(api, location, input.uniqueId, true)
+    const record = isCanonicalAlertPlugin(input.pluginId)
+      ? await this.findByUniqueId(api, location, input.uniqueId, input.pluginId)
       : await this.findByMessageId(api, location, input.messageId);
     if (!record) {
       throw new Error(`日报多维表格记录写入后无法按 unique_id ${input.uniqueId} 读回`);
@@ -1083,7 +1087,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     api: LarkAlertTroubleshooterApi,
     location: AlertTroubleshooterTableLocation,
     uniqueId: string,
-    bamboo: boolean,
+    pluginId: string,
   ): Promise<AlertTroubleshooterRecord | null> {
     const result = await api.request(
       () =>
@@ -1091,7 +1095,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           path: { app_token: location.appToken, table_id: location.tableId },
           params: { page_size: 1 },
           data: {
-            field_names: bamboo ? [...BAMBOO_ATTRIBUTION_FIELD_NAMES] : Object.values(FIELDS),
+            field_names: recordFieldNames(pluginId, FIELDS),
             filter: {
               conjunction: "and",
               conditions: [
@@ -1107,7 +1111,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       { identity: "bot", requiredScopes: ["base:record:read"] },
     );
     const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
-    return record ? toRecord(record, location.dateKey) : null;
+    return record ? toRecord(record, location.dateKey, pluginId) : null;
   }
 
   private async context(
@@ -1219,6 +1223,14 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         BAMBOO_ATTRIBUTION_FIELD_NAMES.some((fieldName) => !existing.has(fieldName))
       ) {
         throw new Error("Bamboo 归因记录表结构不符合最小字段规范");
+      }
+      return primaryField;
+    }
+    if (isArgosPlugin(pluginId)) {
+      const existing = new Set(fields.map((field) => field.field_name));
+      const missing = ARGOS_ATTRIBUTION_FIELD_NAMES.filter((fieldName) => !existing.has(fieldName));
+      if (missing.length > 0) {
+        throw new Error(`Argos 归因记录表缺少字段：${missing.join("、")}`);
       }
       return primaryField;
     }

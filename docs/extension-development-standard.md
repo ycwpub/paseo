@@ -169,6 +169,14 @@ investigation Agent for rework.
 Alert troubleshooting task pages support a one-off scan window for debugging and compensation.
 The requested lookback and exclusion values apply only to that run, bypass the persisted
 latest-message cursor, and do not rewrite the scheduled-scan configuration.
+Argos alert ingestion follows the bundled Runner contract: `unique_id` is `rule_id`, `result_id`
+identifies the alarm instance, incomplete Argos-like text is ignored, group scans are isolated and
+audited, and retries replay the persisted source message. Argos uses separate investigation, SOP,
+and review Agents with atomic local artifacts; only the parent orchestrator may publish, validate,
+close, drain, or reply. Permission and validation failures remain pending, while only transient
+external failures use the bounded three-attempt retry policy. The detailed invariants and intentional
+Paseo adaptations are documented in
+[`product-extensions/argos-troubleshooting-alignment.md`](./product-extensions/argos-troubleshooting-alignment.md).
 
 Paseo-created Lark applications must declare their permissions through one capability registry.
 Channel chat, reminders, substitute mode, directory lookup, and Bamboo/Argos troubleshooting each

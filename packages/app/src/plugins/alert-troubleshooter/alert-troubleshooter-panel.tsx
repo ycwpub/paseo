@@ -66,7 +66,7 @@ export interface AlertTroubleshooterPanelSpec {
   manualDebugSelector?: "uniqueId" | "resultId";
   allowCustomBot?: boolean;
   allowAgentAutoArchive?: boolean;
-  showBambooRunnerOptions?: boolean;
+  showRunnerOptions?: boolean;
   configSchema: ZodType<AlertTroubleshooterConfig>;
   runtimeSchema: ZodType<AlertTroubleshooterRuntime>;
 }
@@ -467,7 +467,8 @@ function AlertTroubleshooterProject({
         {botKind === "existing" && selectedBot ? (
           <View style={styles.listenerStatus}>
             <Text selectable style={styles.meta}>
-              绑定机器人：{selectedBot.name ?? selectedBot.bot?.name ?? selectedBot.id}
+              绑定机器人：
+              {selectedBot.name ?? selectedBot.bot?.name ?? selectedBot.id}
               {selectedBot.appId ? `（${selectedBot.appId}）` : ""}
               {` · 长连接：${larkConnectionStatusLabel(selectedBot.connectionStatus)}`}
             </Text>
@@ -480,10 +481,12 @@ function AlertTroubleshooterProject({
                     : ""}
                 </Text>
                 <Text selectable style={styles.meta}>
-                  最近实时命中 Bamboo：{runtime.data.lastListenerMatchedAt ?? "尚未命中"}
+                  最近实时命中 {spec.productName}：
+                  {runtime.data.lastListenerMatchedAt ?? "尚未命中"}
                 </Text>
                 <Text selectable style={styles.meta}>
-                  最近定时补偿扫描：{runtime.data.lastScanFinishedAt ?? "尚未执行"}
+                  最近定时补偿扫描：
+                  {runtime.data.lastScanFinishedAt ?? "尚未执行"}
                 </Text>
                 {runtime.data.lastError ? (
                   <Text selectable style={styles.error}>
@@ -501,7 +504,7 @@ function AlertTroubleshooterProject({
                   serverId={serverId}
                   appId={selectedBot.appId}
                   botId={selectedBot.id}
-                  errorMessage="请更新机器人权限，以接收群内其他机器人发送的 Bamboo 卡片消息"
+                  errorMessage={`请更新机器人权限，以接收群内其他机器人发送的 ${spec.productName} 卡片消息`}
                 />
               </View>
             ) : null}
@@ -527,7 +530,10 @@ function AlertTroubleshooterProject({
         {chats.map((chat) => (
           <View key={chat.chatId} style={styles.chatRow}>
             <Text selectable style={styles.chatText}>
-              {formatLarkChatIdentity({ name: chat.name ?? "飞书群", chatId: chat.chatId })}
+              {formatLarkChatIdentity({
+                name: chat.name ?? "飞书群",
+                chatId: chat.chatId,
+              })}
             </Text>
             <Button
               size="xs"
@@ -550,7 +556,7 @@ function AlertTroubleshooterProject({
             placeholder="https://.../wiki/..."
           />
         </Field>
-        {spec.showBambooRunnerOptions ? (
+        {spec.showRunnerOptions ? (
           <>
             <Field label="增强排查 Skill（选填）" hint="每行一个 Skill 名称，原样传给排查 Agent。">
               <FormTextInput
@@ -681,8 +687,8 @@ function AlertTroubleshooterProject({
           <View style={styles.flex}>
             <Text style={styles.heading}>异步排查</Text>
             <Text style={styles.description}>
-              从本地队列逐条处理；队列为空时定时认领多维表格中的未认领记录。Bamboo
-              任务失败后也按该间隔重试，最多自动重试 3 次。
+              从本地队列逐条处理；队列为空时定时认领多维表格中的未认领记录。临时外部错误按该间隔重试，最多自动重试
+              3 次。
             </Text>
           </View>
           <Switch
@@ -698,7 +704,7 @@ function AlertTroubleshooterProject({
             keyboardType="number-pad"
           />
         </Field>
-        {spec.showBambooRunnerOptions ? (
+        {spec.showRunnerOptions ? (
           <Field
             label="排查日期回溯范围（天）"
             hint="最终 drain 和日报轮询覆盖最近 N 天；默认今天和昨天。"

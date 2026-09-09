@@ -69,6 +69,15 @@ describe("ArgosTroubleshooterManager", () => {
   it("scans the requested historical window and only starts an agent for Argos alerts", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-argos-test-"));
     let current = state();
+    const argosMessage = [
+      '<card title="[Argos-CRITICAL] 消费积压">',
+      "服务: life.settle.demo",
+      "报警时间: 2026-09-04 15:00:00",
+      "https://cloud.bytedance.net/argos/alarm/detail/event/rule-123/event-123",
+      "**Tags:** cluster=default",
+      "**Argos根因分析** 下游超时",
+      "</card>",
+    ].join("\n");
     const listChatMessages = vi.fn(async () => [
       {
         eventId: "history:om_argos",
@@ -83,7 +92,7 @@ describe("ArgosTroubleshooterManager", () => {
         senderType: "app",
         displayName: "Argos",
         topicName: "服务告警",
-        text: "Argos 服务告警 event_id=123",
+        text: argosMessage,
         createTime: Date.parse("2026-09-04T07:00:00.000Z"),
       },
       {
@@ -118,6 +127,10 @@ describe("ArgosTroubleshooterManager", () => {
       upsertMessage: vi.fn(async ({ event, trigger }) => {
         const record = {
           recordId: `rec_${event.messageId}`,
+          uniqueId: "rule-123",
+          resultId: "event-123",
+          ruleId: "rule-123",
+          tableDate: "20260904",
           messageId: event.messageId,
           chatId: event.chatId,
           chatName: "Argos 告警群",
@@ -148,8 +161,22 @@ describe("ArgosTroubleshooterManager", () => {
       teamStore: { get: () => null },
       recordStore,
       createAgent: createAgent as never,
-      createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
+      createProjectWorkspace: async () => ({
+        workspaceId: "ws-1",
+        cwd: paseoHome,
+      }),
       listChatMessages,
+      agentOrchestrator: async (input) => {
+        const result = await input.launchAgent({
+          stage: "investigation",
+          title: "Argos 排查",
+          prompt: input.prompt,
+        });
+        return {
+          agentId: result.agentId,
+          completion: { status: "succeeded", summary: "已完成" },
+        };
+      },
       logger: createTestLogger(),
       now: () => new Date("2026-09-04T08:00:00.000Z"),
     });
@@ -168,7 +195,7 @@ describe("ArgosTroubleshooterManager", () => {
         background: true,
       });
       const prompt = createAgent.mock.calls[0]?.[0].initialPrompt ?? "";
-      expect(prompt).toContain("Argos 服务告警 event_id=123");
+      expect(prompt).toContain("event-123");
       expect(prompt).not.toContain("Bamboo 对账报警");
       expect(prompt).toContain("https://example.com/wiki/sop");
       expect(prompt).toContain("https://example.com/wiki/records");

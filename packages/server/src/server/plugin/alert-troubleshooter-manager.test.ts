@@ -147,6 +147,7 @@ function createHarness(input?: {
     markFailed: vi.fn(async () => undefined),
     markRetryScheduled: vi.fn(async () => undefined),
     markPending: vi.fn(async () => undefined),
+    markOutcome: vi.fn(async () => undefined),
   };
   Object.assign(recordStore, options.recordStoreOverrides);
   const scanMessages = vi.fn(options.scanMessages ?? (async () => []));
@@ -286,7 +287,11 @@ describe("ProjectAlertTroubleshooterManager", () => {
         },
       }),
       matchesAlert: () => false,
-      scanMessages: async () => [message()],
+      scanMessages: async () => ({
+        events: [message()],
+        failures: [],
+        auditFile: "/tmp/project/.tmp/bamboo-scan-audits/scan.json",
+      }),
     });
 
     harness.manager.start();
@@ -294,6 +299,7 @@ describe("ProjectAlertTroubleshooterManager", () => {
       expect(harness.getState().data.alertRuntime).toMatchObject({
         status: "idle",
         lastScanFinishedAt: "2026-09-06T08:00:00.000Z",
+        lastScanAuditFile: "/tmp/project/.tmp/bamboo-scan-audits/scan.json",
       }),
     );
 
@@ -872,6 +878,51 @@ describe("ProjectAlertTroubleshooterManager", () => {
     expect(harness.recordStore.markSucceeded).not.toHaveBeenCalled();
     expect(harness.recordStore.markRetryScheduled).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_invalid_completion" }),
+    );
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("persists not_support without treating the orchestrator result as already written", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_not_support",
+      uniqueId: "19630485",
+      resultId: "19630485",
+      tableDate: "20260906",
+      messageId: "om_not_support",
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "Bamboo 多源规则报警",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      records: [record],
+      executeRecord: async () => ({
+        agentId: "",
+        completion: {
+          status: "not_support",
+          summary:
+            "当前自动排障只支持离线 Hive Bamboo 规则，rule_type=multi_sources 暂不支持自动排查。",
+        },
+      }),
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "not_support",
+        nextRetryAt: null,
+      }),
+    );
+
+    expect(harness.recordStore.markOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recordId: "rec_not_support",
+        status: "not_support",
+        summary:
+          "当前自动排障只支持离线 Hive Bamboo 规则，rule_type=multi_sources 暂不支持自动排查。",
+      }),
     );
     expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
     await harness.manager.stop();

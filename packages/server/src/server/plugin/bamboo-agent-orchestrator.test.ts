@@ -31,9 +31,12 @@ const CONFIG: AlertTroubleshooterConfig = {
   chats: [{ chatId: "oc_alerts", name: "结算报警群" }],
   target: { kind: "default" },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
+  troubleshootingSkills: [],
+  referenceFeishuDocs: [],
   attributionRecordRoot: "https://example.com/wiki/records",
   promptTemplate: "",
   queuePollIntervalMinutes: 5,
+  dateLookbackDays: 2,
   schedule: {
     enabled: true,
     intervalMinutes: 30,
@@ -106,6 +109,10 @@ async function createHarness(reviewPasses: readonly boolean[] = [true]) {
       summary: "异常由上游账单状态延迟导致",
       attribution_result: "[业务问题]上游账单状态延迟",
       rule_id: "4086",
+      confidence: 0.9,
+      sample_count_authority: { source: "false_data_length", authoritative_samples: 1 },
+      sample_checks: [{ object_type: "bill", object_id: "bill-1", tool: "rpc" }],
+      evidence_items: [{ source: "rpc", detail: "状态延迟" }],
       writeback_owner: "parent_orchestrator",
     });
     await writeFile(
@@ -380,6 +387,12 @@ describe("executeBambooAgentPipeline", () => {
         documentUrl: "https://example.com/wiki/result",
       },
       persistenceHandled: true,
+      report: {
+        readyToReportComplete: true,
+        reason: "ready",
+        businessClose: [{ success: true }],
+        notificationClose: [{ success: true }],
+      },
     });
     expect(await readFile(harness.paths.runInput, "utf8")).toContain(
       '"writeback_owner": "parent_orchestrator"',
@@ -388,6 +401,51 @@ describe("executeBambooAgentPipeline", () => {
       '"alarm_record_detail_id": "77762173"',
     );
     await expect(readFile(harness.paths.workItem, "utf8")).resolves.toContain('"task_id": "4086"');
+  });
+
+  it("marks unsupported rule types without starting agents or running close side effects", async () => {
+    const harness = await createHarness();
+    harness.dependencies.prepareAgentData = vi.fn(async ({ auditFile }) => {
+      const prepared = {
+        result_id: "19562663",
+        rule_id: "4086",
+        work_item: {
+          result_id: "19562663",
+          rule_id: "4086",
+          rule_type: "multi_sources",
+          task_result_num: 7,
+        },
+        inspect_result: {
+          resultId: "19562663",
+          result: {
+            id: 19562663,
+            alarm_detail_id: 77762173,
+            rules_id: 4086,
+            rule_type: "multi_sources",
+          },
+          false_data_length: 7,
+        },
+      };
+      await writeBambooAgentJsonAtomic(auditFile, prepared);
+      return prepared;
+    });
+
+    const result = await executeBambooAgentPipeline(harness.input, harness.dependencies);
+
+    expect(result).toEqual({
+      agentId: "",
+      completion: {
+        status: "not_support",
+        summary:
+          "当前不支持自动排查：仅支持离线 Hive Bamboo 规则，rule_type=multi_sources，权威样本数=7（source=false_data_length），已跳过单条排查流程。",
+      },
+    });
+    expect(result.persistenceHandled).toBeUndefined();
+    expect(harness.launchAgent).not.toHaveBeenCalled();
+    expect(harness.dependencies.publishDocument).not.toHaveBeenCalled();
+    expect(harness.dependencies.publishSop).not.toHaveBeenCalled();
+    expect(harness.dependencies.closeReadyWorkItem).not.toHaveBeenCalled();
+    expect(harness.dependencies.buildRunSummary).not.toHaveBeenCalled();
   });
 
   it("replies to the visible parent of a merged-forward Bamboo card", async () => {

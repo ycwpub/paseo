@@ -25,6 +25,11 @@ describe("Bamboo agent artifact store", () => {
       result_id: "19562663",
       status: "succeeded",
       summary: "排查完成",
+      attribution_result: "[业务问题]上游状态延迟",
+      confidence: 0.9,
+      sample_count_authority: { source: "false_data_length", authoritative_samples: 1 },
+      sample_checks: [{ object_type: "bill", object_id: "bill-1", tool: "rpc" }],
+      evidence_items: [{ source: "rpc", detail: "状态延迟" }],
       writeback_owner: "parent_orchestrator",
     };
 

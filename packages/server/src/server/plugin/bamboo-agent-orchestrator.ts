@@ -48,6 +48,9 @@ import {
   type BambooPreparedRecordMetadata,
 } from "./bamboo-prepared-record-metadata.js";
 import { resolveBambooMessageReplyTarget } from "./bamboo-message-reply-target.js";
+import { classifyBambooPreparedRuleSupport } from "./bamboo-rule-support-classifier.js";
+import { bambooDateKeys } from "./bamboo-date-range.js";
+import { buildBambooTaskRunReport } from "./bamboo-run-report.js";
 
 const STAGE_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -119,6 +122,7 @@ export interface BambooAgentOrchestratorDependencies {
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    dateKeys?: string[];
     commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooRunSummary>;
   validateFinalDrain(input: {
@@ -127,6 +131,7 @@ export interface BambooAgentOrchestratorDependencies {
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    dateKeys?: string[];
     commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooRunSummary>;
   renderRunReport(input: {
@@ -163,6 +168,8 @@ function investigationPrompt(input: {
   resultFile: string;
   reportFile: string;
   ruleSopDraft: string;
+  troubleshootingSkills: readonly string[];
+  referenceFeishuDocs: readonly string[];
 }): string {
   return [
     "你是 Bamboo 单条报警排查 Agent。你拥有独立上下文，不得依赖其它 Agent 的聊天记录。",
@@ -170,6 +177,12 @@ function investigationPrompt(input: {
     `代码生成的任务输入：${input.runInput}`,
     `代码准备的排查数据：${input.preparedAudit}`,
     `本阶段输入清单：${input.investigationInput}`,
+    input.troubleshootingSkills.length > 0
+      ? `按需使用这些增强 Skill：${input.troubleshootingSkills.join("、")}`
+      : "未配置额外增强 Skill。",
+    input.referenceFeishuDocs.length > 0
+      ? `补充参考飞书文档：${input.referenceFeishuDocs.join("、")}`
+      : "未配置额外参考飞书文档。",
     "只读取上述本地文件和完成排查所需的只读证据。不得扫描或认领其它记录，不得更新 Base、飞书文档、Bamboo 卡片或群消息。",
     `先把完整结果 JSON 写入 ${input.resultFile}.tmp，再原子重命名为 ${input.resultFile}。`,
     'JSON 必须满足 Runner 模型结果契约：version=1、result_id、status、summary/ai_summary、固定 attribution_result、confidence、sample_count_authority、sample_checks、evidence_items、writeback_owner="parent_orchestrator"。有有效样本时必须包含真实点查证据；不得留下 TBD/TODO/请填写等占位内容。',
@@ -309,6 +322,8 @@ async function preparePipelineArtifacts(input: {
     total_sop_local_path: prepared.total_sop_local_path ?? null,
     rule_sop_local_path: prepared.rule_sop_local_path ?? null,
     work_item: input.paths.workItem,
+    troubleshooting_skills: execution.config.troubleshootingSkills,
+    reference_feishu_docs: execution.config.referenceFeishuDocs,
     output_files: {
       result: input.paths.investigationResult,
       report: input.paths.investigationReport,
@@ -337,6 +352,8 @@ async function runInvestigationStage(input: {
       resultFile: input.paths.investigationResult,
       reportFile: input.paths.investigationReport,
       ruleSopDraft: input.paths.ruleSopDraft,
+      troubleshootingSkills: input.execution.config.troubleshootingSkills,
+      referenceFeishuDocs: input.execution.config.referenceFeishuDocs,
     }),
     outputSchema: STAGE_OUTPUT_SCHEMA,
     labels: { bambooAgentRole: "investigation", bambooResultId: input.resultId },
@@ -514,14 +531,20 @@ async function runFinalDrain(input: {
   execution: AlertTroubleshooterRecordExecutionInput;
   dependencies: BambooAgentOrchestratorDependencies;
   paths: BambooAgentArtifactPaths;
-}): Promise<string | undefined> {
+  close: BambooCloseReadyResult;
+}): Promise<{
+  warning?: string;
+  report?: ReturnType<typeof buildBambooTaskRunReport>;
+}> {
   try {
+    const dateKeys = bambooDateKeys(input.execution.config.dateLookbackDays);
     const summary = await input.dependencies.buildRunSummary({
       workspaceCwd: input.execution.workspace.cwd,
       scanDirectoryUrl: input.execution.config.attributionRecordRoot,
       resultDirectory: input.paths.runDirectory,
       workItemsFile: input.paths.workItems,
       auditFile: input.paths.autoDrainAudit,
+      dateKeys,
       commandEnvironment: input.execution.commandEnvironment,
     });
     const strictDrain = await input.dependencies.validateFinalDrain({
@@ -530,6 +553,7 @@ async function runFinalDrain(input: {
       resultDirectory: input.paths.runDirectory,
       workItemsFile: input.paths.workItems,
       auditFile: input.paths.runSummary,
+      dateKeys,
       commandEnvironment: input.execution.commandEnvironment,
     });
     const report = await input.dependencies.renderRunReport({
@@ -545,11 +569,23 @@ async function runFinalDrain(input: {
       strictDrain.ready_to_report_complete === true &&
       strictDrain.final_drain?.ready_to_report_complete === true &&
       report.ready_to_report_complete;
-    return ready ? undefined : `最终 drain 尚未清零：${report.ready_to_report_complete_reason}`;
+    return {
+      ...(ready
+        ? {}
+        : { warning: `最终 drain 尚未清零：${report.ready_to_report_complete_reason}` }),
+      report: buildBambooTaskRunReport({
+        summary,
+        strictDrain,
+        report,
+        close: input.close,
+      }),
+    };
   } catch (error) {
-    return `业务排查已关闭，但最终 drain/report 生成失败：${
-      error instanceof Error ? error.message : String(error)
-    }`;
+    return {
+      warning: `业务排查已关闭，但最终 drain/report 生成失败：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
   }
 }
 
@@ -655,6 +691,16 @@ export async function executeBambooAgentPipeline(
     paths,
     resultId,
   });
+  const support = classifyBambooPreparedRuleSupport(pipeline.prepared);
+  if (!support.supported) {
+    return {
+      agentId: "",
+      completion: {
+        status: "not_support",
+        summary: support.summary,
+      },
+    };
+  }
   const { investigation, publication } = await runReviewedBambooInvestigation({
     execution: pipeline.execution,
     dependencies,
@@ -699,10 +745,13 @@ export async function executeBambooAgentPipeline(
   if (!businessCloseSucceeded) {
     throw new Error(`Bamboo runner close 未完成业务闭环：${JSON.stringify(close)}`);
   }
-  const warnings = [
-    closeWarning(close),
-    await runFinalDrain({ execution: pipeline.execution, dependencies, paths }),
-  ]
+  const finalDrain = await runFinalDrain({
+    execution: pipeline.execution,
+    dependencies,
+    paths,
+    close,
+  });
+  const warnings = [closeWarning(close), finalDrain.warning]
     .filter((warning): warning is string => Boolean(warning))
     .join("；");
 
@@ -715,5 +764,6 @@ export async function executeBambooAgentPipeline(
     },
     persistenceHandled: true,
     ...(warnings ? { completionWarning: warnings } : {}),
+    ...(finalDrain.report ? { report: finalDrain.report } : {}),
   };
 }

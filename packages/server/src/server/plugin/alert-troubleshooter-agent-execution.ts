@@ -1,4 +1,8 @@
-import type { AlertTroubleshooterConfig, PluginAppState } from "@getpaseo/protocol/messages";
+import type {
+  AlertTroubleshooterConfig,
+  AlertTroubleshooterRunReport,
+  PluginAppState,
+} from "@getpaseo/protocol/messages";
 import type { PersistedProjectRecord } from "../workspace-registry.js";
 import type { AlertTroubleshooterQueueItem } from "./alert-troubleshooter-queue-store.js";
 import type { AlertTroubleshooterRecord } from "./alert-troubleshooter-record-store.js";
@@ -67,4 +71,5 @@ export interface AlertTroubleshooterRecordExecutionResult {
   completion: AlertTroubleshooterCompletion;
   persistenceHandled?: boolean;
   completionWarning?: string;
+  report?: AlertTroubleshooterRunReport;
 }

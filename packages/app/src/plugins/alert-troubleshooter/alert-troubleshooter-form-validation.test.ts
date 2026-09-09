@@ -17,9 +17,12 @@ const VALID_DRAFT: AlertTroubleshooterConfigDraft = {
   chats: [{ chatId: "oc_alerts", name: "报警群" }],
   target: { kind: "assistant", assistantId: "assistant-1" },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
+  troubleshootingSkills: ["bamboo", "psm-to-code-repository"],
+  referenceFeishuDocs: ["https://example.com/wiki/reference"],
   attributionRecordRoot: "https://example.com/wiki/records",
   promptTemplate: "处理 {{record_id}}",
   queuePollIntervalMinutes: "5",
+  dateLookbackDays: "2",
   schedule: {
     enabled: true,
     intervalMinutes: "30",
@@ -84,7 +87,10 @@ describe("validateAlertTroubleshooterConfig", () => {
       ...VALID_DRAFT,
       version: 4,
       bot: { kind: "existing", botId: "bot-1" },
+      troubleshootingSkills: ["bamboo", "psm-to-code-repository"],
+      referenceFeishuDocs: ["https://example.com/wiki/reference"],
       queuePollIntervalMinutes: 5,
+      dateLookbackDays: 2,
       schedule: {
         enabled: true,
         intervalMinutes: 30,

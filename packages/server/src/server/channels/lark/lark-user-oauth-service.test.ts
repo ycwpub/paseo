@@ -9,9 +9,11 @@ import {
   LarkUserOAuthService,
   type LarkUserOAuthGateway,
 } from "./lark-user-oauth-service.js";
+import { PASEO_LARK_USER_SCOPES } from "./lark-bot-capability-requirements.js";
 import { LarkUserOAuthStore } from "./lark-user-oauth-store.js";
 
 const roots: string[] = [];
+const completeScopeGrant = PASEO_LARK_USER_SCOPES.join(" ");
 
 afterEach(() => {
   vi.useRealTimers();
@@ -30,8 +32,7 @@ function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
       refreshToken: "r-token",
       expiresIn: 7200,
       refreshTokenExpiresIn: 2_592_000,
-      scope:
-        "offline_access im:chat:create_by_user im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+      scope: completeScopeGrant,
     })),
     refreshAccessToken: vi.fn(async () => ({
       accessToken: "u-token-refreshed",
@@ -95,6 +96,8 @@ describe("LarkUserOAuthService", () => {
         "im:message.p2p_msg:get_as_user",
         "im:message:readonly",
         "search:message",
+        "search:user",
+        "wiki:wiki:readonly",
       ]),
     );
     expect(requestedScopes).not.toContain("im:chat");
@@ -143,8 +146,7 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope:
-        "offline_access im:chat:create_by_user im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+      scope: completeScopeGrant,
       openId: "ou_test",
       email: null,
       displayName: null,
@@ -177,8 +179,7 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope:
-        "offline_access im:chat:create_by_user im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+      scope: completeScopeGrant,
       openId: null,
       email: null,
       displayName: null,
@@ -317,8 +318,7 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope:
-        "offline_access im:chat:create_by_user im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+      scope: completeScopeGrant,
       openId: null,
       email: null,
       displayName: null,

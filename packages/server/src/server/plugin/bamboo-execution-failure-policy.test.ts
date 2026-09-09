@@ -68,7 +68,10 @@ describe("classifyBambooExecutionFailure", () => {
         message: "结果目录缺少业务证据",
         task: task(null),
       }),
-    ).toEqual({ disposition: "pending", reason: "结果目录缺少业务证据" });
+    ).toEqual({
+      disposition: "pending",
+      reason: "[evidence_validation] 结果目录缺少业务证据",
+    });
   });
 
   it("does not spend automatic retries on non-external runner validation failures", () => {
@@ -84,7 +87,7 @@ describe("classifyBambooExecutionFailure", () => {
     ).toEqual({
       disposition: "pending",
       reason:
-        "Bamboo runner validate-result-dir 执行失败：sample_checks_required_for_effective_samples",
+        "[evidence_validation] Bamboo runner validate-result-dir 执行失败：sample_checks_required_for_effective_samples",
     });
   });
 });

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import {
+  type AlertTroubleshooterRunReport,
   AlertTroubleshooterTaskSchema,
   type AlertTroubleshooterTask,
   type AlertTroubleshooterTaskTrigger,
@@ -151,6 +152,7 @@ export class AlertTroubleshooterQueueStore {
     item.attempts += 1;
     item.updatedAt = this.now().toISOString();
     item.nextRetryAt = null;
+    item.retryStopped = false;
     item.error = null;
     this.write(projectId, state);
     return { ...item };
@@ -162,12 +164,14 @@ export class AlertTroubleshooterQueueStore {
     agentId: string | null,
     status: "succeeded" | "pending" | "not_support" = "succeeded",
     warning?: string,
+    report?: AlertTroubleshooterRunReport,
   ): void {
     this.patch(projectId, itemId, {
       status,
       agentId,
       nextRetryAt: null,
       error: warning?.trim() || null,
+      report,
     });
   }
 
@@ -183,6 +187,7 @@ export class AlertTroubleshooterQueueStore {
     const failedAt = this.now();
     item.status = "failed";
     item.updatedAt = failedAt.toISOString();
+    item.retryStopped = false;
     item.nextRetryAt = nextAlertTroubleshooterRetryAt({
       failedAt,
       attempts: item.attempts,
@@ -192,6 +197,15 @@ export class AlertTroubleshooterQueueStore {
     item.error = error;
     this.write(projectId, state);
     return cloneTask(item);
+  }
+
+  stopRetry(projectId: string, itemId: string, error: string): void {
+    this.patch(projectId, itemId, {
+      status: "failed",
+      nextRetryAt: null,
+      retryStopped: true,
+      error,
+    });
   }
 
   promoteDueRetries(
@@ -212,6 +226,13 @@ export class AlertTroubleshooterQueueStore {
         continue;
       }
       if (item.status !== "failed") continue;
+      if (item.retryStopped) {
+        if (item.nextRetryAt !== null) {
+          item.nextRetryAt = null;
+          changed = true;
+        }
+        continue;
+      }
       const failedAt = new Date(item.updatedAt);
       const nextRetryAt = Number.isFinite(failedAt.getTime())
         ? nextAlertTroubleshooterRetryAt({
@@ -311,7 +332,10 @@ export class AlertTroubleshooterQueueStore {
     projectId: string,
     itemId: string,
     patch: Partial<
-      Pick<AlertTroubleshooterQueueItem, "status" | "error" | "agentId" | "nextRetryAt">
+      Pick<
+        AlertTroubleshooterQueueItem,
+        "status" | "error" | "agentId" | "nextRetryAt" | "retryStopped" | "report"
+      >
     >,
   ): void {
     const state = this.read(projectId);

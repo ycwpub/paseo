@@ -197,12 +197,14 @@ export async function prepareBambooAgentData(
 ): Promise<BambooPreparedAgentData> {
   const resultId = input.record.resultId?.trim();
   if (!resultId) throw new Error("Bamboo 排查记录缺少 result_id，无法准备 Agent 输入");
+  const expectedRuleId = input.record.ruleId?.trim() || input.record.taskId?.trim();
   return runWithAudit({
     subcommand: "prepare-single-troubleshoot-data",
     args: [
       "--result-id",
       resultId,
       ...(input.record.bambooUrl?.trim() ? ["--bamboo-url", input.record.bambooUrl.trim()] : []),
+      ...(expectedRuleId ? ["--expected-rule-id", expectedRuleId] : []),
       "--troubleshooting-sop-doc",
       input.config.troubleshootingSopDoc,
       "--output-dir",
@@ -330,6 +332,7 @@ export async function buildBambooRunSummary(
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    dateKeys?: string[];
     commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
@@ -343,6 +346,7 @@ export async function buildBambooRunSummary(
       input.resultDirectory,
       "--work-items-file",
       input.workItemsFile,
+      ...(input.dateKeys ?? []).flatMap((dateKey) => ["--date-key", dateKey]),
     ],
     outputFile: input.auditFile,
     cwd: input.workspaceCwd,
@@ -359,6 +363,7 @@ export async function validateBambooFinalDrain(
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    dateKeys?: string[];
     commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
@@ -372,6 +377,7 @@ export async function validateBambooFinalDrain(
       input.resultDirectory,
       "--work-items-file",
       input.workItemsFile,
+      ...(input.dateKeys ?? []).flatMap((dateKey) => ["--date-key", dateKey]),
     ],
     outputFile: input.auditFile,
     cwd: input.workspaceCwd,

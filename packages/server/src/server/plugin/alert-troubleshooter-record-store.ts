@@ -30,6 +30,7 @@ import { BAMBOO_ATTRIBUTION_FIELD_NAMES } from "./bamboo-attribution-table.js";
 import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
 import { isMissingAlertTroubleshooterRecordError } from "./alert-troubleshooter-task-reference.js";
 import { isStaleAlertTroubleshooterTableLocation } from "./alert-troubleshooter-table-location-error.js";
+import { collectAlertTroubleshooterRecordPages } from "./alert-troubleshooter-record-pagination.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -293,8 +294,14 @@ function isBambooPlugin(pluginId: string): boolean {
   return pluginId.includes("bamboo");
 }
 
-function recentDateKeys(now = new Date()): string[] {
-  return [alertTableDateKey(now), alertTableDateKey(new Date(now.getTime() - 24 * 60 * 60_000))];
+function recentDateKeys(now = new Date(), days = 2): string[] {
+  return Array.from({ length: days }, (_, offset) =>
+    alertTableDateKey(new Date(now.getTime() - offset * 24 * 60 * 60_000)),
+  );
+}
+
+function configuredRecentDateKeys(config: AlertTroubleshooterConfig): string[] {
+  return recentDateKeys(new Date(), config.dateLookbackDays ?? 2);
 }
 
 function recordStatus(record: LarkRecord): string | null {
@@ -531,28 +538,41 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
   }): Promise<AlertTroubleshooterRecord[]> {
     const records: AlertTroubleshooterRecord[] = [];
     const bamboo = isBambooPlugin(input.pluginId);
-    for (const tableDate of recentDateKeys()) {
+    for (const tableDate of configuredRecentDateKeys(input.config)) {
       const context = await this.existingContext(input.config, input.pluginId, tableDate);
       if (!context) continue;
       const { api, location } = context;
-      const result = await api.request(
-        () =>
-          api.client.bitable.v1.appTableRecord.search({
-            path: { app_token: location.appToken, table_id: location.tableId },
-            params: { page_size: Math.min(Math.max(input.limit * 4, 20), 200) },
-            data: {
-              field_names: bamboo ? [...BAMBOO_ATTRIBUTION_FIELD_NAMES] : Object.values(FIELDS),
-              sort: [
-                {
-                  field_name: bamboo ? BAMBOO_RECORD_FIELDS.taskTime : FIELDS.messageTime,
-                  desc: false,
+      const pageSize = Math.min(Math.max(input.limit * 4, 20), 200);
+      const pageRecords = await collectAlertTroubleshooterRecordPages<LarkRecord>({
+        fetchPage: async (pageToken) => {
+          const result = await api.request(
+            () =>
+              api.client.bitable.v1.appTableRecord.search({
+                path: { app_token: location.appToken, table_id: location.tableId },
+                params: {
+                  page_size: pageSize,
+                  ...(pageToken ? { page_token: pageToken } : {}),
                 },
-              ],
-            },
-          }),
-        { identity: "bot", requiredScopes: ["base:record:read"] },
-      );
-      for (const record of (result.data?.items ?? []) as LarkRecord[]) {
+                data: {
+                  field_names: bamboo ? [...BAMBOO_ATTRIBUTION_FIELD_NAMES] : Object.values(FIELDS),
+                  sort: [
+                    {
+                      field_name: bamboo ? BAMBOO_RECORD_FIELDS.taskTime : FIELDS.messageTime,
+                      desc: true,
+                    },
+                  ],
+                },
+              }),
+            { identity: "bot", requiredScopes: ["base:record:read"] },
+          );
+          return {
+            items: (result.data?.items ?? []) as LarkRecord[],
+            has_more: result.data?.has_more,
+            page_token: result.data?.page_token,
+          };
+        },
+      });
+      for (const record of pageRecords) {
         if (
           !isUnclaimedRecordForProject({
             record,
@@ -577,35 +597,48 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     chatId: string;
   }): Promise<number | null> {
     let latest: number | null = null;
-    for (const tableDate of recentDateKeys()) {
+    for (const tableDate of configuredRecentDateKeys(input.config)) {
       const context = await this.existingContext(input.config, input.pluginId, tableDate);
       if (!context) continue;
       const { api, location } = context;
       const bamboo = isBambooPlugin(input.pluginId);
-      const result = await api.request(
-        () =>
-          api.client.bitable.v1.appTableRecord.search({
-            path: { app_token: location.appToken, table_id: location.tableId },
-            params: { page_size: 200 },
-            data: bamboo
-              ? { field_names: [BAMBOO_RECORD_FIELDS.extra] }
-              : {
-                  field_names: [FIELDS.chatId, FIELDS.messageTime],
-                  filter: {
-                    conjunction: "and",
-                    conditions: [
-                      {
-                        field_name: FIELDS.chatId,
-                        operator: "is",
-                        value: [input.chatId],
+      const pageRecords = await collectAlertTroubleshooterRecordPages<LarkRecord>({
+        fetchPage: async (pageToken) => {
+          const result = await api.request(
+            () =>
+              api.client.bitable.v1.appTableRecord.search({
+                path: { app_token: location.appToken, table_id: location.tableId },
+                params: { page_size: 200, ...(pageToken ? { page_token: pageToken } : {}) },
+                data: bamboo
+                  ? {
+                      field_names: [BAMBOO_RECORD_FIELDS.extra, BAMBOO_RECORD_FIELDS.taskTime],
+                      sort: [{ field_name: BAMBOO_RECORD_FIELDS.taskTime, desc: true }],
+                    }
+                  : {
+                      field_names: [FIELDS.chatId, FIELDS.messageTime],
+                      filter: {
+                        conjunction: "and",
+                        conditions: [
+                          {
+                            field_name: FIELDS.chatId,
+                            operator: "is",
+                            value: [input.chatId],
+                          },
+                        ],
                       },
-                    ],
-                  },
-                },
-          }),
-        { identity: "bot", requiredScopes: ["base:record:read"] },
-      );
-      for (const record of (result.data?.items ?? []) as LarkRecord[]) {
+                      sort: [{ field_name: FIELDS.messageTime, desc: true }],
+                    },
+              }),
+            { identity: "bot", requiredScopes: ["base:record:read"] },
+          );
+          return {
+            items: (result.data?.items ?? []) as LarkRecord[],
+            has_more: result.data?.has_more,
+            page_token: result.data?.page_token,
+          };
+        },
+      });
+      for (const record of pageRecords) {
         const extra = parseBambooExtra(record.fields[BAMBOO_RECORD_FIELDS.extra]);
         if (
           bamboo &&
@@ -653,7 +686,9 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const recordReference = /^record_id:(?:(\d{8}):)?(.+)$/u.exec(input.uniqueId.trim());
     const recordId = recordReference?.[2]?.trim();
     if (recordId) {
-      const tableDates = recordReference?.[1] ? [recordReference[1]] : recentDateKeys();
+      const tableDates = recordReference?.[1]
+        ? [recordReference[1]]
+        : configuredRecentDateKeys(input.config);
       for (const tableDate of tableDates) {
         const context = await this.existingContext(input.config, input.pluginId, tableDate);
         if (!context) continue;
@@ -688,7 +723,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           `result_id:${normalizeBambooUniqueId(input.uniqueId)}`,
         ]
       : [input.uniqueId];
-    for (const tableDate of recentDateKeys()) {
+    for (const tableDate of configuredRecentDateKeys(input.config)) {
       const context = await this.existingContext(input.config, input.pluginId, tableDate);
       if (!context) continue;
       for (const uniqueId of uniqueIds) {

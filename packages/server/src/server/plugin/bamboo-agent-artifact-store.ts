@@ -11,9 +11,46 @@ const InvestigationResultSchema = z
     summary: z.string().trim().min(1),
     attribution_result: z.string().trim().optional(),
     rule_id: z.string().trim().optional(),
+    confidence: z.union([z.number().min(0).max(1), z.string().trim().min(1)]).optional(),
+    sample_count_authority: z
+      .object({
+        source: z.string().trim().min(1),
+      })
+      .passthrough()
+      .optional(),
+    sample_checks: z.array(z.unknown()).optional(),
+    evidence_items: z.array(z.unknown()).optional(),
+    pending_admission: z.record(z.string(), z.unknown()).optional(),
+    waiting_for_user_authorization: z.boolean().optional(),
     writeback_owner: z.literal("parent_orchestrator"),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((result, context) => {
+    if (result.status === "succeeded") {
+      for (const field of [
+        "attribution_result",
+        "confidence",
+        "sample_count_authority",
+        "sample_checks",
+        "evidence_items",
+      ] as const) {
+        if (result[field] === undefined) {
+          context.addIssue({
+            code: "custom",
+            path: [field],
+            message: `status=succeeded 时必须提供 ${field}`,
+          });
+        }
+      }
+    }
+    if (result.status === "pending" && result.pending_admission === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["pending_admission"],
+        message: "status=pending 时必须提供结构化 pending_admission",
+      });
+    }
+  });
 
 const SopSummaryResultSchema = z
   .object({

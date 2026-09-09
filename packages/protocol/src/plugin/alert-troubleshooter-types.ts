@@ -71,6 +71,8 @@ export const AlertTroubleshooterConfigSchema = z
     chats: z.array(AlertTroubleshooterChatSchema).min(1).max(50),
     target: AlertTroubleshooterTargetSchema.default({ kind: "default" }),
     troubleshootingSopDoc: z.string().trim().url(),
+    troubleshootingSkills: z.array(z.string().trim().min(1)).max(50).optional(),
+    referenceFeishuDocs: z.array(z.string().trim().url()).max(50).optional(),
     attributionRecordRoot: z.string().trim().url(),
     /** @deprecated v4 resolves or creates the daily Base below attributionRecordRoot. */
     recordTableUrl: z.string().trim().url().optional(),
@@ -81,6 +83,7 @@ export const AlertTroubleshooterConfigSchema = z
       .min(1)
       .max(24 * 60)
       .default(5),
+    dateLookbackDays: z.number().int().min(1).max(14).optional(),
     schedule: AlertTroubleshooterScheduleSchema.default({
       enabled: true,
       intervalMinutes: 30,
@@ -112,6 +115,9 @@ export const AlertTroubleshooterConfigSchema = z
       // migrates from a channel-only bot identifier to the explicit source.
       botId: bot.kind === "existing" ? bot.botId : bot.appId,
       promptTemplate: normalizeAlertTroubleshooterPromptTemplate(config.promptTemplate),
+      troubleshootingSkills: config.troubleshootingSkills ?? [],
+      referenceFeishuDocs: config.referenceFeishuDocs ?? [],
+      dateLookbackDays: config.dateLookbackDays ?? 2,
       schedule:
         config.version === 1 && config.schedule.excludeRecentMinutes === 30
           ? { ...config.schedule, excludeRecentMinutes: 0 }
@@ -139,6 +145,22 @@ export const AlertTroubleshooterTaskStatusSchema = z.enum([
 ]);
 export type AlertTroubleshooterTaskStatus = z.infer<typeof AlertTroubleshooterTaskStatusSchema>;
 
+export const AlertTroubleshooterRunReportSchema = z
+  .object({
+    readyToReportComplete: z.boolean(),
+    reason: z.string(),
+    metrics: z.unknown().optional(),
+    artifactConsistency: z.unknown().optional(),
+    cleanupPlan: z.unknown().optional(),
+    scanGroups: z.unknown().optional(),
+    dailyBases: z.unknown().optional(),
+    businessClose: z.unknown().optional(),
+    notificationClose: z.unknown().optional(),
+    auditFiles: z.unknown().optional(),
+  })
+  .passthrough();
+export type AlertTroubleshooterRunReport = z.infer<typeof AlertTroubleshooterRunReportSchema>;
+
 export const AlertTroubleshooterTaskSchema = z.object({
   id: z.string().min(1),
   recordId: z.string().min(1),
@@ -153,8 +175,10 @@ export const AlertTroubleshooterTaskSchema = z.object({
   queuedAt: z.string(),
   updatedAt: z.string(),
   nextRetryAt: z.string().nullable().optional(),
+  retryStopped: z.boolean().optional(),
   agentId: z.string().nullable(),
   error: z.string().nullable(),
+  report: AlertTroubleshooterRunReportSchema.optional(),
 });
 export type AlertTroubleshooterTask = z.infer<typeof AlertTroubleshooterTaskSchema>;
 
@@ -164,6 +188,7 @@ export const AlertTroubleshooterRuntimeSchema = z.object({
     .default("idle"),
   lastScanStartedAt: z.string().nullable().default(null),
   lastScanFinishedAt: z.string().nullable().default(null),
+  lastScanAuditFile: z.string().nullable().optional(),
   nextScanAt: z.string().nullable().default(null),
   lastQueuePollAt: z.string().nullable().default(null),
   queuedCount: z.number().int().nonnegative().default(0),

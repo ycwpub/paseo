@@ -51,6 +51,34 @@ function statusLabel(status: AlertTroubleshooterTaskStatus): string {
 
 const BAMBOO_MAX_AUTOMATIC_RETRIES = 3;
 
+function TaskRunReport({ report }: { report: NonNullable<AlertTroubleshooterTask["report"]> }) {
+  const details = [
+    ["指标", report.metrics],
+    ["产物一致性", report.artifactConsistency],
+    ["清理计划（只读）", report.cleanupPlan],
+    ["扫描群", report.scanGroups],
+    ["日报 Base", report.dailyBases],
+    ["业务关闭", report.businessClose],
+    ["通知关闭", report.notificationClose],
+    ["审计文件", report.auditFiles],
+  ].filter((entry): entry is [string, unknown] => entry[1] !== undefined);
+  return (
+    <View style={styles.report}>
+      <Text style={styles.reportTitle}>
+        Runner 汇总：{report.readyToReportComplete ? "已清零" : "未清零"}
+      </Text>
+      <Text selectable style={styles.meta}>
+        {report.reason}
+      </Text>
+      {details.map(([label, value]) => (
+        <Text key={label} selectable style={styles.reportJson}>
+          {label}：{JSON.stringify(value)}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 function TaskRow({
   task,
   busy,
@@ -143,6 +171,7 @@ function TaskRow({
               ) : null}
             </View>
           ) : null}
+          {task.report ? <TaskRunReport report={task.report} /> : null}
         </View>
         <View style={styles.actions}>
           {canRetry ? (
@@ -458,6 +487,21 @@ const styles = StyleSheet.create((theme) => ({
   },
   failure: {
     gap: theme.spacing[1],
+  },
+  report: {
+    gap: theme.spacing[1],
+    padding: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  reportTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  reportJson: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   authorizationAction: {
     flexDirection: "row",

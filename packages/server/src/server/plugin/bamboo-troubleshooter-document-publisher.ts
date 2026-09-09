@@ -1,12 +1,11 @@
 import { execFile } from "node:child_process";
-import { constants } from "node:fs";
-import { access, mkdir, readFile, readdir, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AlertTroubleshooterConfig } from "@getpaseo/protocol/messages";
 import type { AlertTroubleshooterRecord } from "./alert-troubleshooter-record-store.js";
+import { resolveCompatibleBambooRunnerPath } from "./bamboo-runner-contract.js";
 
 const execFileAsync = promisify(execFile);
 const RUNNER_TIMEOUT_MS = 15 * 60_000;
@@ -50,61 +49,8 @@ export interface BambooTroubleshooterPublisherDependencies {
   ): Promise<{ stdout: string; stderr: string }>;
 }
 
-function executableCandidates(name: string): string[] {
-  return (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map((directory) => path.join(directory, name));
-}
-
-async function nvmExecutableCandidates(name: string): Promise<string[]> {
-  const versionsRoot = path.join(homedir(), ".nvm", "versions", "node");
-  try {
-    const versions = await readdir(versionsRoot);
-    return versions
-      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
-      .map((version) => path.join(versionsRoot, version, "bin", name));
-  } catch {
-    return [];
-  }
-}
-
-async function firstExecutable(candidates: readonly string[]): Promise<string> {
-  for (const candidate of candidates) {
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  throw new Error(
-    "未找到 life-settle-ai-assistant，请先安装并确保命令位于 PATH 或 ~/.nvm/versions/node 下",
-  );
-}
-
 export async function resolveBambooAlertRunnerPath(): Promise<string> {
-  const executable = await firstExecutable([
-    ...executableCandidates("life-settle-ai-assistant"),
-    ...(await nvmExecutableCandidates("life-settle-ai-assistant")),
-  ]);
-  const resolvedExecutable = await realpath(executable);
-  const packageRoot = path.dirname(path.dirname(resolvedExecutable));
-  const candidates = [
-    path.join(packageRoot, "skills", "bamboo", "scripts", "bamboo-alert-runner.mjs"),
-    path.join(packageRoot, "scripts", "bamboo", "bamboo-alert-runner.mjs"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      // Try the next supported package layout.
-    }
-  }
-  throw new Error(
-    `life-settle-ai-assistant 已安装，但未找到 bamboo-alert-runner.mjs：${packageRoot}`,
-  );
+  return resolveCompatibleBambooRunnerPath();
 }
 
 async function findMarkdownFile(cwd: string, resultId: string): Promise<string> {

@@ -143,6 +143,27 @@ describe("AlertTroubleshooterQueueStore", () => {
     ).toBe(1);
   });
 
+  it("does not promote a failure after automatic retry has been explicitly stopped", () => {
+    const { store, setNow } = createStore();
+    const task = store.enqueue("prj_1", { recordId: "rec_fatal", trigger: "table" });
+    const retry = { intervalMinutes: 30, maxAutomaticRetries: 3 };
+
+    store.claimNext("prj_1", { maxAutomaticRetries: 3 });
+    store.fail("prj_1", task.id, "temporary classification", retry);
+    store.stopRetry("prj_1", task.id, "[fatal_runtime] invalid runner output");
+
+    expect(store.get("prj_1", task.id)).toMatchObject({
+      status: "failed",
+      nextRetryAt: null,
+      retryStopped: true,
+      error: "[fatal_runtime] invalid runner output",
+    });
+
+    setNow("2026-09-07T08:00:00.000Z");
+    expect(store.promoteDueRetries("prj_1", retry)).toBe(0);
+    expect(store.claimNext("prj_1", { maxAutomaticRetries: 3 })).toBeNull();
+  });
+
   it("can pause a failed task that is waiting for its retry interval", () => {
     const { store } = createStore();
     const task = store.enqueue("prj_1", { recordId: "rec_retry", trigger: "table" });

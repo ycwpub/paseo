@@ -32,6 +32,11 @@ import { classifyBambooExecutionFailure } from "./bamboo-execution-failure-polic
 import { BambooDedicatedBotListener } from "./bamboo-dedicated-bot-listener.js";
 import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
 import type { LarkChannelClientAdapter } from "../channels/lark/lark-client-adapter.js";
+import {
+  buildBambooGroupScanAudit,
+  writeBambooScanAudit,
+  type BambooGroupScanAudit,
+} from "./bamboo-scan-audit.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -93,12 +98,13 @@ export class BambooTroubleshooterManager {
           }
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
-        scanMessages: ({ config, window }) =>
+        scanMessages: ({ config, window, cwd }) =>
           collectScheduledBambooAlerts(
             options.listChatMessages,
             options.recordStore,
             config,
             window,
+            cwd,
           ),
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
           buildBambooPrompt(config, trigger, record, wikiTarget),
@@ -176,10 +182,14 @@ async function collectScheduledBambooAlerts(
   recordStore: AlertTroubleshooterRecordStore,
   config: AlertTroubleshooterConfig,
   window: AlertScanWindow,
+  cwd: string,
 ): Promise<AlertScanResult> {
+  const startedAt = new Date();
   const alerts = new Map<string, NormalizedLarkMessageEvent>();
   const failures: AlertScanFailure[] = [];
+  const groupAudits: BambooGroupScanAudit[] = [];
   for (const chat of config.chats) {
+    let effectiveWindow = window;
     try {
       const latestMessageTime = await recordStore.getLatestMessageTimeByChat?.({
         config,
@@ -191,6 +201,7 @@ async function collectScheduledBambooAlerts(
           ? window.start
           : new Date(Math.max(window.start.getTime(), latestMessageTime + 1));
       if (start > window.end) continue;
+      effectiveWindow = { start, end: window.end };
       const messages = await listChatMessages(
         config.bot.kind === "existing" ? config.bot.botId : config,
         chat.chatId,
@@ -199,20 +210,46 @@ async function collectScheduledBambooAlerts(
           end: window.end,
         },
       );
+      groupAudits.push(
+        buildBambooGroupScanAudit({
+          chatId: chat.chatId,
+          ...(chat.name ? { chatName: chat.name } : {}),
+          window: effectiveWindow,
+          messages,
+        }),
+      );
       for (const message of messages) {
         if (isBambooAlertMessage(message.text, message.messageType)) {
           alerts.set(message.messageId, message);
         }
       }
     } catch (error) {
-      failures.push({
+      const failure = {
         chatId: chat.chatId,
         ...(chat.name ? { chatName: chat.name } : {}),
         error: error instanceof Error ? error.message : String(error),
-      });
+      };
+      failures.push(failure);
+      groupAudits.push(
+        buildBambooGroupScanAudit({
+          chatId: chat.chatId,
+          ...(chat.name ? { chatName: chat.name } : {}),
+          window: effectiveWindow,
+          messages: [],
+          error: failure.error,
+        }),
+      );
     }
   }
-  return { events: [...alerts.values()], failures };
+  const auditFile = await writeBambooScanAudit({
+    cwd,
+    startedAt,
+    finishedAt: new Date(),
+    window,
+    groups: groupAudits,
+    failures,
+  });
+  return { events: [...alerts.values()], failures, auditFile };
 }
 
 function buildBambooPrompt(
@@ -232,6 +269,12 @@ function buildBambooPrompt(
     wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
     wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
     `排查 SOP：${config.troubleshootingSopDoc}`,
+    config.troubleshootingSkills.length > 0
+      ? `增强排查 Skills：${config.troubleshootingSkills.join("、")}`
+      : "",
+    config.referenceFeishuDocs.length > 0
+      ? `参考飞书文档：${config.referenceFeishuDocs.join("、")}`
+      : "",
     `监听群：${config.chats
       .map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`)
       .join("、")}`,

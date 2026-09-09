@@ -71,6 +71,7 @@ export interface AlertScanFailure {
 export interface AlertScanResult {
   events: NormalizedLarkMessageEvent[];
   failures: AlertScanFailure[];
+  auditFile?: string;
 }
 
 interface AlertScanExecutionOptions {
@@ -172,6 +173,7 @@ function nextRuntime(
     status: base.status ?? "idle",
     lastScanStartedAt: base.lastScanStartedAt ?? null,
     lastScanFinishedAt: base.lastScanFinishedAt ?? null,
+    lastScanAuditFile: base.lastScanAuditFile ?? null,
     nextScanAt: base.nextScanAt ?? null,
     lastQueuePollAt: base.lastQueuePollAt ?? null,
     queuedCount: base.queuedCount ?? 0,
@@ -594,6 +596,7 @@ export class ProjectAlertTroubleshooterManager {
     await this.updateRuntime(state, {
       status: "idle",
       lastScanFinishedAt: this.now().toISOString(),
+      lastScanAuditFile: scanResult.auditFile ?? null,
       nextScanAt: this.nextScanAt(config),
       queuedCount: this.queueStore.countQueued(state.projectId),
       lastError: null,
@@ -873,6 +876,7 @@ export class ProjectAlertTroubleshooterManager {
         agentId,
         completion.status,
         execution.completionWarning,
+        execution.report,
       );
       await this.updateRuntime(state, {
         status: "idle",
@@ -1093,6 +1097,7 @@ export class ProjectAlertTroubleshooterManager {
       await this.options.recordStore.markPending?.(recordInput).catch(() => undefined);
       return;
     }
+    this.queueStore.stopRetry(input.projectId, input.item.id, input.reason);
     await this.options.recordStore.markFailed(recordInput).catch(() => undefined);
   }
 

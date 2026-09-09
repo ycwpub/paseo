@@ -18,9 +18,12 @@ export interface AlertTroubleshooterConfigDraft {
   chats: AlertTroubleshooterChat[];
   target: AlertTroubleshooterTarget;
   troubleshootingSopDoc: string;
+  troubleshootingSkills: string[];
+  referenceFeishuDocs: string[];
   attributionRecordRoot: string;
   promptTemplate: string;
   queuePollIntervalMinutes: string;
+  dateLookbackDays: string;
   schedule: {
     enabled: boolean;
     intervalMinutes: string;
@@ -61,6 +64,8 @@ function issueMessage(path: PropertyKey[]): string {
   if (field === "target.assistantId") return "请选择助手";
   if (field === "target.teamId") return "请选择团队";
   if (field === "queuePollIntervalMinutes") return "队列轮询/失败重试间隔必须是 1 到 1440 分钟";
+  if (field === "dateLookbackDays") return "排查日期回溯范围必须是 1 到 14 天";
+  if (field.startsWith("referenceFeishuDocs.")) return "参考飞书文档必须是完整链接";
   if (field === "schedule.intervalMinutes") return "扫描间隔必须是 5 到 1440 分钟";
   if (field === "schedule.lookbackMinutes") return "回看范围必须是 30 到 10080 分钟";
   if (field === "schedule.excludeRecentMinutes") {
@@ -148,9 +153,12 @@ export function validateAlertTroubleshooterConfig(
     chats: draft.chats,
     target: draft.target,
     troubleshootingSopDoc,
+    troubleshootingSkills: draft.troubleshootingSkills.map((value) => value.trim()).filter(Boolean),
+    referenceFeishuDocs: draft.referenceFeishuDocs.map((value) => value.trim()).filter(Boolean),
     attributionRecordRoot,
     promptTemplate: draft.promptTemplate,
     queuePollIntervalMinutes: numericValue(draft.queuePollIntervalMinutes, 5),
+    dateLookbackDays: numericValue(draft.dateLookbackDays, 2),
     schedule: {
       enabled: draft.schedule.enabled,
       intervalMinutes: numericValue(draft.schedule.intervalMinutes, 30),

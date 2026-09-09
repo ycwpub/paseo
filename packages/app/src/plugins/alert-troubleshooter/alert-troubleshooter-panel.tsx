@@ -43,8 +43,11 @@ const DEFAULT_CONFIG: Omit<
   troubleshootingEnabled: true,
   autoArchiveAgents: false,
   target: { kind: "default" },
+  troubleshootingSkills: [],
+  referenceFeishuDocs: [],
   promptTemplate: "",
   queuePollIntervalMinutes: 5,
+  dateLookbackDays: 2,
   schedule: {
     enabled: true,
     intervalMinutes: 30,
@@ -62,6 +65,7 @@ export interface AlertTroubleshooterPanelSpec {
   manualDebugSelector?: "uniqueId" | "resultId";
   allowCustomBot?: boolean;
   allowAgentAutoArchive?: boolean;
+  showBambooRunnerOptions?: boolean;
   configSchema: ZodType<AlertTroubleshooterConfig>;
   runtimeSchema: ZodType<AlertTroubleshooterRuntime>;
 }
@@ -130,6 +134,12 @@ function AlertTroubleshooterProject({
   const [sopDoc, setSopDoc] = useState(
     initialConfig.success ? initialConfig.data.troubleshootingSopDoc : "",
   );
+  const [troubleshootingSkills, setTroubleshootingSkills] = useState(
+    initialConfig.success ? initialConfig.data.troubleshootingSkills.join("\n") : "",
+  );
+  const [referenceFeishuDocs, setReferenceFeishuDocs] = useState(
+    initialConfig.success ? initialConfig.data.referenceFeishuDocs.join("\n") : "",
+  );
   const [recordRoot, setRecordRoot] = useState(
     initialConfig.success ? initialConfig.data.attributionRecordRoot : "",
   );
@@ -138,6 +148,9 @@ function AlertTroubleshooterProject({
   );
   const [queuePollIntervalMinutes, setQueuePollIntervalMinutes] = useState(
     String(initialConfig.success ? initialConfig.data.queuePollIntervalMinutes : 5),
+  );
+  const [dateLookbackDays, setDateLookbackDays] = useState(
+    String(initialConfig.success ? initialConfig.data.dateLookbackDays : 2),
   );
   const [debugRecordValue, setDebugRecordValue] = useState("");
   const [queueingRecord, setQueueingRecord] = useState(false);
@@ -271,9 +284,12 @@ function AlertTroubleshooterProject({
         chats,
         target,
         troubleshootingSopDoc: sopDoc,
+        troubleshootingSkills: troubleshootingSkills.split(/\r?\n/u),
+        referenceFeishuDocs: referenceFeishuDocs.split(/\r?\n/u),
         attributionRecordRoot: recordRoot,
         promptTemplate,
         queuePollIntervalMinutes,
+        dateLookbackDays,
         schedule: {
           enabled: scheduleEnabled,
           intervalMinutes,
@@ -316,6 +332,7 @@ function AlertTroubleshooterProject({
     customBotAppId,
     customBotAppSecret,
     customBotHasAppSecret,
+    dateLookbackDays,
     enabled,
     excludeRecentMinutes,
     intervalMinutes,
@@ -329,7 +346,9 @@ function AlertTroubleshooterProject({
     sopDoc,
     spec,
     target,
+    troubleshootingSkills,
     troubleshootingEnabled,
+    referenceFeishuDocs,
   ]);
 
   const enqueueDebugRecord = useCallback(async () => {
@@ -479,6 +498,29 @@ function AlertTroubleshooterProject({
             placeholder="https://.../wiki/..."
           />
         </Field>
+        {spec.showBambooRunnerOptions ? (
+          <>
+            <Field label="增强排查 Skill（选填）" hint="每行一个 Skill 名称，原样传给排查 Agent。">
+              <FormTextInput
+                multiline
+                value={troubleshootingSkills}
+                onChangeText={setTroubleshootingSkills}
+                placeholder={"bamboo\npsm-to-code-repository"}
+              />
+            </Field>
+            <Field
+              label="参考飞书文档（选填）"
+              hint="每行一个完整飞书文档链接，作为单条排查的补充上下文。"
+            >
+              <FormTextInput
+                multiline
+                value={referenceFeishuDocs}
+                onChangeText={setReferenceFeishuDocs}
+                placeholder="https://.../wiki/..."
+              />
+            </Field>
+          </>
+        ) : null}
         <Field label="归因记录根目录" hint="系统会在该目录下一层按日期自动创建或复用日报多维表格。">
           <FormTextInput
             value={recordRoot}
@@ -573,6 +615,11 @@ function AlertTroubleshooterProject({
             {runtime.data.activeRecordId ? ` · 当前记录：${runtime.data.activeRecordId}` : ""}
           </Text>
         ) : null}
+        {runtime.success && runtime.data.lastScanAuditFile ? (
+          <Text selectable style={styles.meta}>
+            最近扫描审计：{runtime.data.lastScanAuditFile}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -597,6 +644,18 @@ function AlertTroubleshooterProject({
             keyboardType="number-pad"
           />
         </Field>
+        {spec.showBambooRunnerOptions ? (
+          <Field
+            label="排查日期回溯范围（天）"
+            hint="最终 drain 和日报轮询覆盖最近 N 天；默认今天和昨天。"
+          >
+            <FormTextInput
+              value={dateLookbackDays}
+              onChangeText={setDateLookbackDays}
+              keyboardType="number-pad"
+            />
+          </Field>
+        ) : null}
         {spec.allowAgentAutoArchive ? (
           <View style={styles.toggleRow}>
             <View style={styles.flex}>

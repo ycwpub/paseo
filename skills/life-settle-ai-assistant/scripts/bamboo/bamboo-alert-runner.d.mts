@@ -229,6 +229,8 @@ export interface PrepareSingleTroubleshootDataInput {
   troubleshooting_sop_doc?: string;
   troubleshootingSopLocalPath?: string;
   troubleshooting_sop_local_path?: string;
+  expectedRuleId?: string | number;
+  expected_rule_id?: string | number;
   outputDir?: string;
 }
 

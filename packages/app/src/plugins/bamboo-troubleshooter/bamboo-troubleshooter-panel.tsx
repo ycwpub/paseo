@@ -24,6 +24,7 @@ const SPEC: AlertTroubleshooterPanelSpec = {
   manualDebugSelector: "resultId",
   allowCustomBot: true,
   allowAgentAutoArchive: true,
+  showBambooRunnerOptions: true,
   configSchema: BambooTroubleshooterConfigSchema,
   runtimeSchema: BambooTroubleshooterRuntimeSchema,
 };

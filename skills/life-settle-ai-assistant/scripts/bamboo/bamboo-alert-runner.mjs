@@ -9984,6 +9984,8 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       troubleshooting_sop_doc,
       troubleshootingSopLocalPath,
       troubleshooting_sop_local_path,
+      expectedRuleId,
+      expected_rule_id,
       outputDir,
     } = {}) {
       const finalResultId = String(
@@ -9998,7 +10000,10 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         outputDir || (await mkdtemp(join(tmpdir(), `bamboo-single-${finalResultId}-`)));
       await mkdir(normalizedOutputDir, { recursive: true });
 
-      const prepared = await this.prepareSingleTroubleshootInputs({ resultId: finalResultId });
+      const prepared = await this.prepareSingleTroubleshootInputs({
+        resultId: finalResultId,
+        expectedRuleId: expectedRuleId || expected_rule_id,
+      });
       const ruleId = String(
         prepared?.work_item?.rule_id ||
           prepared?.inspect_result?.rule_validation?.actual_rule_id ||
@@ -14229,6 +14234,7 @@ async function main(argv) {
       bambooUrl: readOption(args, "--bamboo-url"),
       troubleshootingSopDoc: readOption(args, "--troubleshooting-sop-doc"),
       troubleshootingSopLocalPath: readOption(args, "--troubleshooting-sop-local-path"),
+      expectedRuleId: readOption(args, "--expected-rule-id"),
       outputDir: readOption(args, "--output-dir"),
     });
     const outputFile = readOption(args, "--output-file");

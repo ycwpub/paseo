@@ -31,6 +31,12 @@ export interface AlertTroubleshooterAgentStageResult {
   lastMessage: string | null;
 }
 
+export interface AlertTroubleshooterAgentContinuationInput {
+  stage: string;
+  prompt: string;
+  outputSchema?: Record<string, unknown>;
+}
+
 export interface AlertTroubleshooterRecordExecutionInput {
   config: AlertTroubleshooterConfig;
   state: PluginAppState;
@@ -45,9 +51,14 @@ export interface AlertTroubleshooterRecordExecutionInput {
     parentWikiToken: string;
     targetSpaceId: string;
   };
+  commandEnvironment?: NodeJS.ProcessEnv;
   prompt: string;
   launchAgent(
     input: AlertTroubleshooterAgentStageInput,
+  ): Promise<AlertTroubleshooterAgentStageResult>;
+  continueAgent(
+    agentId: string,
+    input: AlertTroubleshooterAgentContinuationInput,
   ): Promise<AlertTroubleshooterAgentStageResult>;
 }
 

@@ -3,6 +3,15 @@ import { createLarkRecordClientToken } from "./lark-record-client-token.js";
 
 export const BAMBOO_ATTRIBUTION_TABLE_NAME = "归因记录";
 const BAMBOO_ATTRIBUTION_MIGRATION_TABLE_PREFIX = "归因记录（迁移中）";
+const GENERATED_TABLE_NAMES = new Set([
+  "table",
+  "workflow",
+  "dashboard",
+  "数据表",
+  "工作流",
+  "仪表盘",
+  "自动化流程",
+]);
 
 export const BAMBOO_ATTRIBUTION_FIELD_NAMES = [
   "unique_id",
@@ -387,77 +396,6 @@ async function migrateAttributionTable(
   }
 }
 
-async function deleteDashboards(api: LarkAlertTroubleshooterApi, appToken: string): Promise<void> {
-  const dashboardIds: string[] = [];
-  let pageToken: string | undefined;
-  do {
-    const result = await api.request(
-      () =>
-        api.client.bitable.v1.appDashboard.list({
-          path: { app_token: appToken },
-          params: {
-            page_size: 100,
-            ...(pageToken ? { page_token: pageToken } : {}),
-          },
-        }),
-      { identity: "bot", requiredScopes: ["base:dashboard:read"] },
-    );
-    dashboardIds.push(...(result.data?.dashboards ?? []).map((dashboard) => dashboard.block_id));
-    pageToken = result.data?.has_more ? result.data.page_token : undefined;
-  } while (pageToken);
-  for (const dashboardId of dashboardIds) {
-    await api.request(
-      () =>
-        api.client.request({
-          method: "DELETE",
-          url: `${api.client.domain}/open-apis/base/v3/bases/${appToken}/dashboards/${dashboardId}`,
-        }),
-      { identity: "bot", requiredScopes: ["base:dashboard:delete"] },
-    );
-  }
-}
-
-function isGeneratedSurfacePermissionError(
-  error: unknown,
-  requiredScopes: readonly string[],
-): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    /\b(?:99991672|99991679)\b/u.test(message) &&
-    requiredScopes.some((scope) => message.includes(scope))
-  );
-}
-
-async function cleanupGeneratedSurface(
-  operation: () => Promise<void>,
-  requiredScopes: readonly string[],
-): Promise<void> {
-  try {
-    await operation();
-  } catch (error) {
-    if (isGeneratedSurfacePermissionError(error, requiredScopes)) return;
-    throw error;
-  }
-}
-
-async function disableWorkflows(api: LarkAlertTroubleshooterApi, appToken: string): Promise<void> {
-  const result = await api.request(
-    () => api.client.bitable.v1.appWorkflow.list({ path: { app_token: appToken } }),
-    { identity: "bot", requiredScopes: ["base:workflow:read"] },
-  );
-  for (const workflow of result.data?.workflows ?? []) {
-    if (workflow.status === "disabled") continue;
-    await api.request(
-      () =>
-        api.client.request({
-          method: "PATCH",
-          url: `${api.client.domain}/open-apis/base/v3/bases/${appToken}/workflows/${workflow.workflow_id}/disable`,
-        }),
-      { identity: "bot", requiredScopes: ["base:workflow:update"] },
-    );
-  }
-}
-
 async function deleteOtherTables(
   api: LarkAlertTroubleshooterApi,
   appToken: string,
@@ -476,7 +414,11 @@ async function deleteOtherTables(
   }
 }
 
-async function assertOtherTablesEmpty(
+function isGeneratedTableName(name: string | undefined): boolean {
+  return GENERATED_TABLE_NAMES.has(name?.trim().toLocaleLowerCase("en-US") ?? "");
+}
+
+async function assertOtherTablesSafeToDelete(
   api: LarkAlertTroubleshooterApi,
   appToken: string,
   attributionTableId: string,
@@ -484,6 +426,7 @@ async function assertOtherTablesEmpty(
   const tables = await listTables(api, appToken);
   for (const table of tables) {
     if (!table.table_id || table.table_id === attributionTableId) continue;
+    if (isGeneratedTableName(table.name)) continue;
     const result = await api.request(
       () =>
         api.client.bitable.v1.appTableRecord.list({
@@ -501,9 +444,9 @@ async function assertOtherTablesEmpty(
 }
 
 /**
- * Wiki-created Bases contain a default table and may contain generated
- * dashboards/workflows. Create the canonical table first so the last-table
- * restriction cannot strand the Base, then remove generated surfaces.
+ * Older Wiki-created Bases can contain example data tables named table,
+ * workflow, and dashboard. Create the canonical table first so the last-table
+ * restriction cannot strand the Base, then remove those generated tables.
  */
 export async function ensureBambooAttributionTable(
   api: LarkAlertTroubleshooterApi,
@@ -525,15 +468,7 @@ export async function ensureBambooAttributionTable(
       `Bamboo 归因记录表结构不一致：要求主字段为 unique_id，且字段仅为 ${BAMBOO_ATTRIBUTION_FIELD_NAMES.join("、")}`,
     );
   }
-  await assertOtherTablesEmpty(api, appToken, tableId);
-  await cleanupGeneratedSurface(
-    () => deleteDashboards(api, appToken),
-    ["base:dashboard:read", "base:dashboard:delete"],
-  );
-  await cleanupGeneratedSurface(
-    () => disableWorkflows(api, appToken),
-    ["base:workflow:read", "base:workflow:update"],
-  );
+  await assertOtherTablesSafeToDelete(api, appToken, tableId);
   await deleteOtherTables(api, appToken, tableId);
 
   const remaining = await listTables(api, appToken);

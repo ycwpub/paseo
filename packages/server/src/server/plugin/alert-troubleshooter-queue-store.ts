@@ -11,6 +11,7 @@ import {
   isAlertTroubleshooterRetryDue,
   nextAlertTroubleshooterRetryAt,
 } from "./alert-troubleshooter-retry-policy.js";
+import { localAlertTroubleshooterRecordId } from "./alert-troubleshooter-task-reference.js";
 
 export type AlertTroubleshooterQueueTrigger = AlertTroubleshooterTaskTrigger;
 
@@ -110,7 +111,7 @@ export class AlertTroubleshooterQueueStore {
     const timestamp = this.now().toISOString();
     const item = AlertTroubleshooterTaskSchema.parse({
       id: randomUUID(),
-      recordId: `failed:${randomUUID()}`,
+      recordId: localAlertTroubleshooterRecordId(input.uniqueId),
       uniqueId: input.uniqueId,
       resultId: input.resultId ?? null,
       tableDate: timestamp.slice(0, 10).replaceAll("-", ""),
@@ -158,7 +159,7 @@ export class AlertTroubleshooterQueueStore {
   complete(
     projectId: string,
     itemId: string,
-    agentId: string,
+    agentId: string | null,
     status: "succeeded" | "pending" | "not_support" = "succeeded",
     warning?: string,
   ): void {
@@ -175,10 +176,10 @@ export class AlertTroubleshooterQueueStore {
     itemId: string,
     error: string,
     retry: { intervalMinutes: number; maxAutomaticRetries: number },
-  ): void {
+  ): AlertTroubleshooterQueueItem | null {
     const state = this.read(projectId);
     const item = state.items.find((candidate) => candidate.id === itemId);
-    if (!item || item.status === "paused") return;
+    if (!item || item.status === "paused") return null;
     const failedAt = this.now();
     item.status = "failed";
     item.updatedAt = failedAt.toISOString();
@@ -190,6 +191,7 @@ export class AlertTroubleshooterQueueStore {
     });
     item.error = error;
     this.write(projectId, state);
+    return cloneTask(item);
   }
 
   promoteDueRetries(
@@ -251,6 +253,25 @@ export class AlertTroubleshooterQueueStore {
 
   attachAgent(projectId: string, itemId: string, agentId: string): void {
     this.patch(projectId, itemId, { status: "running", agentId, error: null });
+  }
+
+  replaceRecordReference(
+    projectId: string,
+    itemId: string,
+    input: {
+      recordId: string;
+      uniqueId: string;
+      resultId: string | null;
+      tableDate: string;
+      messageId: string | null;
+    },
+  ): AlertTroubleshooterQueueItem | null {
+    const state = this.read(projectId);
+    const item = state.items.find((candidate) => candidate.id === itemId);
+    if (!item) return null;
+    Object.assign(item, input, { updatedAt: this.now().toISOString() });
+    this.write(projectId, state);
+    return cloneTask(item);
   }
 
   pause(projectId: string, taskIds: readonly string[]): AlertTroubleshooterQueueItem[] {

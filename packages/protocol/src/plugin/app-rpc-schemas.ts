@@ -49,6 +49,9 @@ export const PluginAppConfigureRequestSchema = z.object({
   projectId: z.string().min(1),
   defaultAgent: PluginAppDefaultAgentSchema,
   data: z.record(z.string(), z.unknown()).optional(),
+  // Write-only secrets are consumed by the daemon and are never persisted in
+  // or returned with PluginAppState.
+  credentials: z.record(z.string(), z.string()).optional(),
 });
 
 export const PluginAppConfigureResponseSchema = z.object({

@@ -19,6 +19,31 @@ import type {
 
 const temporaryHomes: string[] = [];
 
+function createAgentLifecycleHarness(input?: {
+  initialPromptError?: Error | null;
+  archiveAgent?: (agentId: string) => Promise<void>;
+}) {
+  const createAgent = vi.fn(async () => ({
+    snapshot: { id: `agent-${createAgent.mock.calls.length}` },
+    liveSnapshot: { id: `agent-${createAgent.mock.calls.length}` },
+    background: true,
+    initialPromptStarted: true,
+    initialPromptError: input?.initialPromptError ?? null,
+  }));
+  const archiveAgent = vi.fn(input?.archiveAgent ?? (async () => undefined));
+  return { createAgent, archiveAgent };
+}
+
+function autoArchiveDefinitionOptions(input?: {
+  executeRecord?: AlertTroubleshooterDefinition["executeRecord"];
+  supportsAgentAutoArchive?: boolean;
+}): Partial<Pick<AlertTroubleshooterDefinition, "supportsAgentAutoArchive" | "executeRecord">> {
+  return {
+    supportsAgentAutoArchive: input?.supportsAgentAutoArchive ?? false,
+    ...(input?.executeRecord ? { executeRecord: input.executeRecord } : {}),
+  };
+}
+
 function config(patch: Partial<AlertTroubleshooterConfig> = {}): AlertTroubleshooterConfig {
   return AlertTroubleshooterConfigSchema.parse({
     botId: "bot-1",
@@ -46,7 +71,12 @@ function createHarness(input?: {
   parseCompletion?: AlertTroubleshooterDefinition["parseCompletion"];
   buildPromptAppendix?: AlertTroubleshooterDefinition["buildPromptAppendix"];
   validateRecord?: AlertTroubleshooterDefinition["validateRecord"];
+  classifyFailure?: AlertTroubleshooterDefinition["classifyFailure"];
+  executeRecord?: AlertTroubleshooterDefinition["executeRecord"];
   maxAutomaticRetries?: number;
+  supportsAgentAutoArchive?: boolean;
+  initialPromptError?: Error | null;
+  archiveAgent?: (agentId: string) => Promise<void>;
 }) {
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
   temporaryHomes.push(paseoHome);
@@ -109,6 +139,8 @@ function createHarness(input?: {
     markSucceeded: vi.fn(async () => undefined),
     markPaused: vi.fn(async () => undefined),
     markFailed: vi.fn(async () => undefined),
+    markRetryScheduled: vi.fn(async () => undefined),
+    markPending: vi.fn(async () => undefined),
   };
   Object.assign(recordStore, input?.recordStoreOverrides);
   const scanMessages = vi.fn(async () => []);
@@ -128,19 +160,15 @@ function createHarness(input?: {
       return parsed.success ? parsed.data : null;
     },
     ...(input?.validateRecord ? { validateRecord: input.validateRecord } : {}),
+    ...(input?.classifyFailure ? { classifyFailure: input.classifyFailure } : {}),
     matchesAlert: () => true,
     scanMessages,
     buildDefaultPrompt: ({ record }) => `处理 ${record.recordId}`,
     ...(input?.buildPromptAppendix ? { buildPromptAppendix: input.buildPromptAppendix } : {}),
     ...(input?.parseCompletion ? { parseCompletion: input.parseCompletion } : {}),
+    ...autoArchiveDefinitionOptions(input),
   };
-  const createAgent = vi.fn(async () => ({
-    snapshot: { id: `agent-${createAgent.mock.calls.length}` },
-    liveSnapshot: { id: `agent-${createAgent.mock.calls.length}` },
-    background: true,
-    initialPromptStarted: true,
-    initialPromptError: null,
-  }));
+  const { createAgent, archiveAgent } = createAgentLifecycleHarness(input);
   const manager = new ProjectAlertTroubleshooterManager({
     paseoHome,
     definition,
@@ -171,11 +199,20 @@ function createHarness(input?: {
     recordStore,
     createAgent: createAgent as never,
     waitForAgentCompletion: input?.waitForAgentCompletion ?? (async () => undefined),
+    archiveAgent,
     createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
     logger: createTestLogger(),
     now: () => new Date("2026-09-06T08:00:00.000Z"),
   });
-  return { paseoHome, manager, recordStore, scanMessages, createAgent, getState: () => state };
+  return {
+    paseoHome,
+    manager,
+    recordStore,
+    scanMessages,
+    createAgent,
+    archiveAgent,
+    getState: () => state,
+  };
 }
 
 function message() {
@@ -194,6 +231,22 @@ function message() {
     text: "测试报警",
     createTime: Date.parse("2026-09-06T07:59:00.000Z"),
   };
+}
+
+function findTask(
+  tasks: ReturnType<ProjectAlertTroubleshooterManager["listTasks"]>,
+  uniqueId: string,
+  options: {
+    excludedId?: string;
+    status?: ReturnType<ProjectAlertTroubleshooterManager["listTasks"]>[number]["status"];
+  } = {},
+) {
+  return tasks.find(
+    (task) =>
+      task.uniqueId === uniqueId &&
+      task.id !== options.excludedId &&
+      (options.status === undefined || task.status === options.status),
+  );
 }
 
 afterEach(() => {
@@ -337,6 +390,228 @@ describe("ProjectAlertTroubleshooterManager", () => {
       status: "failed",
       error: `写入日报多维表格失败：${permissionError}`,
     });
+  });
+
+  it("retries a local table-poll failure without treating its synthetic id as a Base record", async () => {
+    const listUnclaimed = vi
+      .fn<AlertTroubleshooterRecordStore["listUnclaimed"]>()
+      .mockRejectedValueOnce(new Error("日报服务暂时不可用"))
+      .mockResolvedValue([]);
+    const harness = createHarness({
+      recordStoreOverrides: { listUnclaimed },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "failed",
+        error: "读取或创建日报多维表格失败：日报服务暂时不可用",
+      }),
+    );
+    const failedTask = harness.manager.listTasks("prj_1")[0]!;
+
+    await expect(harness.manager.enqueueRecord("prj_1", failedTask.uniqueId)).resolves.toBe(true);
+    await vi.waitFor(() =>
+      expect(
+        findTask(harness.manager.listTasks("prj_1"), failedTask.uniqueId, {
+          status: "succeeded",
+        }),
+      ).toBeDefined(),
+    );
+
+    expect(listUnclaimed).toHaveBeenCalledTimes(2);
+    expect(harness.recordStore.getRecord).not.toHaveBeenCalled();
+    expect(harness.recordStore.markRetryScheduled).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("automatically retries a persisted legacy stage task without calling the Base record API", async () => {
+    const listUnclaimed = vi.fn<AlertTroubleshooterRecordStore["listUnclaimed"]>(async () => []);
+    const harness = createHarness({
+      config: config({ queuePollIntervalMinutes: 30 }),
+      recordStoreOverrides: { listUnclaimed },
+      maxAutomaticRetries: 3,
+    });
+    const queueDirectory = path.join(
+      harness.paseoHome,
+      "projects",
+      "prj_1",
+      "plugin-data",
+      "test-alert-plugin",
+    );
+    mkdirSync(queueDirectory, { recursive: true });
+    writeFileSync(
+      path.join(queueDirectory, "alert-queue.json"),
+      `${JSON.stringify(
+        {
+          version: 2,
+          items: [
+            {
+              id: "legacy-table-poll",
+              recordId: "failed:legacy-table-poll",
+              uniqueId: "table_poll:2026-09-06T07:00:00.000Z",
+              resultId: null,
+              tableDate: "20260906",
+              messageId: null,
+              trigger: "table",
+              status: "failed",
+              matchedCount: 1,
+              attempts: 0,
+              queuedAt: "2026-09-06T07:00:00.000Z",
+              updatedAt: "2026-09-06T07:00:00.000Z",
+              nextRetryAt: "2026-09-06T07:30:00.000Z",
+              agentId: null,
+              error: "读取或创建日报多维表格失败：旧错误",
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        id: "legacy-table-poll",
+        status: "succeeded",
+        attempts: 1,
+      }),
+    );
+
+    expect(listUnclaimed).toHaveBeenCalledTimes(1);
+    expect(harness.recordStore.getRecord).not.toHaveBeenCalled();
+    expect(harness.recordStore.markRetryScheduled).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("preserves the original stage error when a local table-poll retry also fails", async () => {
+    const listUnclaimed = vi.fn<AlertTroubleshooterRecordStore["listUnclaimed"]>(async () => {
+      throw new Error("飞书日报读取仍然失败");
+    });
+    const harness = createHarness({
+      recordStoreOverrides: { listUnclaimed },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.manager.listTasks("prj_1")).toHaveLength(1));
+    const failedTask = harness.manager.listTasks("prj_1")[0]!;
+    await harness.manager.enqueueRecord("prj_1", failedTask.uniqueId);
+
+    await vi.waitFor(() =>
+      expect(
+        findTask(harness.manager.listTasks("prj_1"), failedTask.uniqueId, {
+          excludedId: failedTask.id,
+        }),
+      ).toMatchObject({
+        status: "failed",
+        error: "读取或创建日报多维表格失败：飞书日报读取仍然失败",
+      }),
+    );
+    expect(harness.recordStore.getRecord).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("relocates a stale Base record by unique_id and persists the new record reference", async () => {
+    const staleRecord: AlertTroubleshooterRecord = {
+      recordId: "rec_stale",
+      uniqueId: "19626626",
+      resultId: "19626626",
+      tableDate: "20260906",
+      messageId: null,
+      chatId: null,
+      chatName: null,
+      messageText: "Bamboo 对账报警",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const relocatedRecord = {
+      ...staleRecord,
+      recordId: "rec_current",
+      tableDate: "20260907",
+    };
+    const harness = createHarness({
+      records: [staleRecord],
+      recordStoreOverrides: {
+        getRecord: vi.fn(async () => {
+          throw new Error("Lark API error: RecordIdNotFound (code: 1254043)");
+        }),
+        relocateRecord: vi.fn(async () => relocatedRecord),
+        resolveExecutionContext: vi.fn(async () => ({
+          wikiTarget: { spaceId: "space_current", parentNodeToken: "wiki_current" },
+          closeContext: {
+            baseToken: "base_current",
+            tableId: "tbl_current",
+            parentWikiToken: "wiki_current",
+            targetSpaceId: "space_current",
+          },
+        })),
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.recordStore.markRunning).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordId: "rec_current",
+          tableDate: "20260907",
+        }),
+      ),
+    );
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      recordId: "rec_current",
+      uniqueId: "19626626",
+      tableDate: "20260907",
+      status: "succeeded",
+    });
+    expect(harness.recordStore.resolveExecutionContext).toHaveBeenCalledWith(
+      expect.objectContaining({ tableDate: "20260907" }),
+    );
+    await harness.manager.stop();
+  });
+
+  it("stops retrying when a stale Base record cannot be relocated", async () => {
+    const staleRecord: AlertTroubleshooterRecord = {
+      recordId: "rec_deleted",
+      uniqueId: "19626626",
+      resultId: "19626626",
+      tableDate: "20260906",
+      messageId: null,
+      chatId: null,
+      chatName: null,
+      messageText: "Bamboo 对账报警",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      records: [staleRecord],
+      maxAutomaticRetries: 3,
+      recordStoreOverrides: {
+        getRecord: vi.fn(async () => {
+          throw new Error("Lark API error: RecordIdNotFound (code: 1254043)");
+        }),
+        relocateRecord: vi.fn(async () => null),
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "pending",
+        nextRetryAt: null,
+        error: "日报记录已迁移或删除，无法按 unique_id 19626626 重新定位；请刷新日报后重新创建任务",
+      }),
+    );
+
+    expect(harness.recordStore.markRetryScheduled).not.toHaveBeenCalled();
+    expect(harness.recordStore.markPending).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
   });
 
   it("renders Project variables in a custom processing prompt", async () => {
@@ -549,9 +824,56 @@ describe("ProjectAlertTroubleshooterManager", () => {
     );
 
     expect(harness.recordStore.markSucceeded).not.toHaveBeenCalled();
-    expect(harness.recordStore.markFailed).toHaveBeenCalledWith(
+    expect(harness.recordStore.markRetryScheduled).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_invalid_completion" }),
     );
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("keeps an authorization blocker pending without scheduling another automatic retry", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_permission",
+      uniqueId: "123456",
+      resultId: "123456",
+      tableDate: "20260906",
+      messageId: "om_permission",
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "Bamboo 对账报警 result_id=123456",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      records: [record],
+      maxAutomaticRetries: 3,
+      waitForAgentCompletion: async () => {
+        throw new Error("缺少 base:record:read 权限");
+      },
+      classifyFailure: ({ message: failureMessage }) => ({
+        disposition: "pending",
+        reason: failureMessage,
+      }),
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "pending",
+        error: "缺少 base:record:read 权限",
+        attempts: 1,
+        nextRetryAt: null,
+      }),
+    );
+
+    expect(harness.recordStore.markPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recordId: "rec_permission",
+        error: "缺少 base:record:read 权限",
+      }),
+    );
+    expect(harness.recordStore.markRetryScheduled).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).not.toHaveBeenCalled();
     await harness.manager.stop();
   });
 
@@ -589,5 +911,179 @@ describe("ProjectAlertTroubleshooterManager", () => {
       expect.objectContaining({ recordId: "rec_missing_result" }),
     );
     await harness.manager.stop();
+  });
+
+  it("auto-archives the task agent after a successful terminal result", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_auto_archive",
+      uniqueId: "result_id:3001",
+      resultId: "3001",
+      tableDate: "20260909",
+      messageId: null,
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "需要自动归档的报警",
+      messageTime: "2026-09-09T08:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ autoArchiveAgents: true }),
+      records: [record],
+      supportsAgentAutoArchive: true,
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.archiveAgent).toHaveBeenCalledWith("agent-1"));
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      status: "succeeded",
+      agentId: "agent-1",
+    });
+    expect(harness.recordStore.markSucceeded.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.archiveAgent.mock.invocationCallOrder[0]!,
+    );
+    await harness.manager.stop();
+  });
+
+  it("keeps task agents active when automatic archiving is disabled", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_keep_agent",
+      uniqueId: "result_id:3002",
+      resultId: "3002",
+      tableDate: "20260909",
+      messageId: null,
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "保留 Agent 的报警",
+      messageTime: "2026-09-09T08:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ autoArchiveAgents: false }),
+      records: [record],
+      supportsAgentAutoArchive: true,
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({ status: "succeeded" }),
+    );
+
+    expect(harness.archiveAgent).not.toHaveBeenCalled();
+    await harness.manager.stop();
+  });
+
+  it("auto-archives every agent created by a multi-stage task attempt", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_multi_stage",
+      uniqueId: "result_id:3003",
+      resultId: "3003",
+      tableDate: "20260909",
+      messageId: null,
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "多阶段排查报警",
+      messageTime: "2026-09-09T08:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ autoArchiveAgents: true }),
+      records: [record],
+      supportsAgentAutoArchive: true,
+      executeRecord: async (execution) => {
+        const investigation = await execution.launchAgent({
+          stage: "investigation",
+          title: "排查",
+          prompt: "排查",
+        });
+        await execution.launchAgent({
+          stage: "sop_summary",
+          title: "SOP 汇总",
+          prompt: "汇总",
+        });
+        const review = await execution.launchAgent({
+          stage: "review",
+          title: "审核",
+          prompt: "审核",
+        });
+        return {
+          agentId: investigation.agentId,
+          completion: { status: "succeeded", summary: review.lastMessage ?? "审核通过" },
+        };
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.archiveAgent).toHaveBeenCalledTimes(3));
+
+    expect(harness.archiveAgent.mock.calls.map(([agentId]) => agentId)).toEqual([
+      "agent-1",
+      "agent-2",
+      "agent-3",
+    ]);
+    await harness.manager.stop();
+  });
+
+  it("auto-archives an agent whose initial prompt fails", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_prompt_failure",
+      uniqueId: "result_id:3004",
+      resultId: "3004",
+      tableDate: "20260909",
+      messageId: null,
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "首轮提示失败",
+      messageTime: "2026-09-09T08:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ autoArchiveAgents: true }),
+      records: [record],
+      supportsAgentAutoArchive: true,
+      initialPromptError: new Error("模型启动失败"),
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.archiveAgent).toHaveBeenCalledWith("agent-1"));
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      status: "failed",
+      error: "模型启动失败",
+    });
+    await harness.manager.stop();
+  });
+
+  it("does not change the task result when automatic archiving fails", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_archive_failure",
+      uniqueId: "result_id:3005",
+      resultId: "3005",
+      tableDate: "20260909",
+      messageId: null,
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "归档接口失败",
+      messageTime: "2026-09-09T08:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ autoArchiveAgents: true }),
+      records: [record],
+      supportsAgentAutoArchive: true,
+      archiveAgent: async () => {
+        throw new Error("归档服务不可用");
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.archiveAgent).toHaveBeenCalledTimes(1));
+    await harness.manager.stop();
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      status: "succeeded",
+      error: null,
+    });
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
   });
 });

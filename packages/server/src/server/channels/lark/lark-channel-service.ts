@@ -726,9 +726,17 @@ export class LarkChannelService {
   ): Promise<NormalizedLarkMessageEvent[]> {
     const bot = this.store.getBot(botId);
     if (!bot) throw new Error(`飞书机器人 ${botId} 不存在`);
+    return this.listChatMessagesWithConfig(bot.config, chatId, window);
+  }
+
+  async listChatMessagesWithConfig(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    window: { start: Date; end: Date },
+  ): Promise<NormalizedLarkMessageEvent[]> {
     const messages = await readLarkChatHistoryWithIdentityFallback({
       adapter: this.adapter,
-      config: bot.config,
+      config,
       chatId,
       options: {
         startTime: Math.floor(window.start.getTime() / 1000),
@@ -741,7 +749,7 @@ export class LarkChannelService {
       const normalized = normalizeLarkApiMessage(message, chatId);
       if (!normalized) continue;
       expandedMessages.push(
-        ...(await resolveLarkMergedForwardMessage(this.adapter, bot.config, normalized)),
+        ...(await resolveLarkMergedForwardMessage(this.adapter, config, normalized)),
       );
     }
     return expandedMessages.filter((message) => {

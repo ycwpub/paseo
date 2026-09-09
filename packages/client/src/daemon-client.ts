@@ -6650,6 +6650,7 @@ export class DaemonClient {
     projectId: string;
     defaultAgent: PluginAppDefaultAgent;
     data?: Record<string, unknown>;
+    credentials?: Record<string, string>;
   }): Promise<{ app: PluginAppState | null; error: string | null }> {
     return this.resourceRpc.configurePluginApp(input);
   }

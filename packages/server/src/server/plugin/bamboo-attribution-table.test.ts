@@ -29,13 +29,7 @@ function createApi(input?: {
     Object.entries(input?.records ?? {}).map(([tableId, records]) => [tableId, [...records]]),
   );
   let createdTableCount = 0;
-  const request = vi.fn(async (payload: { method: string; url: string }) => {
-    operations.push(`${payload.method} ${payload.url}`);
-    return { code: 0 };
-  });
   const client = {
-    domain: "https://open.feishu.cn",
-    request,
     bitable: {
       v1: {
         appTable: {
@@ -129,54 +123,24 @@ function createApi(input?: {
             },
           ),
         },
-        appDashboard: {
-          list: vi.fn(async () => ({
-            code: 0,
-            data: {
-              dashboards: [{ block_id: "dash_default", name: "仪表盘" }],
-              has_more: false,
-              page_token: "",
-            },
-          })),
-        },
-        appWorkflow: {
-          list: vi.fn(async () => ({
-            code: 0,
-            data: {
-              workflows: [
-                {
-                  workflow_id: "wkf_default",
-                  title: "自动化流程",
-                  status: "enabled",
-                },
-              ],
-            },
-          })),
-        },
       },
     },
   };
   const api = {
     client,
-    userRequestOptions: {},
     request: async <T>(operation: () => Promise<T>) => operation(),
   } as unknown as LarkAlertTroubleshooterApi;
   return { api, client, operations, recordsByTable, tables };
 }
 
 describe("Bamboo attribution table", () => {
-  it("creates the canonical table before deleting generated Base surfaces", async () => {
+  it("creates the canonical table before deleting the generated default data table", async () => {
     const { api, client, operations, tables } = createApi();
 
     await expect(ensureBambooAttributionTable(api, "app_daily")).resolves.toBe("tbl_created_1");
 
     expect(tables).toEqual([{ table_id: "tbl_created_1", name: BAMBOO_ATTRIBUTION_TABLE_NAME }]);
-    expect(operations).toEqual([
-      "create canonical table",
-      "DELETE https://open.feishu.cn/open-apis/base/v3/bases/app_daily/dashboards/dash_default",
-      "PATCH https://open.feishu.cn/open-apis/base/v3/bases/app_daily/workflows/wkf_default/disable",
-      "delete table tbl_default",
-    ]);
+    expect(operations).toEqual(["create canonical table", "delete table tbl_default"]);
     expect(client.bitable.v1.appTable.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -213,27 +177,30 @@ describe("Bamboo attribution table", () => {
     expect(tables).toEqual([{ table_id: "tbl_attribution", name: BAMBOO_ATTRIBUTION_TABLE_NAME }]);
   });
 
-  it("keeps the canonical table usable when generated dashboard or workflow cleanup lacks scope", async () => {
+  it("deletes generated table, workflow, and dashboard data tables even with sample records", async () => {
     const { api, client, tables } = createApi({
       tables: [
         { table_id: "tbl_attribution", name: BAMBOO_ATTRIBUTION_TABLE_NAME },
-        { table_id: "tbl_default", name: "数据表" },
+        { table_id: "tbl_default", name: "table" },
+        { table_id: "tbl_workflow", name: "workflow" },
+        { table_id: "tbl_dashboard", name: "dashboard" },
       ],
       fields: [...BAMBOO_ATTRIBUTION_FIELD_NAMES],
+      records: {
+        tbl_default: [{ record_id: "rec_default", fields: { Text: "sample" } }],
+        tbl_workflow: [{ record_id: "rec_workflow", fields: { Text: "sample" } }],
+        tbl_dashboard: [{ record_id: "rec_dashboard", fields: { Text: "sample" } }],
+      },
     });
-    client.bitable.v1.appDashboard.list.mockRejectedValueOnce(
-      new Error("Lark API error: missing base:dashboard:read (code: 99991672)"),
-    );
-    client.bitable.v1.appWorkflow.list.mockRejectedValueOnce(
-      new Error("Lark API error: missing base:workflow:read (code: 99991672)"),
-    );
 
     await expect(ensureBambooAttributionTable(api, "app_daily")).resolves.toBe("tbl_attribution");
 
     expect(tables).toEqual([{ table_id: "tbl_attribution", name: BAMBOO_ATTRIBUTION_TABLE_NAME }]);
-    expect(client.bitable.v1.appTable.delete).toHaveBeenCalledWith({
-      path: { app_token: "app_daily", table_id: "tbl_default" },
-    });
+    expect(client.bitable.v1.appTableRecord.list).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: expect.objectContaining({ table_id: "tbl_workflow" }),
+      }),
+    );
   });
 
   it("migrates a non-canonical attribution table and preserves unique records", async () => {
@@ -291,17 +258,21 @@ describe("Bamboo attribution table", () => {
     ]);
   });
 
-  it("does not delete a legacy table that still contains records", async () => {
-    const { api, client } = createApi();
-    client.bitable.v1.appTableRecord.list.mockResolvedValueOnce({
-      code: 0,
-      data: { items: [{ record_id: "rec_existing" }] },
+  it("does not delete an unknown business table that still contains records", async () => {
+    const { api, client } = createApi({
+      tables: [
+        { table_id: "tbl_attribution", name: BAMBOO_ATTRIBUTION_TABLE_NAME },
+        { table_id: "tbl_business", name: "人工补充记录" },
+      ],
+      fields: [...BAMBOO_ATTRIBUTION_FIELD_NAMES],
+      records: {
+        tbl_business: [{ record_id: "rec_existing", fields: { Text: "keep" } }],
+      },
     });
 
     await expect(ensureBambooAttributionTable(api, "app_daily")).rejects.toThrow(
       "请先迁移并按 unique_id 去重",
     );
     expect(client.bitable.v1.appTable.delete).not.toHaveBeenCalled();
-    expect(client.request).not.toHaveBeenCalled();
   });
 });

@@ -1,18 +1,18 @@
 import type { LarkBotApplicationRequirements } from "@getpaseo/protocol/channel/lark/rpc-schemas";
 
 export const PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES = [
-  // Create the daily Base node below the configured Wiki root.
+  // Resolve the configured Wiki root with the selected bot identity.
+  "wiki:wiki:readonly",
+  // Move a newly created Drive Base below the configured Wiki root.
   "wiki:node:create",
-  // Inspect the default table created with the daily Base.
+  // Create the daily Base in Drive without Wiki-generated sample tables.
+  "base:app:create",
+  // Inspect the one blank table created with the daily Base.
   "base:table:read",
-  // Replace generated Base surfaces with the canonical attribution table.
+  // Replace the blank or legacy generated tables with the canonical attribution table.
   "base:table:create",
   "base:table:delete",
   "base:table:update",
-  "base:dashboard:read",
-  "base:dashboard:delete",
-  "base:workflow:read",
-  "base:workflow:update",
   // Inspect and create the fields used by the troubleshooting queue.
   "base:field:read",
   "base:field:create",

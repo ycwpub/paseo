@@ -10,6 +10,7 @@ import {
   publishBambooSopSummary,
   renderBambooRunReport,
   validateBambooModelResult,
+  validateBambooFinalDrain,
   validateBambooResultDirectory,
   type BambooAgentRunnerDependencies,
 } from "./bamboo-agent-runner.js";
@@ -82,7 +83,7 @@ function runnerAuditPayload(subcommand: string): Record<string, unknown> {
       ],
     };
   }
-  if (subcommand === "final-drain-check") {
+  if (subcommand === "auto-troubleshoot-drain" || subcommand === "final-drain-check") {
     return {
       ready_to_report_complete: true,
       final_drain: { ready_to_report_complete: true },
@@ -116,6 +117,11 @@ describe("Bamboo agent runner", () => {
       return { stdout: "{}", stderr: "" };
     });
 
+    const commandEnvironment = {
+      ...process.env,
+      FEISHU_BOT_APP_ID: "cli_selected",
+      FEISHU_BOT_APP_SECRET: "selected-secret",
+    };
     const result = await prepareBambooAgentData(
       {
         config: config(),
@@ -123,6 +129,7 @@ describe("Bamboo agent runner", () => {
         workspaceCwd: cwd,
         outputDirectory,
         auditFile,
+        commandEnvironment,
       },
       { resolveRunnerPath: async () => "/runner.mjs", run },
     );
@@ -142,7 +149,7 @@ describe("Bamboo agent runner", () => {
         "--output-file",
         auditFile,
       ],
-      expect.objectContaining({ cwd }),
+      expect.objectContaining({ cwd, env: commandEnvironment }),
     );
   });
 
@@ -257,6 +264,16 @@ describe("Bamboo agent runner", () => {
       },
       dependencies,
     );
+    await validateBambooFinalDrain(
+      {
+        workspaceCwd: cwd,
+        scanDirectoryUrl: "https://example.com/wiki/root",
+        resultDirectory,
+        workItemsFile,
+        auditFile: path.join(resultDirectory, "final-drain-check.json"),
+      },
+      dependencies,
+    );
     await renderBambooRunReport(
       {
         workspaceCwd: cwd,
@@ -271,6 +288,7 @@ describe("Bamboo agent runner", () => {
       "validate-model-result-json",
       "validate-result-dir",
       "close-ready-work-items",
+      "auto-troubleshoot-drain",
       "final-drain-check",
       "render-run-report",
     ]);

@@ -1,10 +1,12 @@
 export {
   AlertTroubleshooterChatSchema as BambooTroubleshooterChatSchema,
+  AlertTroubleshooterBotSchema as BambooTroubleshooterBotSchema,
   AlertTroubleshooterConfigSchema as BambooTroubleshooterConfigSchema,
   AlertTroubleshooterRuntimeSchema as BambooTroubleshooterRuntimeSchema,
   AlertTroubleshooterScheduleSchema as BambooTroubleshooterScheduleSchema,
   AlertTroubleshooterTargetSchema as BambooTroubleshooterTargetSchema,
   type AlertTroubleshooterChat as BambooTroubleshooterChat,
+  type AlertTroubleshooterBot as BambooTroubleshooterBot,
   type AlertTroubleshooterConfig as BambooTroubleshooterConfig,
   type AlertTroubleshooterRuntime as BambooTroubleshooterRuntime,
   type AlertTroubleshooterSchedule as BambooTroubleshooterSchedule,

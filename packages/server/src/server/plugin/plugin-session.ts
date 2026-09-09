@@ -368,6 +368,7 @@ export class PluginSession {
               message.projectId,
               message.defaultAgent,
               message.data,
+              message.credentials,
             ),
             error: null,
           },

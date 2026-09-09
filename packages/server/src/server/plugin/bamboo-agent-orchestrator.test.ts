@@ -69,7 +69,7 @@ const STATE: PluginAppState = {
   updatedAt: "2026-09-08T00:00:00.000Z",
 };
 
-async function createHarness(reviewPassed = true) {
+async function createHarness(reviewPasses: readonly boolean[] = [true]) {
   const workspaceCwd = await mkdtemp(path.join(tmpdir(), "paseo-bamboo-agent-pipeline-"));
   temporaryDirectories.push(workspaceCwd);
   const item = {
@@ -97,30 +97,34 @@ async function createHarness(reviewPassed = true) {
   });
   const stages: string[] = [];
   const prompts: string[] = [];
+  let reviewRound = 0;
+  const writeInvestigationArtifacts = async () => {
+    await writeBambooAgentJsonAtomic(paths.investigationResult, {
+      version: 1,
+      result_id: "19562663",
+      status: "succeeded",
+      summary: "异常由上游账单状态延迟导致",
+      attribution_result: "[业务问题]上游账单状态延迟",
+      rule_id: "rule-1",
+      writeback_owner: "parent_orchestrator",
+    });
+    await writeFile(
+      paths.investigationReport,
+      "# 排查结果\n\n## 结论\n上游账单状态延迟，已核对异常样本与日志证据。\n",
+      "utf8",
+    );
+    await writeFile(
+      paths.ruleSopDraft,
+      "# 规则 SOP 草稿\n\n先核对规则 SQL，再按账单 ID 查询状态和日志。\n",
+      "utf8",
+    );
+  };
   const launchAgent: AlertTroubleshooterRecordExecutionInput["launchAgent"] = vi.fn(
     async (stage) => {
       stages.push(`agent:${stage.stage}`);
       prompts.push(stage.prompt);
       if (stage.stage === "investigation") {
-        await writeBambooAgentJsonAtomic(paths.investigationResult, {
-          version: 1,
-          result_id: "19562663",
-          status: "succeeded",
-          summary: "异常由上游账单状态延迟导致",
-          attribution_result: "[业务问题]上游账单状态延迟",
-          rule_id: "rule-1",
-          writeback_owner: "parent_orchestrator",
-        });
-        await writeFile(
-          paths.investigationReport,
-          "# 排查结果\n\n## 结论\n上游账单状态延迟，已核对异常样本与日志证据。\n",
-          "utf8",
-        );
-        await writeFile(
-          paths.ruleSopDraft,
-          "# 规则 SOP 草稿\n\n先核对规则 SQL，再按账单 ID 查询状态和日志。\n",
-          "utf8",
-        );
+        await writeInvestigationArtifacts();
       } else if (stage.stage === "sop_summary") {
         await writeBambooAgentJsonAtomic(paths.sopSummaryResult, {
           version: 1,
@@ -135,6 +139,8 @@ async function createHarness(reviewPassed = true) {
           "utf8",
         );
       } else if (stage.stage === "review") {
+        const reviewPassed = reviewPasses[Math.min(reviewRound, reviewPasses.length - 1)] ?? false;
+        reviewRound += 1;
         const reviewInput = JSON.parse(await readFile(paths.reviewInput, "utf8")) as {
           checked_files: string[];
         };
@@ -249,6 +255,15 @@ async function createHarness(reviewPassed = true) {
       await writeBambooAgentJsonAtomic(auditFile, result);
       return result;
     }),
+    validateFinalDrain: vi.fn(async ({ auditFile }) => {
+      events.push("code:strict-drain");
+      const result = {
+        ready_to_report_complete: true,
+        final_drain: { ready_to_report_complete: true },
+      };
+      await writeBambooAgentJsonAtomic(auditFile, result);
+      return result;
+    }),
     renderRunReport: vi.fn(async ({ auditFile }) => {
       events.push("code:report");
       const result = {
@@ -293,6 +308,12 @@ async function createHarness(reviewPassed = true) {
       events.push(`finished:${stage.stage}`);
       return result;
     },
+    continueAgent: async (agentId, continuation) => {
+      events.push(`continued:${continuation.stage}`);
+      prompts.push(continuation.prompt);
+      await writeInvestigationArtifacts();
+      return { agentId, lastMessage: '{"status":"completed"}' };
+    },
   };
   return { dependencies, events, input, launchAgent, paths, prompts, stages };
 }
@@ -320,6 +341,7 @@ describe("executeBambooAgentPipeline", () => {
       "code:validate-result-dir",
       "code:close",
       "code:drain",
+      "code:strict-drain",
       "code:report",
     ]);
     expect(result).toEqual({
@@ -336,15 +358,36 @@ describe("executeBambooAgentPipeline", () => {
     );
   });
 
-  it("blocks close after final publication when the independent review fails", async () => {
-    const harness = await createHarness(false);
+  it("returns review blockers to the original investigation agent before closing", async () => {
+    const harness = await createHarness([false, true]);
 
-    await expect(executeBambooAgentPipeline(harness.input, harness.dependencies)).rejects.toThrow(
-      "返工要求：补充账单状态 RPC 查询结果",
-    );
+    await expect(
+      executeBambooAgentPipeline(harness.input, harness.dependencies),
+    ).resolves.toMatchObject({
+      agentId: "agent-investigation",
+      completion: { status: "succeeded" },
+    });
 
-    expect(harness.dependencies.publishDocument).toHaveBeenCalledOnce();
-    expect(harness.dependencies.publishSop).toHaveBeenCalledOnce();
+    expect(harness.events).toContain("continued:investigation_rework");
+    expect(harness.prompts).toContainEqual(expect.stringContaining("补充账单状态 RPC 查询结果"));
+    expect(harness.dependencies.publishDocument).toHaveBeenCalledTimes(2);
+    expect(harness.dependencies.publishSop).toHaveBeenCalledTimes(2);
+    expect(harness.dependencies.closeReadyWorkItem).toHaveBeenCalledOnce();
+  });
+
+  it("stops review rework after the bounded retry count and leaves the record pending", async () => {
+    const harness = await createHarness([false, false, false]);
+
+    await expect(
+      executeBambooAgentPipeline(harness.input, harness.dependencies),
+    ).rejects.toMatchObject({
+      name: "AlertTroubleshooterPendingError",
+      reasonCode: "review_rework_exhausted",
+    });
+
+    expect(
+      harness.events.filter((event) => event === "continued:investigation_rework"),
+    ).toHaveLength(2);
     expect(harness.dependencies.closeReadyWorkItem).not.toHaveBeenCalled();
   });
 
@@ -376,5 +419,44 @@ describe("executeBambooAgentPipeline", () => {
 
     expect(result.persistenceHandled).toBe(true);
     expect(result.completionWarning).toContain("通知回写部分失败");
+  });
+
+  it("keeps a global drain blocker visible without rolling back the closed record", async () => {
+    const harness = await createHarness();
+    harness.dependencies.buildRunSummary = vi.fn(async ({ auditFile }) => {
+      const result = {
+        ready_to_report_complete: false,
+        final_drain: { ready_to_report_complete: false },
+        unfinished_records: [{ result_id: "another-result", status: "init" }],
+      };
+      await writeBambooAgentJsonAtomic(auditFile, result);
+      return result;
+    });
+    harness.dependencies.validateFinalDrain = vi.fn(async ({ auditFile }) => {
+      const result = {
+        ready_to_report_complete: false,
+        final_drain: { ready_to_report_complete: false },
+        blockers: ["base_status_init_remaining"],
+      };
+      await writeBambooAgentJsonAtomic(auditFile, result);
+      return result;
+    });
+    harness.dependencies.renderRunReport = vi.fn(async ({ auditFile }) => {
+      const result = {
+        success: true,
+        ready_to_report_complete: false,
+        ready_to_report_complete_reason: "仍有其它日报记录待处理",
+      };
+      await writeBambooAgentJsonAtomic(auditFile, result);
+      return result;
+    });
+
+    const result = await executeBambooAgentPipeline(harness.input, harness.dependencies);
+
+    expect(result).toMatchObject({
+      completion: { status: "succeeded" },
+      persistenceHandled: true,
+      completionWarning: "最终 drain 尚未清零：仍有其它日报记录待处理",
+    });
   });
 });

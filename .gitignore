@@ -96,3 +96,5 @@ packages/cli/release-linux/
 
 # Local build caches
 /.local-build-cache/
+/.tmp/
+/.argos-worktree/

@@ -1,5 +1,6 @@
 import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api.js";
 import { ensureBambooAttributionTable } from "./bamboo-attribution-table.js";
+import { createBambooDailyBase } from "./bamboo-daily-base-creator.js";
 
 export interface AlertTroubleshooterTableLocation {
   appToken: string;
@@ -49,12 +50,8 @@ export async function resolveAlertTroubleshooterWikiRoot(
 ): Promise<AlertTroubleshooterWikiRoot> {
   const token = wikiToken(rootUrl);
   const result = await api.request(
-    () =>
-      api.client.wiki.v2.space.getNode(
-        { params: { token, obj_type: "wiki" } },
-        api.userRequestOptions,
-      ),
-    { identity: "user", requiredScopes: ["wiki:wiki:readonly"] },
+    () => api.client.wiki.v2.space.getNode({ params: { token, obj_type: "wiki" } }),
+    { identity: "bot", requiredScopes: ["wiki:wiki:readonly"] },
   );
   const node = result.data?.node;
   if (!node?.space_id || !node.node_token) {
@@ -77,18 +74,15 @@ async function findDailyNode(
   do {
     const result = await api.request(
       () =>
-        api.client.wiki.v2.spaceNode.list(
-          {
-            path: { space_id: root.spaceId },
-            params: {
-              parent_node_token: root.nodeToken,
-              page_size: 50,
-              ...(pageToken ? { page_token: pageToken } : {}),
-            },
+        api.client.wiki.v2.spaceNode.list({
+          path: { space_id: root.spaceId },
+          params: {
+            parent_node_token: root.nodeToken,
+            page_size: 50,
+            ...(pageToken ? { page_token: pageToken } : {}),
           },
-          api.userRequestOptions,
-        ),
-      { identity: "user", requiredScopes: ["wiki:wiki:readonly"] },
+        }),
+      { identity: "bot", requiredScopes: ["wiki:wiki:readonly"] },
     );
     for (const node of result.data?.items ?? []) {
       if (node.title === title && node.obj_token && node.node_token) {
@@ -117,7 +111,16 @@ async function createDailyNode(
   api: LarkAlertTroubleshooterApi,
   root: AlertTroubleshooterWikiRoot,
   title: string,
+  pluginId: string,
 ): Promise<{ appToken: string; nodeToken: string }> {
+  if (pluginId.includes("bamboo")) {
+    return createBambooDailyBase({
+      api,
+      spaceId: root.spaceId,
+      parentNodeToken: root.nodeToken,
+      title,
+    });
+  }
   const result = await api.request(
     () =>
       api.client.wiki.v2.spaceNode.create({
@@ -176,7 +179,7 @@ export async function resolveDailyAlertTable(input: {
   const title = dailyTitle(input.pluginId, input.dateKey);
   const node =
     (await findDailyNode(input.api, root, title)) ??
-    (await createDailyNode(input.api, root, title));
+    (await createDailyNode(input.api, root, title, input.pluginId));
   return {
     appToken: node.appToken,
     tableId: await resolveTableId(input.api, node.appToken, input.pluginId),

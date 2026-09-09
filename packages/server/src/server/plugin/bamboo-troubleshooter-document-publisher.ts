@@ -167,6 +167,7 @@ async function runPublisherCommand(input: {
   wikiTarget: BambooTroubleshooterWikiTarget;
   auditFile: string;
   workspaceCwd: string;
+  commandEnvironment?: NodeJS.ProcessEnv;
 }): Promise<void> {
   try {
     await input.dependencies.run(
@@ -193,7 +194,7 @@ async function runPublisherCommand(input: {
       ],
       {
         cwd: input.workspaceCwd,
-        env: process.env,
+        env: input.commandEnvironment ?? process.env,
         timeout: RUNNER_TIMEOUT_MS,
         maxBuffer: 20 * 1024 * 1024,
       },
@@ -254,6 +255,7 @@ export async function publishBambooTroubleshooterDocument(
     wikiTarget: BambooTroubleshooterWikiTarget;
     markdownFile?: string;
     auditFile?: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooTroubleshooterPublisherDependencies = defaultDependencies,
 ): Promise<BambooTroubleshooterDocumentPublication> {
@@ -285,6 +287,7 @@ export async function publishBambooTroubleshooterDocument(
     wikiTarget: input.wikiTarget,
     auditFile,
     workspaceCwd: input.workspaceCwd,
+    commandEnvironment: input.commandEnvironment,
   });
   const result = await readPublishResult(auditFile);
   const documentUrl = validatePublishResult(result, input.wikiTarget);

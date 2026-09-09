@@ -9,7 +9,6 @@ import {
   ensureBambooAgentArtifactDirectories,
   existingBambooArtifact,
   readBambooInvestigationResult,
-  readBambooReviewResult,
   readBambooSopSummaryResult,
   readRequiredBambooMarkdown,
   writeBambooAgentJsonAtomic,
@@ -24,6 +23,7 @@ import {
   publishBambooSopSummary,
   renderBambooRunReport,
   validateBambooModelResult,
+  validateBambooFinalDrain,
   validateBambooResultDirectory,
   type BambooCloseReadyResult,
   type BambooModelValidation,
@@ -34,9 +34,14 @@ import {
   type BambooSopPublication,
 } from "./bamboo-agent-runner.js";
 import {
+  buildBambooInvestigationReworkPrompt,
+  reviewBambooAgentArtifacts,
+} from "./bamboo-agent-review-gate.js";
+import {
   publishBambooTroubleshooterDocument,
   type BambooTroubleshooterDocumentPublication,
 } from "./bamboo-troubleshooter-document-publisher.js";
+import { AlertTroubleshooterPendingError } from "./alert-troubleshooter-failure-policy.js";
 
 const STAGE_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -47,6 +52,7 @@ const STAGE_OUTPUT_SCHEMA: Record<string, unknown> = {
   required: ["status", "artifacts"],
   additionalProperties: false,
 };
+const MAX_REVIEW_REWORKS = 2;
 
 export interface BambooAgentOrchestratorDependencies {
   prepareAgentData(input: {
@@ -55,6 +61,7 @@ export interface BambooAgentOrchestratorDependencies {
     workspaceCwd: string;
     outputDirectory: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooPreparedAgentData>;
   publishDocument(input: {
     config: AlertTroubleshooterConfig;
@@ -63,6 +70,7 @@ export interface BambooAgentOrchestratorDependencies {
     wikiTarget: { spaceId: string; parentNodeToken: string };
     markdownFile?: string;
     auditFile?: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooTroubleshooterDocumentPublication>;
   publishSop(input: {
     config: AlertTroubleshooterConfig;
@@ -71,6 +79,7 @@ export interface BambooAgentOrchestratorDependencies {
     ruleId: string;
     markdownFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooSopPublication>;
   validateModelResult(input: {
     workspaceCwd: string;
@@ -78,18 +87,21 @@ export interface BambooAgentOrchestratorDependencies {
     workItemFile: string;
     markdownFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooModelValidation>;
   validateResultDirectory(input: {
     workspaceCwd: string;
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooResultDirectoryValidation>;
   closeReadyWorkItem(input: {
     workspaceCwd: string;
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooCloseReadyResult>;
   buildRunSummary(input: {
     workspaceCwd: string;
@@ -97,12 +109,22 @@ export interface BambooAgentOrchestratorDependencies {
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
+  }): Promise<BambooRunSummary>;
+  validateFinalDrain(input: {
+    workspaceCwd: string;
+    scanDirectoryUrl: string;
+    resultDirectory: string;
+    workItemsFile: string;
+    auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooRunSummary>;
   renderRunReport(input: {
     workspaceCwd: string;
     resultDirectory: string;
     runSummaryFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   }): Promise<BambooRunReport>;
 }
 
@@ -119,6 +141,7 @@ export const defaultBambooAgentOrchestratorDependencies: BambooAgentOrchestrator
   validateResultDirectory: validateBambooResultDirectory,
   closeReadyWorkItem: closeBambooReadyWorkItem,
   buildRunSummary: buildBambooRunSummary,
+  validateFinalDrain: validateBambooFinalDrain,
   renderRunReport: renderBambooRunReport,
 };
 
@@ -168,25 +191,6 @@ function sopSummaryPrompt(input: {
     'JSON 必须包含 version=1、result_id、status="ready|skipped"、summary，可发布时必须包含 rule_id。',
     `先把最终 SOP Markdown 写入 ${input.summaryMarkdown}.tmp，再原子重命名为 ${input.summaryMarkdown}。`,
     "最终回复只确认本地文件已经完成，不要在回复中传递 SOP 正文。",
-  ].join("\n\n");
-}
-
-function reviewPrompt(input: {
-  reviewInput: string;
-  reviewResult: string;
-  checkedFiles: readonly string[];
-}): string {
-  return [
-    "你是 Bamboo 排查审核 Agent。你拥有独立 fresh context，只进行只读审核。",
-    "先运行 `life-settle-ai-assistant guide bamboo-alert-groups-scan-and-troubleshoot`，严格执行最终发布审计和 close 门禁。",
-    `审核输入清单：${input.reviewInput}`,
-    `必须逐一检查：${input.checkedFiles.join("、")}`,
-    "不得修改排查结果、不得执行飞书/Base/Bamboo/群消息写入、不得关闭任务。",
-    "必须核对最终 result JSON、最终发布 audit 的 mergedMarkdown、SOP audit 和 Runner validator 输出；任一缺失、validator 未通过、发布正文仍含占位内容时必须 review_passed=false。",
-    `先把审核 JSON 写入 ${input.reviewResult}.tmp，再原子重命名为 ${input.reviewResult}。`,
-    "JSON 必须包含 review_passed、blockers[]、required_rework_prompt、checked_files[]、validation_command、review_summary。",
-    "审核不通过时，required_rework_prompt 必须给出可直接交回排查 Agent 的明确返工要求。",
-    "最终回复只确认审核文件已经完成，不要在回复中传递审核正文。",
   ].join("\n\n");
 }
 
@@ -255,6 +259,7 @@ async function preparePipelineArtifacts(input: {
     workspaceCwd: input.execution.workspace.cwd,
     outputDirectory: input.paths.preparedDirectory,
     auditFile: input.paths.preparedAudit,
+    commandEnvironment: input.execution.commandEnvironment,
   });
   const workItem = buildRunnerWorkItem({
     execution: input.execution,
@@ -392,6 +397,7 @@ async function publishAgentArtifacts(input: {
     wikiTarget: input.execution.wikiTarget,
     markdownFile: input.paths.investigationReport,
     auditFile: input.paths.publishDocumentAudit,
+    commandEnvironment: input.execution.commandEnvironment,
   });
   let sop: BambooSopPublication;
   if (input.sopSummary.status === "ready") {
@@ -407,6 +413,7 @@ async function publishAgentArtifacts(input: {
       ruleId,
       markdownFile: input.paths.sopSummaryMarkdown,
       auditFile: input.paths.publishSopAudit,
+      commandEnvironment: input.execution.commandEnvironment,
     });
   } else {
     sop = {
@@ -463,63 +470,6 @@ async function writeFinalModelResult(input: {
   });
 }
 
-function modelValidationPassed(validation: BambooModelValidation): boolean {
-  return validation.overallValid === true || validation.overall_valid === true;
-}
-
-async function runReviewGate(input: {
-  execution: AlertTroubleshooterRecordExecutionInput;
-  paths: BambooAgentArtifactPaths;
-  resultId: string;
-  validation: BambooModelValidation;
-}): Promise<void> {
-  const checkedFiles = [
-    input.paths.workItem,
-    input.paths.investigationResult,
-    input.paths.investigationReport,
-    input.paths.publishDocumentAudit,
-    input.paths.publishSopAudit,
-    input.paths.modelValidationAudit,
-  ];
-  await writeBambooAgentJsonAtomic(input.paths.reviewInput, {
-    version: 1,
-    result_id: input.resultId,
-    checked_files: checkedFiles,
-    output_file: input.paths.reviewResult,
-  });
-  await input.execution.launchAgent({
-    stage: "review",
-    title: `Bamboo 审核 · ${input.resultId}`,
-    prompt: reviewPrompt({
-      reviewInput: input.paths.reviewInput,
-      reviewResult: input.paths.reviewResult,
-      checkedFiles,
-    }),
-    outputSchema: STAGE_OUTPUT_SCHEMA,
-    labels: { bambooAgentRole: "review", bambooResultId: input.resultId },
-  });
-  const review = await readBambooReviewResult(input.paths.reviewResult);
-  const uncheckedFiles = checkedFiles.filter((file) => !review.checked_files.includes(file));
-  const blockers = [
-    ...(modelValidationPassed(input.validation)
-      ? []
-      : [
-          input.validation.hardFailCode ??
-            input.validation.hard_fail_code ??
-            "runner_model_validation_failed",
-        ]),
-    ...review.blockers,
-    ...uncheckedFiles.map((file) => `review_did_not_check:${file}`),
-  ];
-  if (review.review_passed && blockers.length === 0) return;
-  const rework = review.required_rework_prompt.trim();
-  throw new Error(
-    `Bamboo 排查审核未通过：${blockers.join("；") || review.review_summary}${
-      rework ? `。返工要求：${rework}` : ""
-    }`,
-  );
-}
-
 function closeWarning(close: BambooCloseReadyResult): string | undefined {
   const notificationFailures = close.close_results.filter(
     (result) => result.notification_close.success === false,
@@ -541,23 +491,119 @@ async function runFinalDrain(input: {
       scanDirectoryUrl: input.execution.config.attributionRecordRoot,
       resultDirectory: input.paths.runDirectory,
       workItemsFile: input.paths.workItems,
+      auditFile: input.paths.autoDrainAudit,
+      commandEnvironment: input.execution.commandEnvironment,
+    });
+    const strictDrain = await input.dependencies.validateFinalDrain({
+      workspaceCwd: input.execution.workspace.cwd,
+      scanDirectoryUrl: input.execution.config.attributionRecordRoot,
+      resultDirectory: input.paths.runDirectory,
+      workItemsFile: input.paths.workItems,
       auditFile: input.paths.runSummary,
+      commandEnvironment: input.execution.commandEnvironment,
     });
     const report = await input.dependencies.renderRunReport({
       workspaceCwd: input.execution.workspace.cwd,
       resultDirectory: input.paths.runDirectory,
       runSummaryFile: input.paths.runSummary,
       auditFile: input.paths.runReport,
+      commandEnvironment: input.execution.commandEnvironment,
     });
     const ready =
       summary.ready_to_report_complete === true &&
       summary.final_drain?.ready_to_report_complete === true &&
+      strictDrain.ready_to_report_complete === true &&
+      strictDrain.final_drain?.ready_to_report_complete === true &&
       report.ready_to_report_complete;
     return ready ? undefined : `最终 drain 尚未清零：${report.ready_to_report_complete_reason}`;
   } catch (error) {
     return `业务排查已关闭，但最终 drain/report 生成失败：${
       error instanceof Error ? error.message : String(error)
     }`;
+  }
+}
+
+async function runReviewedBambooInvestigation(input: {
+  execution: AlertTroubleshooterRecordExecutionInput;
+  dependencies: BambooAgentOrchestratorDependencies;
+  paths: BambooAgentArtifactPaths;
+  resultId: string;
+  prepared: BambooPreparedAgentData;
+}): Promise<{
+  investigation: Awaited<ReturnType<typeof runInvestigationStage>>;
+  publication: BambooPublishedArtifacts;
+}> {
+  let investigation = await runInvestigationStage(input);
+  let publication!: BambooPublishedArtifacts;
+  for (let reviewRound = 1; ; reviewRound += 1) {
+    const sopSummary = await runSopSummaryStage({
+      execution: input.execution,
+      paths: input.paths,
+      resultId: input.resultId,
+      prepared: input.prepared,
+    });
+    assertLocalArtifacts({
+      resultId: input.resultId,
+      investigation: investigation.result,
+      reportMarkdown: investigation.reportMarkdown,
+      sopSummary: sopSummary.result,
+      sopMarkdown: sopSummary.markdown,
+    });
+    publication = await publishAgentArtifacts({
+      execution: input.execution,
+      dependencies: input.dependencies,
+      paths: input.paths,
+      investigation: investigation.result,
+      sopSummary: sopSummary.result,
+      prepared: input.prepared,
+    });
+    await writeFinalModelResult({
+      paths: input.paths,
+      investigation: investigation.result,
+      publication,
+    });
+    const modelValidation = await input.dependencies.validateModelResult({
+      workspaceCwd: input.execution.workspace.cwd,
+      resultFile: input.paths.investigationResult,
+      workItemFile: input.paths.workItem,
+      markdownFile: input.paths.investigationReport,
+      auditFile: input.paths.modelValidationAudit,
+      commandEnvironment: input.execution.commandEnvironment,
+    });
+    const review = await reviewBambooAgentArtifacts({
+      execution: input.execution,
+      paths: input.paths,
+      resultId: input.resultId,
+      validation: modelValidation,
+      round: reviewRound,
+    });
+    if (review.passed) return { investigation, publication };
+    if (reviewRound > MAX_REVIEW_REWORKS) {
+      throw new AlertTroubleshooterPendingError(
+        `Bamboo 排查审核经过 ${MAX_REVIEW_REWORKS} 次返工后仍未通过：${
+          review.blockers.join("；") || review.reviewSummary
+        }${review.requiredReworkPrompt ? `。返工要求：${review.requiredReworkPrompt}` : ""}`,
+        "review_rework_exhausted",
+      );
+    }
+    await input.execution.continueAgent(investigation.agentId, {
+      stage: "investigation_rework",
+      prompt: buildBambooInvestigationReworkPrompt({
+        resultId: input.resultId,
+        review,
+        paths: input.paths,
+      }),
+      outputSchema: STAGE_OUTPUT_SCHEMA,
+    });
+    investigation = {
+      agentId: investigation.agentId,
+      result: await readBambooInvestigationResult(input.paths.investigationResult),
+      reportMarkdown: await readRequiredBambooMarkdown(
+        input.paths.investigationReport,
+        "返工排查报告",
+      ),
+    };
+    await readRequiredBambooMarkdown(input.paths.ruleSopDraft, "返工规则 SOP 草稿");
   }
 }
 
@@ -579,51 +625,19 @@ export async function executeBambooAgentPipeline(
     paths,
     resultId,
   });
-  const investigation = await runInvestigationStage({ execution: input, paths, resultId });
-  const sopSummary = await runSopSummaryStage({
-    execution: input,
-    paths,
-    resultId,
-    prepared,
-  });
-  assertLocalArtifacts({
-    resultId,
-    investigation: investigation.result,
-    reportMarkdown: investigation.reportMarkdown,
-    sopSummary: sopSummary.result,
-    sopMarkdown: sopSummary.markdown,
-  });
-  const publication = await publishAgentArtifacts({
+  const { investigation, publication } = await runReviewedBambooInvestigation({
     execution: input,
     dependencies,
     paths,
-    investigation: investigation.result,
-    sopSummary: sopSummary.result,
-    prepared,
-  });
-  await writeFinalModelResult({
-    paths,
-    investigation: investigation.result,
-    publication,
-  });
-  const modelValidation = await dependencies.validateModelResult({
-    workspaceCwd: input.workspace.cwd,
-    resultFile: paths.investigationResult,
-    workItemFile: paths.workItem,
-    markdownFile: paths.investigationReport,
-    auditFile: paths.modelValidationAudit,
-  });
-  await runReviewGate({
-    execution: input,
-    paths,
     resultId,
-    validation: modelValidation,
+    prepared,
   });
   const directoryValidation = await dependencies.validateResultDirectory({
     workspaceCwd: input.workspace.cwd,
     resultDirectory: paths.runDirectory,
     workItemsFile: paths.workItems,
     auditFile: paths.resultDirectoryValidationAudit,
+    commandEnvironment: input.commandEnvironment,
   });
   const readiness = directoryValidation.per_result_close_readiness.find(
     (item) => item.result_id === resultId,
@@ -633,10 +647,11 @@ export async function executeBambooAgentPipeline(
     directoryValidation.close_ready !== 1 ||
     !readiness?.ready_for_close
   ) {
-    throw new Error(
+    throw new AlertTroubleshooterPendingError(
       `Bamboo 结果目录未通过 close 门禁：${
         readiness?.blockers.join("；") || "runner validate-result-dir 返回未就绪"
       }`,
+      "close_readiness_blocked",
     );
   }
   const close = await dependencies.closeReadyWorkItem({
@@ -644,6 +659,7 @@ export async function executeBambooAgentPipeline(
     resultDirectory: paths.runDirectory,
     workItemsFile: paths.workItems,
     auditFile: paths.closeReadyAudit,
+    commandEnvironment: input.commandEnvironment,
   });
   const businessCloseSucceeded =
     close.ready_count === 1 &&

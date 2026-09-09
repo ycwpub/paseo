@@ -492,6 +492,7 @@ export class DaemonResourceRpcClient {
     projectId: string;
     defaultAgent: PluginAppDefaultAgent;
     data?: Record<string, unknown>;
+    credentials?: Record<string, string>;
   }): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
       message: { type: "plugin.app.configure.request", ...input },

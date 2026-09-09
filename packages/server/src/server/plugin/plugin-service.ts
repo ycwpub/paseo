@@ -420,6 +420,16 @@ export class PluginService {
   private readonly bundledMarketplacePaths: string[];
   private httpRuntime: PluginHttpServiceRuntime | null = null;
   private appRuntime: PluginAppRuntime | null = null;
+  private appCredentialRuntime: {
+    configure(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      data?: Record<string, unknown>;
+      credentials?: Record<string, string>;
+    }): Record<string, unknown> | undefined;
+    delete?(input: { pluginId: string; appId: string; projectId: string }): void;
+  } | null = null;
   private alertTroubleshooterRuntime: {
     enqueueRecord(input: {
       pluginId: string;
@@ -505,6 +515,10 @@ export class PluginService {
     this.reconcileProjectBindings();
   }
 
+  attachAppCredentialRuntime(runtime: NonNullable<PluginService["appCredentialRuntime"]>): void {
+    this.appCredentialRuntime = runtime;
+  }
+
   attachAlertTroubleshooterRuntime(runtime: {
     enqueueRecord(input: {
       pluginId: string;
@@ -586,6 +600,7 @@ export class PluginService {
     projectId: string,
     defaultAgent: PluginAppState["defaultAgent"],
     data?: Record<string, unknown>,
+    credentials?: Record<string, string>,
   ): PluginAppState {
     if (!defaultAgent) throw new Error("Default Agent provider and model are required");
     this.assertProjectBindingAvailable(projectId, {
@@ -594,12 +609,20 @@ export class PluginService {
       appId,
       pluginProjectId: this.appPluginProjectId(pluginId, appId, projectId),
     });
+    const safeData =
+      this.appCredentialRuntime?.configure({
+        pluginId,
+        appId,
+        projectId,
+        data,
+        credentials,
+      }) ?? data;
     const app = this.requireAppRuntime().configure({
       pluginId,
       appId,
       projectId,
       defaultAgent,
-      ...(data ? { data } : {}),
+      ...(safeData ? { data: safeData } : {}),
     });
     this.claimAppProject(app);
     return app;
@@ -649,6 +672,7 @@ export class PluginService {
   deleteAppProject(pluginId: string, appId: string, projectId: string): boolean {
     const deleted = this.requireAppRuntime().deleteProject(pluginId, appId, projectId);
     if (deleted) {
+      this.appCredentialRuntime?.delete?.({ pluginId, appId, projectId });
       this.projectBindings.release(projectId, this.appPluginProjectId(pluginId, appId, projectId));
     }
     return deleted;

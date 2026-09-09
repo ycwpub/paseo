@@ -25,6 +25,11 @@ import {
 } from "./alert-troubleshooter-task-actions";
 
 function triggerLabel(task: AlertTroubleshooterTask): string {
+  if (task.uniqueId.startsWith("table_poll:")) return "从日报表轮询认领";
+  if (task.uniqueId.startsWith("scan:")) return "扫描飞书群消息";
+  if (task.recordId.startsWith("local:") && task.uniqueId.startsWith("message_id:")) {
+    return "将监听消息写入日报表";
+  }
   if (task.trigger === "message") return "监听到 1 条消息并写入日报表";
   if (task.trigger === "schedule")
     return `扫描到 ${task.matchedCount} 条消息，当前消息已写入日报表`;

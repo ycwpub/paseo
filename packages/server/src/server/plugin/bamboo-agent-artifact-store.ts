@@ -62,6 +62,7 @@ export interface BambooAgentArtifactPaths {
   reviewResult: string;
   closeReadyAudit: string;
   closeAudit: string;
+  autoDrainAudit: string;
   runSummary: string;
   runReport: string;
   previousReviewResult: string | null;
@@ -118,6 +119,7 @@ export function bambooAgentArtifactPaths(input: {
     reviewResult: path.join(runDirectory, `${safeSegment(input.resultId)}.review.json`),
     closeReadyAudit: path.join(runDirectory, "close-ready.json"),
     closeAudit: path.join(runDirectory, `close-${safeSegment(input.resultId)}.json`),
+    autoDrainAudit: path.join(runDirectory, "auto-troubleshoot-drain.json"),
     runSummary: path.join(runDirectory, "run-summary.json"),
     runReport: path.join(runDirectory, "run-report.json"),
     previousReviewResult,

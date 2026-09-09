@@ -181,4 +181,32 @@ describe("AlertTroubleshooterQueueStore", () => {
     expect(store.deleteMany("prj_1", [queued.id]).map((task) => task.id)).toEqual([queued.id]);
     expect(store.list("prj_1")).toEqual([]);
   });
+
+  it("persists a relocated Base record reference on an existing task", () => {
+    const { store } = createStore();
+    const task = store.enqueue("prj_1", {
+      recordId: "rec_stale",
+      uniqueId: "19626626",
+      resultId: "19626626",
+      tableDate: "20260906",
+      trigger: "table",
+    });
+
+    expect(
+      store.replaceRecordReference("prj_1", task.id, {
+        recordId: "rec_current",
+        uniqueId: "19626626",
+        resultId: "19626626",
+        tableDate: "20260907",
+        messageId: null,
+      }),
+    ).toMatchObject({
+      recordId: "rec_current",
+      tableDate: "20260907",
+    });
+    expect(store.get("prj_1", task.id)).toMatchObject({
+      recordId: "rec_current",
+      tableDate: "20260907",
+    });
+  });
 });

@@ -265,6 +265,9 @@ import { PluginAppService } from "./plugin/plugin-app-service.js";
 import { BambooTroubleshooterManager } from "./plugin/bamboo-troubleshooter-manager.js";
 import { ArgosTroubleshooterManager } from "./plugin/argos-troubleshooter-manager.js";
 import { LarkAlertTroubleshooterRecordStore } from "./plugin/alert-troubleshooter-record-store.js";
+import { BambooBotCredentialStore } from "./plugin/bamboo-bot-credential-store.js";
+import { BambooBotCredentialResolver } from "./plugin/bamboo-bot-credential-resolver.js";
+import { BambooBotCredentialService } from "./plugin/bamboo-bot-credential-service.js";
 import { waitForAlertTroubleshooterAgent as waitForAlertTroubleshooterAgentWithTimeout } from "./plugin/alert-troubleshooter-agent-wait.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
@@ -1688,6 +1691,11 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
+  const bambooBotCredentialStore = new BambooBotCredentialStore(config.paseoHome);
+  const bambooBotCredentialResolver = new BambooBotCredentialResolver(
+    larkChannelStore,
+    bambooBotCredentialStore,
+  );
   const larkChannelAdapter = new OfficialLarkChannelClientAdapter({ logger });
   const larkDirectoryStore = new LarkDirectoryStore({
     paseoHome: config.paseoHome,
@@ -1894,9 +1902,11 @@ export async function createPaseoDaemon(
     listHttpTargets: () => pluginService.listEnabledHttpTargets(),
   });
   pluginService.attachAppRuntime(pluginAppService);
+  pluginService.attachAppCredentialRuntime(
+    new BambooBotCredentialService(bambooBotCredentialStore),
+  );
   const alertTroubleshooterRecordStore = new LarkAlertTroubleshooterRecordStore(
-    larkChannelStore,
-    larkUserOAuthService,
+    bambooBotCredentialResolver,
   );
   const waitForAlertTroubleshooterAgent = async (agentId: string) => {
     const result = await waitForAlertTroubleshooterAgentWithTimeout({
@@ -1920,8 +1930,15 @@ export async function createPaseoDaemon(
     recordStore: alertTroubleshooterRecordStore,
     createAgent,
     waitForAgentCompletion: waitForAlertTroubleshooterAgent,
+    continueAgent: async (agentId, prompt, outputSchema) => {
+      const result = await agentManager.runAgent(agentId, prompt, { outputSchema });
+      return { lastMessage: result.finalText || null };
+    },
     cancelAgent: async (agentId) => {
       await cancelAgentRunCommand({ agentManager, logger }, agentId);
+    },
+    archiveAgent: async (agentId) => {
+      await archiveAgentCommand({ agentManager, agentStorage, logger }, agentId);
     },
     createProjectWorkspace: async (project, title) => {
       const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
@@ -1933,8 +1950,18 @@ export async function createPaseoDaemon(
       await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
       return workspace;
     },
-    listChatMessages: (botId, chatId, window) =>
-      larkChannelService.listChatMessages(botId, chatId, window),
+    listChatMessages: (bot, chatId, window) =>
+      typeof bot === "string"
+        ? larkChannelService.listChatMessages(bot, chatId, window)
+        : larkChannelService.listChatMessagesWithConfig(
+            bambooBotCredentialResolver.resolve(bot).config,
+            chatId,
+            window,
+          ),
+    resolveCommandEnvironment: (alertConfig) =>
+      bambooBotCredentialResolver.commandEnvironment(alertConfig),
+    credentialResolver: bambooBotCredentialResolver,
+    startBotEvents: (botConfig, handler) => larkChannelAdapter.startEvents(botConfig, handler),
     logger,
   });
   argosTroubleshooterManager = new ArgosTroubleshooterManager({

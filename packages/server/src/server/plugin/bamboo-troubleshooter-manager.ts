@@ -23,11 +23,15 @@ import { isBambooAlertMessage } from "./bamboo-alert-message.js";
 import { type BambooTroubleshooterDocumentPublication } from "./bamboo-troubleshooter-document-publisher.js";
 import { BAMBOO_MAX_AUTOMATIC_RETRIES } from "./alert-troubleshooter-retry-policy.js";
 import {
-  defaultBambooAgentOrchestratorDependencies,
   executeBambooAgentPipeline,
   type BambooAgentOrchestrator,
   type BambooAgentOrchestratorDependencies,
 } from "./bamboo-agent-orchestrator.js";
+import { resolveBambooAgentOrchestratorDependencies } from "./bamboo-agent-orchestrator-dependencies.js";
+import { classifyBambooExecutionFailure } from "./bamboo-execution-failure-policy.js";
+import { BambooDedicatedBotListener } from "./bamboo-dedicated-bot-listener.js";
+import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
+import type { LarkChannelClientAdapter } from "../channels/lark/lark-client-adapter.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -39,6 +43,7 @@ type ManagerOptions = ConstructorParameters<typeof ProjectAlertTroubleshooterMan
 
 export class BambooTroubleshooterManager {
   private readonly manager: ProjectAlertTroubleshooterManager;
+  private readonly dedicatedBotListener: BambooDedicatedBotListener | null;
 
   constructor(
     options: Omit<ManagerOptions, "definition"> & {
@@ -54,10 +59,13 @@ export class BambooTroubleshooterManager {
       agentOrchestratorDependencies?: Partial<BambooAgentOrchestratorDependencies>;
       agentOrchestrator?: BambooAgentOrchestrator;
       listChatMessages: (
-        botId: string,
+        bot: string | AlertTroubleshooterConfig,
         chatId: string,
         window: AlertScanWindow,
       ) => Promise<NormalizedLarkMessageEvent[]>;
+      resolveCommandEnvironment?: (config: AlertTroubleshooterConfig) => NodeJS.ProcessEnv;
+      credentialResolver?: Pick<BambooBotCredentialResolver, "resolve">;
+      startBotEvents?: LarkChannelClientAdapter["startEvents"];
     },
   ) {
     this.manager = new ProjectAlertTroubleshooterManager({
@@ -71,6 +79,8 @@ export class BambooTroubleshooterManager {
         agentTitle: "Bamboo 对账自动排查",
         labelKey: "bambooTroubleshooter",
         maxAutomaticRetries: BAMBOO_MAX_AUTOMATIC_RETRIES,
+        supportsAgentAutoArchive: true,
+        classifyFailure: classifyBambooExecutionFailure,
         parseConfig: (value) => {
           const parsed = BambooTroubleshooterConfigSchema.safeParse(value);
           return parsed.success ? parsed.data : null;
@@ -94,43 +104,41 @@ export class BambooTroubleshooterManager {
           buildBambooPrompt(config, trigger, record, wikiTarget),
         buildPromptAppendix: ({ wikiTarget }) => buildBambooPromptAppendix(wikiTarget),
         executeRecord: (input) =>
-          (options.agentOrchestrator ?? executeBambooAgentPipeline)(input, {
-            prepareAgentData:
-              options.agentOrchestratorDependencies?.prepareAgentData ??
-              defaultBambooAgentOrchestratorDependencies.prepareAgentData,
-            publishDocument:
-              options.publishDocument ??
-              options.agentOrchestratorDependencies?.publishDocument ??
-              defaultBambooAgentOrchestratorDependencies.publishDocument,
-            publishSop:
-              options.agentOrchestratorDependencies?.publishSop ??
-              defaultBambooAgentOrchestratorDependencies.publishSop,
-            validateModelResult:
-              options.agentOrchestratorDependencies?.validateModelResult ??
-              defaultBambooAgentOrchestratorDependencies.validateModelResult,
-            validateResultDirectory:
-              options.agentOrchestratorDependencies?.validateResultDirectory ??
-              defaultBambooAgentOrchestratorDependencies.validateResultDirectory,
-            closeReadyWorkItem:
-              options.agentOrchestratorDependencies?.closeReadyWorkItem ??
-              defaultBambooAgentOrchestratorDependencies.closeReadyWorkItem,
-            buildRunSummary:
-              options.agentOrchestratorDependencies?.buildRunSummary ??
-              defaultBambooAgentOrchestratorDependencies.buildRunSummary,
-            renderRunReport:
-              options.agentOrchestratorDependencies?.renderRunReport ??
-              defaultBambooAgentOrchestratorDependencies.renderRunReport,
-          }),
+          (options.agentOrchestrator ?? executeBambooAgentPipeline)(
+            {
+              ...input,
+              commandEnvironment: options.resolveCommandEnvironment?.(input.config),
+            },
+            resolveBambooAgentOrchestratorDependencies({
+              overrides: options.agentOrchestratorDependencies,
+              publishDocument: options.publishDocument,
+            }),
+          ),
       },
     });
+    this.dedicatedBotListener =
+      options.credentialResolver && options.startBotEvents
+        ? new BambooDedicatedBotListener({
+            listProjects: () =>
+              options.pluginService.listAppProjects(
+                BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
+                BAMBOO_TROUBLESHOOTER_APP_ID,
+              ),
+            credentialResolver: options.credentialResolver,
+            startEvents: options.startBotEvents,
+            onMessage: (botAppId, event) => this.manager.observeIncomingMessage(botAppId, event),
+            logger: options.logger,
+          })
+        : null;
   }
 
   start(): void {
     this.manager.start();
+    this.dedicatedBotListener?.start();
   }
 
-  stop(): Promise<void> {
-    return this.manager.stop();
+  async stop(): Promise<void> {
+    await Promise.all([this.manager.stop(), this.dedicatedBotListener?.stop()]);
   }
 
   observeIncomingMessage(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
@@ -160,7 +168,7 @@ export class BambooTroubleshooterManager {
 
 async function collectScheduledBambooAlerts(
   listChatMessages: (
-    botId: string,
+    bot: string | AlertTroubleshooterConfig,
     chatId: string,
     window: AlertScanWindow,
   ) => Promise<NormalizedLarkMessageEvent[]>,
@@ -182,10 +190,14 @@ async function collectScheduledBambooAlerts(
           ? window.start
           : new Date(Math.max(window.start.getTime(), latestMessageTime + 1));
       if (start > window.end) continue;
-      const messages = await listChatMessages(config.botId, chat.chatId, {
-        start,
-        end: window.end,
-      });
+      const messages = await listChatMessages(
+        config.bot.kind === "existing" ? config.bot.botId : config,
+        chat.chatId,
+        {
+          start,
+          end: window.end,
+        },
+      );
       for (const message of messages) {
         if (isBambooAlertMessage(message.text, message.messageType)) {
           alerts.set(message.messageId, message);

@@ -22,6 +22,8 @@ const SPEC: AlertTroubleshooterPanelSpec = {
   runtimeDataKey: BAMBOO_TROUBLESHOOTER_RUNTIME_DATA_KEY,
   productName: "Bamboo",
   manualDebugSelector: "resultId",
+  allowCustomBot: true,
+  allowAgentAutoArchive: true,
   configSchema: BambooTroubleshooterConfigSchema,
   runtimeSchema: BambooTroubleshooterRuntimeSchema,
 };

@@ -35,12 +35,13 @@ import { AlertTroubleshooterTaskListPage } from "./alert-troubleshooter-task-lis
 
 const DEFAULT_CONFIG: Omit<
   AlertTroubleshooterConfig,
-  "botId" | "chats" | "troubleshootingSopDoc" | "attributionRecordRoot"
+  "bot" | "botId" | "chats" | "troubleshootingSopDoc" | "attributionRecordRoot"
 > = {
   version: 4,
   enabled: true,
   listenEnabled: true,
   troubleshootingEnabled: true,
+  autoArchiveAgents: false,
   target: { kind: "default" },
   promptTemplate: "",
   queuePollIntervalMinutes: 5,
@@ -59,6 +60,8 @@ export interface AlertTroubleshooterPanelSpec {
   runtimeDataKey: string;
   productName: string;
   manualDebugSelector?: "uniqueId" | "resultId";
+  allowCustomBot?: boolean;
+  allowAgentAutoArchive?: boolean;
   configSchema: ZodType<AlertTroubleshooterConfig>;
   runtimeSchema: ZodType<AlertTroubleshooterRuntime>;
 }
@@ -98,7 +101,24 @@ function AlertTroubleshooterProject({
   const [troubleshootingEnabled, setTroubleshootingEnabled] = useState(
     initialConfig.success ? initialConfig.data.troubleshootingEnabled : true,
   );
+  const [autoArchiveAgents, setAutoArchiveAgents] = useState(
+    initialConfig.success ? initialConfig.data.autoArchiveAgents : false,
+  );
   const [botId, setBotId] = useState(initialConfig.success ? initialConfig.data.botId : "");
+  const [botKind, setBotKind] = useState<"existing" | "custom">(
+    initialConfig.success ? initialConfig.data.bot.kind : "existing",
+  );
+  const [customBotAppId, setCustomBotAppId] = useState(
+    initialConfig.success && initialConfig.data.bot.kind === "custom"
+      ? initialConfig.data.bot.appId
+      : "",
+  );
+  const [customBotAppSecret, setCustomBotAppSecret] = useState("");
+  const [customBotHasAppSecret, setCustomBotHasAppSecret] = useState(
+    initialConfig.success &&
+      initialConfig.data.bot.kind === "custom" &&
+      initialConfig.data.bot.hasAppSecret,
+  );
   const [chats, setChats] = useState<AlertTroubleshooterChat[]>(
     initialConfig.success ? initialConfig.data.chats : [],
   );
@@ -189,9 +209,9 @@ function AlertTroubleshooterProject({
   const debugByResultId = spec.manualDebugSelector === "resultId";
 
   useEffect(() => {
-    if (botId || !status?.activeBotId) return;
+    if (botKind !== "existing" || botId || !status?.activeBotId) return;
     setBotId(status.activeBotId);
-  }, [botId, status?.activeBotId]);
+  }, [botId, botKind, status?.activeBotId]);
 
   const addChat = useCallback(() => {
     if (!pendingChatId || chats.some((chat) => chat.chatId === pendingChatId)) return;
@@ -242,7 +262,12 @@ function AlertTroubleshooterProject({
         enabled,
         listenEnabled,
         troubleshootingEnabled,
+        autoArchiveAgents,
         botId,
+        botKind,
+        customBotAppId,
+        customBotCredentialId: project.projectId,
+        customBotHasAppSecret: customBotHasAppSecret || !!customBotAppSecret.trim(),
         chats,
         target,
         troubleshootingSopDoc: sopDoc,
@@ -266,8 +291,15 @@ function AlertTroubleshooterProject({
         projectId: project.projectId,
         defaultAgent: { provider, model },
         data: { [spec.configDataKey]: validation.config },
+        ...(botKind === "custom" && customBotAppSecret.trim()
+          ? { credentials: { bambooBotAppSecret: customBotAppSecret.trim() } }
+          : {}),
       });
       if (response.error || !response.app) throw new Error(response.error ?? "保存配置失败");
+      if (botKind === "custom" && customBotAppSecret.trim()) {
+        setCustomBotHasAppSecret(true);
+        setCustomBotAppSecret("");
+      }
       setSaved(true);
     } catch (saveError) {
       setError(errorMessage(saveError));
@@ -276,9 +308,14 @@ function AlertTroubleshooterProject({
     }
   }, [
     agent,
+    autoArchiveAgents,
     botId,
+    botKind,
     chats,
     client,
+    customBotAppId,
+    customBotAppSecret,
+    customBotHasAppSecret,
     enabled,
     excludeRecentMinutes,
     intervalMinutes,
@@ -335,15 +372,59 @@ function AlertTroubleshooterProject({
           </View>
           <Switch value={enabled} onValueChange={setEnabled} accessibilityLabel="启用自动排查" />
         </View>
-        <SelectField
-          label="飞书机器人"
-          value={botId || null}
-          selectedDisplay={selectedBotDisplay}
-          options={botOptions}
-          onChange={setBotId}
-          placeholder="选择机器人"
-          emptyText="请先在渠道中配置飞书机器人"
-        />
+        {spec.allowCustomBot ? (
+          <Field label="机器人来源">
+            <SegmentedControl
+              value={botKind}
+              onValueChange={(value) => setBotKind(value)}
+              options={[
+                { value: "existing", label: "已有机器人" },
+                { value: "custom", label: "自定义机器人" },
+              ]}
+            />
+          </Field>
+        ) : null}
+        {botKind === "existing" ? (
+          <SelectField
+            label="飞书机器人"
+            value={botId || null}
+            selectedDisplay={selectedBotDisplay}
+            options={botOptions}
+            onChange={setBotId}
+            placeholder="选择机器人"
+            emptyText="请先在渠道中配置飞书机器人"
+          />
+        ) : (
+          <>
+            <Field
+              label="自定义机器人 App ID"
+              hint="该机器人只保存于当前 Bamboo 对账项目，不会出现在渠道聊天、替身或提醒中。"
+            >
+              <FormTextInput
+                value={customBotAppId}
+                onChangeText={setCustomBotAppId}
+                autoCapitalize="none"
+                placeholder="cli_xxx"
+              />
+            </Field>
+            <Field
+              label="自定义机器人 App Secret"
+              hint={
+                customBotHasAppSecret
+                  ? "已配置。留空将保留原 App Secret。"
+                  : "首次配置必须填写，保存后不会回显。"
+              }
+            >
+              <FormTextInput
+                value={customBotAppSecret}
+                onChangeText={setCustomBotAppSecret}
+                autoCapitalize="none"
+                secureTextEntry
+                placeholder={customBotHasAppSecret ? "留空保留现有密钥" : "输入 App Secret"}
+              />
+            </Field>
+          </>
+        )}
         <View style={styles.toggleRow}>
           <View style={styles.flex}>
             <Text style={styles.label}>群消息监听</Text>
@@ -357,12 +438,17 @@ function AlertTroubleshooterProject({
         </View>
         <LarkChatDirectoryField
           label="添加监听群"
-          hint="支持按群名称或 oc_xxx 搜索；一个项目可监听多个群。"
-          appId={selectedBot?.appId ?? ""}
+          hint={
+            botKind === "custom"
+              ? "自定义机器人请输入 oc_xxx；一个项目可监听多个群。"
+              : "支持按群名称或 oc_xxx 搜索；一个项目可监听多个群。"
+          }
+          appId={botKind === "existing" ? (selectedBot?.appId ?? "") : customBotAppId.trim()}
           chatId={pendingChatId}
           chats={directoryChats}
           onChange={setPendingChatId}
           resolveChats={channel.resolveDirectoryChats}
+          allowDirectChatId={botKind === "custom"}
         />
         <Button variant="outline" leftIcon={Plus} disabled={!pendingChatId} onPress={addChat}>
           添加监听群
@@ -511,6 +597,21 @@ function AlertTroubleshooterProject({
             keyboardType="number-pad"
           />
         </Field>
+        {spec.allowAgentAutoArchive ? (
+          <View style={styles.toggleRow}>
+            <View style={styles.flex}>
+              <Text style={styles.label}>Agent 执行完成后自动归档</Text>
+              <Text style={styles.description}>
+                每次任务尝试结束后，自动归档本次创建的排查、SOP 汇总和审核 Agent。
+              </Text>
+            </View>
+            <Switch
+              value={autoArchiveAgents}
+              onValueChange={setAutoArchiveAgents}
+              accessibilityLabel="Agent 执行完成后自动归档"
+            />
+          </View>
+        ) : null}
         <Field
           label="处理任务提示词"
           hint="留空使用内置提示词。支持下方内置变量和 Project 配置中的自定义变量。"
@@ -618,6 +719,13 @@ export function AlertTroubleshooterPanel({
       {(project) =>
         (() => {
           const config = spec.configSchema.safeParse(project.data[spec.configDataKey]);
+          let larkAppId = "";
+          if (config.success) {
+            larkAppId =
+              config.data.bot.kind === "custom"
+                ? config.data.bot.appId
+                : (botAppIds.get(config.data.bot.botId)?.trim() ?? "");
+          }
           return taskProjectId === project.projectId ? (
             <AlertTroubleshooterTaskListPage
               key={`${project.projectId}:tasks`}
@@ -625,8 +733,10 @@ export function AlertTroubleshooterPanel({
               serverId={serverId}
               pluginId={spec.pluginId}
               appId={spec.appId}
-              larkAppId={config.success ? (botAppIds.get(config.data.botId)?.trim() ?? "") : ""}
-              larkBotId={config.success ? config.data.botId : ""}
+              larkAppId={larkAppId}
+              larkBotId={
+                config.success && config.data.bot.kind === "existing" ? config.data.bot.botId : ""
+              }
               projectId={project.projectId}
               projectName={project.projectName}
               onBack={closeTasks}

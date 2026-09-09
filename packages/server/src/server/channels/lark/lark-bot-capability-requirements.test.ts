@@ -13,15 +13,17 @@ describe("Lark bot capability requirements", () => {
       expect(new Set(items).size).toBe(items.length);
     }
     expect(requirements.tenantScopes).toContain("im:message:readonly");
+    expect(requirements.tenantScopes).toContain("wiki:wiki:readonly");
     expect(requirements.tenantScopes).toContain("wiki:node:create");
+    expect(requirements.tenantScopes).toContain("base:app:create");
     expect(requirements.tenantScopes).toContain("base:table:read");
     expect(requirements.tenantScopes).toContain("base:table:create");
     expect(requirements.tenantScopes).toContain("base:table:delete");
     expect(requirements.tenantScopes).toContain("base:table:update");
-    expect(requirements.tenantScopes).toContain("base:dashboard:read");
-    expect(requirements.tenantScopes).toContain("base:dashboard:delete");
-    expect(requirements.tenantScopes).toContain("base:workflow:read");
-    expect(requirements.tenantScopes).toContain("base:workflow:update");
+    expect(requirements.tenantScopes).not.toContain("base:dashboard:read");
+    expect(requirements.tenantScopes).not.toContain("base:dashboard:delete");
+    expect(requirements.tenantScopes).not.toContain("base:workflow:read");
+    expect(requirements.tenantScopes).not.toContain("base:workflow:update");
     expect(requirements.tenantScopes).toContain("base:field:read");
     expect(requirements.tenantScopes).toContain("base:field:create");
     expect(requirements.tenantScopes).toContain("base:record:create");

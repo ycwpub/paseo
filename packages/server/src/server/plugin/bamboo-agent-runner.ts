@@ -151,6 +151,7 @@ async function runWithAudit<T>(input: {
   cwd: string;
   schema: z.ZodType<T>;
   dependencies: BambooAgentRunnerDependencies;
+  env?: NodeJS.ProcessEnv;
 }): Promise<T> {
   await mkdir(path.dirname(input.outputFile), { recursive: true });
   const runnerPath = await input.dependencies.resolveRunnerPath();
@@ -160,7 +161,7 @@ async function runWithAudit<T>(input: {
       [runnerPath, input.subcommand, ...input.args, "--output-file", input.outputFile],
       {
         cwd: input.cwd,
-        env: process.env,
+        env: input.env ?? process.env,
         timeout: RUNNER_TIMEOUT_MS,
         maxBuffer: 20 * 1024 * 1024,
       },
@@ -190,6 +191,7 @@ export async function prepareBambooAgentData(
     workspaceCwd: string;
     outputDirectory: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooPreparedAgentData> {
@@ -210,6 +212,7 @@ export async function prepareBambooAgentData(
     cwd: input.workspaceCwd,
     schema: PreparedDataSchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -221,6 +224,7 @@ export async function publishBambooSopSummary(
     ruleId: string;
     markdownFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooSopPublication> {
@@ -243,6 +247,7 @@ export async function publishBambooSopSummary(
     cwd: input.workspaceCwd,
     schema: SopPublicationSchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -253,6 +258,7 @@ export async function validateBambooModelResult(
     workItemFile: string;
     markdownFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooModelValidation> {
@@ -271,6 +277,7 @@ export async function validateBambooModelResult(
     cwd: input.workspaceCwd,
     schema: ModelValidationSchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -280,6 +287,7 @@ export async function validateBambooResultDirectory(
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooResultDirectoryValidation> {
@@ -290,6 +298,7 @@ export async function validateBambooResultDirectory(
     cwd: input.workspaceCwd,
     schema: ResultDirectoryValidationSchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -299,6 +308,7 @@ export async function closeBambooReadyWorkItem(
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooCloseReadyResult> {
@@ -309,6 +319,7 @@ export async function closeBambooReadyWorkItem(
     cwd: input.workspaceCwd,
     schema: CloseReadySchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -319,6 +330,36 @@ export async function buildBambooRunSummary(
     resultDirectory: string;
     workItemsFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
+  },
+  dependencies: BambooAgentRunnerDependencies = defaultDependencies,
+): Promise<BambooRunSummary> {
+  return runWithAudit({
+    subcommand: "auto-troubleshoot-drain",
+    args: [
+      "--scan-dir-url",
+      input.scanDirectoryUrl,
+      "--result-dir",
+      input.resultDirectory,
+      "--work-items-file",
+      input.workItemsFile,
+    ],
+    outputFile: input.auditFile,
+    cwd: input.workspaceCwd,
+    schema: RunSummarySchema,
+    dependencies,
+    env: input.commandEnvironment,
+  });
+}
+
+export async function validateBambooFinalDrain(
+  input: {
+    workspaceCwd: string;
+    scanDirectoryUrl: string;
+    resultDirectory: string;
+    workItemsFile: string;
+    auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooRunSummary> {
@@ -336,6 +377,7 @@ export async function buildBambooRunSummary(
     cwd: input.workspaceCwd,
     schema: RunSummarySchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }
 
@@ -345,6 +387,7 @@ export async function renderBambooRunReport(
     resultDirectory: string;
     runSummaryFile: string;
     auditFile: string;
+    commandEnvironment?: NodeJS.ProcessEnv;
   },
   dependencies: BambooAgentRunnerDependencies = defaultDependencies,
 ): Promise<BambooRunReport> {
@@ -355,5 +398,6 @@ export async function renderBambooRunReport(
     cwd: input.workspaceCwd,
     schema: RunReportSchema,
     dependencies,
+    env: input.commandEnvironment,
   });
 }

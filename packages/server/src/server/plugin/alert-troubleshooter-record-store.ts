@@ -1,7 +1,5 @@
 import type { AlertTroubleshooterConfig } from "@getpaseo/protocol/messages";
-import type { LarkChannelStore } from "../channels/lark/lark-channel-store.js";
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
-import type { LarkUserOAuthService } from "../channels/lark/lark-user-oauth-service.js";
 import type { AlertTroubleshooterQueueTrigger } from "./alert-troubleshooter-queue-store.js";
 import {
   alertTableDateKey,
@@ -28,6 +26,8 @@ import {
   type BitableWritableFields,
 } from "./bamboo-attribution-record.js";
 import { BAMBOO_ATTRIBUTION_FIELD_NAMES } from "./bamboo-attribution-table.js";
+import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
+import { isMissingAlertTroubleshooterRecordError } from "./alert-troubleshooter-task-reference.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -124,6 +124,11 @@ export interface AlertTroubleshooterRecordStore {
     pluginId: string;
     uniqueId: string;
   }): Promise<AlertTroubleshooterRecord | null>;
+  relocateRecord?(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    uniqueId: string;
+  }): Promise<AlertTroubleshooterRecord | null>;
   upsertManualResult?(input: {
     config: AlertTroubleshooterConfig;
     projectId: string;
@@ -161,6 +166,20 @@ export interface AlertTroubleshooterRecordStore {
     tableDate: string;
   }): Promise<void>;
   markFailed(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    error: string;
+  }): Promise<void>;
+  markRetryScheduled?(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    error: string;
+  }): Promise<void>;
+  markPending?(input: {
     config: AlertTroubleshooterConfig;
     pluginId: string;
     recordId: string;
@@ -279,7 +298,7 @@ function recordStatus(record: LarkRecord): string | null {
 
 function isClaimableStatus(status: string | null, bamboo: boolean): boolean {
   return bamboo
-    ? !status || status === "init" || status === STATUS_UNCLAIMED
+    ? !status || status === "init" || status === "failed" || status === STATUS_UNCLAIMED
     : !status || status === STATUS_UNCLAIMED;
 }
 
@@ -346,11 +365,29 @@ function messageRecordFields(input: {
 
 export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRecordStore {
   private readonly locations = new Map<string, AlertTroubleshooterTableLocation>();
+  private readonly credentialResolver: Pick<BambooBotCredentialResolver, "resolve">;
 
   constructor(
-    private readonly channelStore: Pick<LarkChannelStore, "getBot">,
-    private readonly oauthService: Pick<LarkUserOAuthService, "getValidUserAccessToken">,
-  ) {}
+    resolverOrChannelStore:
+      | Pick<BambooBotCredentialResolver, "resolve">
+      | {
+          getBot(botId: string): {
+            config: import("../channels/lark/lark-channel-store.js").StoredLarkChannelConfig;
+          } | null;
+        },
+    _legacyOauthService?: unknown,
+  ) {
+    this.credentialResolver =
+      "resolve" in resolverOrChannelStore
+        ? resolverOrChannelStore
+        : {
+            resolve: (config) => {
+              const bot = resolverOrChannelStore.getBot(config.botId);
+              if (!bot) throw new Error(`飞书机器人 ${config.botId} 不存在`);
+              return { identity: `existing:${config.botId}`, config: bot.config };
+            },
+          };
+  }
 
   async resolveExecutionContext(input: {
     config: AlertTroubleshooterConfig;
@@ -591,18 +628,24 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       for (const tableDate of tableDates) {
         const context = await this.existingContext(input.config, input.pluginId, tableDate);
         if (!context) continue;
-        const result = await context.api.request(
-          () =>
-            context.api.client.bitable.v1.appTableRecord.get({
-              path: {
-                app_token: context.location.appToken,
-                table_id: context.location.tableId,
-                record_id: recordId,
-              },
-              params: { text_field_as_array: false },
-            }),
-          { identity: "bot", requiredScopes: ["base:record:read"] },
-        );
+        let result;
+        try {
+          result = await context.api.request(
+            () =>
+              context.api.client.bitable.v1.appTableRecord.get({
+                path: {
+                  app_token: context.location.appToken,
+                  table_id: context.location.tableId,
+                  record_id: recordId,
+                },
+                params: { text_field_as_array: false },
+              }),
+            { identity: "bot", requiredScopes: ["base:record:read"] },
+          );
+        } catch (error) {
+          if (isMissingAlertTroubleshooterRecordError(error)) continue;
+          throw error;
+        }
         const record = result.data?.record
           ? toRecord(result.data.record as LarkRecord, tableDate)
           : null;
@@ -630,6 +673,19 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       }
     }
     return null;
+  }
+
+  async relocateRecord(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    uniqueId: string;
+  }): Promise<AlertTroubleshooterRecord | null> {
+    const bot = this.credentialResolver.resolve(input.config);
+    const cachePrefix = `${bot.identity}:${input.config.attributionRecordRoot}:${input.pluginId}:`;
+    for (const cacheKey of this.locations.keys()) {
+      if (cacheKey.startsWith(cachePrefix)) this.locations.delete(cacheKey);
+    }
+    return this.getRecordByUniqueId(input);
   }
 
   async upsertManualResult(input: {
@@ -804,6 +860,62 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     );
   }
 
+  markRetryScheduled(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    error: string;
+  }): Promise<void> {
+    const bamboo = isBambooPlugin(input.pluginId);
+    return this.update(
+      input.config,
+      input.pluginId,
+      input.tableDate,
+      input.recordId,
+      bamboo
+        ? {
+            ...bambooStatusFields("init"),
+            [BAMBOO_RECORD_FIELDS.aiSessionId]: "",
+            [BAMBOO_RECORD_FIELDS.lastError]: input.error.slice(0, 10_000),
+          }
+        : {
+            [FIELDS.status]: STATUS_UNCLAIMED,
+            [FIELDS.claimId]: "",
+            [FIELDS.claimedAt]: "",
+            [FIELDS.completedAt]: "",
+            [FIELDS.error]: input.error.slice(0, 10_000),
+          },
+    );
+  }
+
+  markPending(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    error: string;
+  }): Promise<void> {
+    const bamboo = isBambooPlugin(input.pluginId);
+    return this.update(
+      input.config,
+      input.pluginId,
+      input.tableDate,
+      input.recordId,
+      bamboo
+        ? {
+            ...bambooStatusFields("pending"),
+            [BAMBOO_RECORD_FIELDS.aiFinishedAt]: Date.now(),
+            [BAMBOO_RECORD_FIELDS.lastError]: input.error.slice(0, 10_000),
+          }
+        : {
+            [FIELDS.status]: "待处理",
+            [FIELDS.completedAt]: new Date().toISOString(),
+            [FIELDS.error]: input.error.slice(0, 10_000),
+          },
+    );
+  }
+
   private async update(
     config: AlertTroubleshooterConfig,
     pluginId: string,
@@ -896,13 +1008,11 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     location: AlertTroubleshooterTableLocation;
     primaryField: string;
   }> {
-    const bot = this.channelStore.getBot(config.botId);
-    if (!bot) throw new Error(`飞书机器人 ${config.botId} 不存在`);
+    const bot = this.credentialResolver.resolve(config);
     const api = await createLarkAlertTroubleshooterApi({
       config: bot.config,
-      oauthService: this.oauthService,
     });
-    const cacheKey = `${config.botId}:${config.attributionRecordRoot}:${pluginId}:${tableDate}`;
+    const cacheKey = `${bot.identity}:${config.attributionRecordRoot}:${pluginId}:${tableDate}`;
     let location = this.locations.get(cacheKey);
     if (location) {
       try {
@@ -946,13 +1056,11 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     api: LarkAlertTroubleshooterApi;
     location: AlertTroubleshooterTableLocation;
   } | null> {
-    const bot = this.channelStore.getBot(config.botId);
-    if (!bot) throw new Error(`飞书机器人 ${config.botId} 不存在`);
+    const bot = this.credentialResolver.resolve(config);
     const api = await createLarkAlertTroubleshooterApi({
       config: bot.config,
-      oauthService: this.oauthService,
     });
-    const cacheKey = `${config.botId}:${config.attributionRecordRoot}:${pluginId}:${tableDate}`;
+    const cacheKey = `${bot.identity}:${config.attributionRecordRoot}:${pluginId}:${tableDate}`;
     const cached = this.locations.get(cacheKey);
     if (cached) {
       try {

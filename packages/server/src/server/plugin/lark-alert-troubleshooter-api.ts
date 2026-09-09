@@ -5,10 +5,7 @@ import {
   isLarkRateLimitError,
   larkApiResultError,
 } from "../channels/lark/lark-api-request.js";
-import {
-  LarkUserAuthorizationRequiredError,
-  type LarkUserOAuthService,
-} from "../channels/lark/lark-user-oauth-service.js";
+import { LarkUserAuthorizationRequiredError } from "../channels/lark/lark-user-oauth-service.js";
 import {
   PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES,
   PASEO_LARK_ALERT_TROUBLESHOOTER_USER_SCOPES,
@@ -25,7 +22,6 @@ interface LarkResult {
   code?: number;
   msg?: string;
 }
-type LarkRequestOptions = ReturnType<typeof lark.withUserAccessToken>;
 type LarkRequestIdentity = "bot" | "user";
 
 interface LarkRequestContext {
@@ -37,7 +33,6 @@ const REQUIRED_SCOPES_PATTERN = /(?:required|权限)[^[]*\[([^\]]+)\]/iu;
 
 export interface LarkAlertTroubleshooterApi {
   client: lark.Client;
-  userRequestOptions: LarkRequestOptions;
   request<T extends LarkResult>(
     operation: () => Promise<T>,
     context: LarkRequestContext,
@@ -164,25 +159,11 @@ async function requestWithRetry<T extends LarkResult>(
 
 export async function createLarkAlertTroubleshooterApi(input: {
   config: StoredLarkChannelConfig;
-  oauthService: Pick<LarkUserOAuthService, "getValidUserAccessToken">;
 }): Promise<LarkAlertTroubleshooterApi> {
   const appId = input.config.appId?.trim();
   if (!appId) throw new Error("飞书机器人缺少 App ID");
-  let accessToken: string;
-  try {
-    accessToken = await input.oauthService.getValidUserAccessToken(
-      appId,
-      ALERT_TROUBLESHOOTER_LARK_USER_SCOPES,
-    );
-  } catch (error) {
-    throw finalError(error, 0, {
-      identity: "user",
-      requiredScopes: ALERT_TROUBLESHOOTER_LARK_USER_SCOPES,
-    });
-  }
   return {
     client: createClient(input.config),
-    userRequestOptions: lark.withUserAccessToken(accessToken),
     request: (operation, context) => requestWithRetry(operation, { context }),
   };
 }

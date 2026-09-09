@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
   const search = vi.fn();
   const create = vi.fn();
   const get = vi.fn();
+  const update = vi.fn(async () => ({ code: 0 }));
   const listFields = vi.fn(async () => ({
     code: 0,
     data: {
@@ -47,7 +48,7 @@ const mocks = vi.hoisted(() => {
           list: listFields,
           create: vi.fn(async () => ({ code: 0 })),
         },
-        appTableRecord: { search, create, get },
+        appTableRecord: { search, create, get, update },
       },
     },
   };
@@ -58,6 +59,7 @@ const mocks = vi.hoisted(() => {
     search,
     create,
     get,
+    update,
     listFields,
     getValidUserAccessToken,
     resolveDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
@@ -145,6 +147,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     mocks.search.mockReset();
     mocks.create.mockReset();
     mocks.get.mockReset();
+    mocks.update.mockClear();
     mocks.listFields.mockReset();
     mocks.listFields.mockImplementation(async () => ({
       code: 0,
@@ -197,6 +200,51 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     });
 
     expect(mocks.resolveDailyAlertTable).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears cached daily-table locations before relocating a stale record by unique_id", async () => {
+    const store = createStore();
+    await store.resolveExecutionContext({
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      tableDate: "20260908",
+    });
+    mocks.search.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        items: [
+          {
+            record_id: "rec_relocated",
+            fields: {
+              unique_id: "19626626",
+              result_id: "19626626",
+              status: "init",
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      store.relocateRecord({
+        config: config(),
+        pluginId: "bamboo-reconciliation-troubleshooter",
+        uniqueId: "19626626",
+      }),
+    ).resolves.toMatchObject({
+      recordId: "rec_relocated",
+      uniqueId: "19626626",
+    });
+
+    expect(mocks.resolveExistingDailyAlertTable).toHaveBeenCalledTimes(1);
+    expect(mocks.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: {
+          app_token: "app_20260908",
+          table_id: "tbl_20260908",
+        },
+      }),
+    );
   });
 
   it("reuses an existing daily record for the same result_id", async () => {
@@ -280,7 +328,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     ).toBe(true);
     expect(createdFields).not.toHaveProperty("Project ID");
     expect(createdFields).not.toHaveProperty("消息内容");
-    expect(mocks.getValidUserAccessToken).toHaveBeenCalledWith("cli_test", ["wiki:wiki:readonly"]);
+    expect(mocks.getValidUserAccessToken).not.toHaveBeenCalled();
   });
 
   it("uses a valid UUID v4 idempotency token when writing a scanned Lark message", async () => {
@@ -326,7 +374,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     );
   });
 
-  it("polls only unclaimed Bamboo records with result_id without creating tables", async () => {
+  it("polls init and failed Bamboo records with result_id without creating tables", async () => {
     mocks.search.mockImplementation(async ({ path }: { path: { app_token: string } }) => ({
       code: 0,
       data: {
@@ -374,13 +422,68 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
       limit: 20,
     });
 
-    expect(records.map((record) => record.tableDate)).toEqual(["20260908", "20260907"]);
+    expect(records.map((record) => record.tableDate)).toEqual([
+      "20260908",
+      "20260908",
+      "20260907",
+      "20260907",
+    ]);
     expect(records.map((record) => record.recordId)).toEqual([
       "rec_valid_app_20260908",
+      "rec_failed_app_20260908",
       "rec_valid_app_20260907",
+      "rec_failed_app_20260907",
     ]);
     expect(mocks.resolveDailyAlertTable).not.toHaveBeenCalled();
     expect(mocks.resolveExistingDailyAlertTable).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a retrying Bamboo record to init and keeps the last error", async () => {
+    await createStore().markRetryScheduled({
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      recordId: "rec_retry",
+      tableDate: "20260908",
+      error: "临时网络失败",
+    });
+
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: {
+          app_token: "app_20260908",
+          table_id: "tbl_20260908",
+          record_id: "rec_retry",
+        },
+        data: {
+          fields: expect.objectContaining({
+            status: "init",
+            ai_session_id: "",
+            last_error: "临时网络失败",
+          }),
+        },
+      }),
+    );
+  });
+
+  it("keeps a Bamboo authorization blocker pending instead of terminally failed", async () => {
+    await createStore().markPending({
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      recordId: "rec_pending",
+      tableDate: "20260908",
+      error: "缺少 base:record:read 权限",
+    });
+
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          fields: expect.objectContaining({
+            status: "pending",
+            last_error: "缺少 base:record:read 权限",
+          }),
+        },
+      }),
+    );
   });
 
   it("resolves legacy record_id task references for permission retry", async () => {

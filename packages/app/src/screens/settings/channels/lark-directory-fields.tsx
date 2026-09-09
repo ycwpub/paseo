@@ -206,6 +206,7 @@ interface LarkChatDirectoryFieldProps {
   chatId: string;
   chats: readonly LarkDirectoryChat[];
   disabled?: boolean;
+  allowDirectChatId?: boolean;
   testID?: string;
   onChange: (chatId: string) => void;
   resolveChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
@@ -219,6 +220,7 @@ export function LarkChatDirectoryField({
   chatId,
   chats,
   disabled = false,
+  allowDirectChatId = false,
   testID,
   onChange,
   resolveChats,
@@ -256,10 +258,26 @@ export function LarkChatDirectoryField({
       setError("请输入群名称或 oc_xxx");
       return;
     }
+    const normalizedQuery = query.trim();
+    if (allowDirectChatId && /^oc_[a-zA-Z0-9]+$/u.test(normalizedQuery)) {
+      setMatches([
+        {
+          appId: appId.trim(),
+          chatId: normalizedQuery,
+          groupId: normalizedQuery,
+          name: "飞书群",
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      onChange(normalizedQuery);
+      setQuery("");
+      setError(null);
+      return;
+    }
     setResolving(true);
     setError(null);
     try {
-      const resolved = await resolveChats(appId.trim(), query.trim());
+      const resolved = await resolveChats(appId.trim(), normalizedQuery);
       setMatches(resolved);
       if (resolved.length === 1) {
         onChange(resolved[0]!.chatId);
@@ -271,7 +289,7 @@ export function LarkChatDirectoryField({
     } finally {
       setResolving(false);
     }
-  }, [appId, onChange, query, resolveChats]);
+  }, [allowDirectChatId, appId, onChange, query, resolveChats]);
   const handleClear = useCallback(() => onChange(""), [onChange]);
 
   return (

@@ -43,13 +43,31 @@ export const AlertTroubleshooterScheduleSchema = z
   });
 export type AlertTroubleshooterSchedule = z.infer<typeof AlertTroubleshooterScheduleSchema>;
 
+export const AlertTroubleshooterBotSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("existing"),
+    botId: z.string().trim().min(1),
+  }),
+  z.object({
+    kind: z.literal("custom"),
+    credentialId: z.string().trim().min(1),
+    appId: z.string().trim().min(1),
+    hasAppSecret: z.boolean().default(false),
+  }),
+]);
+export type AlertTroubleshooterBot = z.infer<typeof AlertTroubleshooterBotSchema>;
+
 export const AlertTroubleshooterConfigSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(4),
+    version: z
+      .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)])
+      .default(5),
     enabled: z.boolean().default(true),
     listenEnabled: z.boolean().default(true),
     troubleshootingEnabled: z.boolean().default(true),
-    botId: z.string().trim().min(1),
+    autoArchiveAgents: z.boolean().default(false),
+    botId: z.string().trim().min(1).optional(),
+    bot: AlertTroubleshooterBotSchema.optional(),
     chats: z.array(AlertTroubleshooterChatSchema).min(1).max(50),
     target: AlertTroubleshooterTargetSchema.default({ kind: "default" }),
     troubleshootingSopDoc: z.string().trim().url(),
@@ -70,15 +88,36 @@ export const AlertTroubleshooterConfigSchema = z
       excludeRecentMinutes: 0,
     }),
   })
-  .transform((config) => ({
-    ...config,
-    version: 4 as const,
-    promptTemplate: normalizeAlertTroubleshooterPromptTemplate(config.promptTemplate),
-    schedule:
-      config.version === 1 && config.schedule.excludeRecentMinutes === 30
-        ? { ...config.schedule, excludeRecentMinutes: 0 }
-        : config.schedule,
-  }));
+  .superRefine((config, context) => {
+    if (!config.bot && !config.botId) {
+      context.addIssue({
+        code: "custom",
+        path: ["bot"],
+        message: "请选择或配置飞书机器人",
+      });
+    }
+  })
+  .transform((config) => {
+    const bot =
+      config.bot ??
+      ({
+        kind: "existing",
+        botId: config.botId!,
+      } as const);
+    return {
+      ...config,
+      version: 4 as const,
+      bot,
+      // Keep this compatibility field while shared alert-troubleshooter code
+      // migrates from a channel-only bot identifier to the explicit source.
+      botId: bot.kind === "existing" ? bot.botId : bot.appId,
+      promptTemplate: normalizeAlertTroubleshooterPromptTemplate(config.promptTemplate),
+      schedule:
+        config.version === 1 && config.schedule.excludeRecentMinutes === 30
+          ? { ...config.schedule, excludeRecentMinutes: 0 }
+          : config.schedule,
+    };
+  });
 export type AlertTroubleshooterConfig = z.infer<typeof AlertTroubleshooterConfigSchema>;
 
 export const AlertTroubleshooterTaskTriggerSchema = z.enum([

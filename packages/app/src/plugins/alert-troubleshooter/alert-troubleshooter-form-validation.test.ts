@@ -12,6 +12,7 @@ const VALID_DRAFT: AlertTroubleshooterConfigDraft = {
   enabled: true,
   listenEnabled: true,
   troubleshootingEnabled: true,
+  autoArchiveAgents: false,
   botId: "bot-1",
   chats: [{ chatId: "oc_alerts", name: "报警群" }],
   target: { kind: "assistant", assistantId: "assistant-1" },
@@ -82,6 +83,7 @@ describe("validateAlertTroubleshooterConfig", () => {
     expect(result.config).toEqual<AlertTroubleshooterConfig>({
       ...VALID_DRAFT,
       version: 4,
+      bot: { kind: "existing", botId: "bot-1" },
       queuePollIntervalMinutes: 5,
       schedule: {
         enabled: true,

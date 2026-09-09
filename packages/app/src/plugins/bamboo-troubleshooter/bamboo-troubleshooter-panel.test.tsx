@@ -35,6 +35,7 @@ function validConfig() {
     enabled: true,
     listenEnabled: true,
     troubleshootingEnabled: true,
+    autoArchiveAgents: false,
     botId: "bot-1",
     chats: [
       { chatId: "oc_first", name: "结算报警一群", groupId: "group-1" },
@@ -356,6 +357,44 @@ describe("BambooTroubleshooterPanel", () => {
     );
   });
 
+  it("stores a Bamboo-only custom bot secret outside Plugin App data", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "自定义机器人" }));
+    fireEvent.change(screen.getByLabelText("自定义机器人 App ID"), {
+      target: { value: "cli_custom" },
+    });
+    fireEvent.change(screen.getByLabelText("自定义机器人 App Secret"), {
+      target: { value: "secret-value" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    await waitFor(() =>
+      expect(testState.configurePluginApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentials: { bambooBotAppSecret: "secret-value" },
+          data: {
+            [BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY]: expect.objectContaining({
+              bot: {
+                kind: "custom",
+                credentialId: "project-1",
+                appId: "cli_custom",
+                hasAppSecret: true,
+              },
+            }),
+          },
+        }),
+      ),
+    );
+  });
+
   it("persists listening, scanning, and troubleshooting switches independently", async () => {
     render(
       <BambooTroubleshooterPanel
@@ -379,6 +418,32 @@ describe("BambooTroubleshooterPanel", () => {
               listenEnabled: false,
               troubleshootingEnabled: false,
               schedule: expect.objectContaining({ enabled: false }),
+            }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it("persists the option to archive all agents after a task attempt finishes", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Agent 执行完成后自动归档"));
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    await waitFor(() =>
+      expect(testState.configurePluginApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            [BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY]: expect.objectContaining({
+              autoArchiveAgents: true,
             }),
           },
         }),

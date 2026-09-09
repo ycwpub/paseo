@@ -9,7 +9,12 @@ export interface AlertTroubleshooterConfigDraft {
   enabled: boolean;
   listenEnabled: boolean;
   troubleshootingEnabled: boolean;
+  autoArchiveAgents: boolean;
   botId: string;
+  botKind?: "existing" | "custom";
+  customBotAppId?: string;
+  customBotCredentialId?: string;
+  customBotHasAppSecret?: boolean;
   chats: AlertTroubleshooterChat[];
   target: AlertTroubleshooterTarget;
   troubleshootingSopDoc: string;
@@ -68,20 +73,52 @@ function uniqueMessages(messages: string[]): string[] {
   return [...new Set(messages)];
 }
 
+function resolveBotDraft(draft: AlertTroubleshooterConfigDraft): {
+  botId: string;
+  bot: AlertTroubleshooterConfig["bot"];
+  errors: string[];
+  invalidFields: string[];
+} {
+  const botKind = draft.botKind ?? "existing";
+  const customBotAppId = draft.customBotAppId?.trim() ?? "";
+  const botId = botKind === "custom" ? customBotAppId : draft.botId.trim();
+  const errors: string[] = [];
+  const invalidFields: string[] = [];
+  if (!botId) {
+    errors.push(botKind === "custom" ? "请输入自定义机器人 App ID" : "请选择飞书机器人");
+    invalidFields.push("botId", "bot");
+  }
+  if (botKind === "custom" && !draft.customBotCredentialId?.trim()) {
+    errors.push("无法绑定自定义机器人凭证，请重新打开当前 Project");
+  }
+  return {
+    botId,
+    bot:
+      botKind === "custom"
+        ? {
+            kind: "custom",
+            credentialId: draft.customBotCredentialId?.trim() ?? "",
+            appId: customBotAppId,
+            hasAppSecret: draft.customBotHasAppSecret ?? false,
+          }
+        : { kind: "existing", botId },
+    errors,
+    invalidFields,
+  };
+}
+
 export function validateAlertTroubleshooterConfig(
   schema: ZodType<AlertTroubleshooterConfig>,
   draft: AlertTroubleshooterConfigDraft,
 ): AlertTroubleshooterConfigValidation {
   const errors: string[] = [];
   const explicitlyValidatedFields = new Set<string>();
-  const botId = draft.botId.trim();
+  const botDraft = resolveBotDraft(draft);
   const troubleshootingSopDoc = draft.troubleshootingSopDoc.trim();
   const attributionRecordRoot = draft.attributionRecordRoot.trim();
 
-  if (!botId) {
-    errors.push("请选择飞书机器人");
-    explicitlyValidatedFields.add("botId");
-  }
+  errors.push(...botDraft.errors);
+  botDraft.invalidFields.forEach((field) => explicitlyValidatedFields.add(field));
   if (draft.chats.length === 0) {
     errors.push("请至少添加一个监听飞书群");
     explicitlyValidatedFields.add("chats");
@@ -105,7 +142,9 @@ export function validateAlertTroubleshooterConfig(
     enabled: draft.enabled,
     listenEnabled: draft.listenEnabled,
     troubleshootingEnabled: draft.troubleshootingEnabled,
-    botId,
+    autoArchiveAgents: draft.autoArchiveAgents,
+    botId: botDraft.botId,
+    bot: botDraft.bot,
     chats: draft.chats,
     target: draft.target,
     troubleshootingSopDoc,

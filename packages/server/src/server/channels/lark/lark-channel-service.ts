@@ -2,6 +2,7 @@ import path from "node:path";
 import type pino from "pino";
 import {
   getLarkSubstituteGroupScan,
+  getLarkSubstituteMessageContext,
   type LarkChannelAuthorizedUser,
   type LarkChannelStatus,
   type LarkDirectoryPrivateUserScanRange,
@@ -35,6 +36,7 @@ import {
 import {
   LarkChannelStore,
   type ConfigureLarkChannelStoreInput,
+  type LarkChannelConversation,
   type LarkChannelRuntimeStatusInput,
   type StoredLarkChannelBot,
   type StoredLarkChannelConfig,
@@ -69,6 +71,7 @@ import { buildLarkDirectoryUserSeeds } from "./lark-directory-user-seeds.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
 import { archiveLarkSubstituteAgentForTask } from "./lark-substitute-agent-archive.js";
+import { findReusableLarkSubstituteAgentId } from "./lark-substitute-agent-session.js";
 import { sendLarkSubstituteAgentReply } from "./lark-substitute-agent-reply.js";
 import { LarkSubstituteAgentRedelivery } from "./lark-substitute-agent-redelivery.js";
 import { LarkSubstituteProjectSkillSync } from "./lark-substitute-project-skill.js";
@@ -82,6 +85,7 @@ import { LarkSubstituteDebouncer } from "./lark-substitute-debounce.js";
 import {
   appendLarkSubstituteMessageContext,
   collectLarkSubstituteMessageContext,
+  selectLarkSubstituteSupplementalEvents,
 } from "./lark-substitute-message-context.js";
 import {
   matchLarkSubstituteMode,
@@ -226,6 +230,11 @@ interface ResolvedLarkThread {
   createThreadOnReply: boolean;
 }
 
+interface ReusableLarkSubstituteAgent {
+  agentId: string;
+  previousMentionAt: string | null;
+}
+
 interface ResolvedLarkTarget {
   provider: string;
   model: string | null;
@@ -259,6 +268,7 @@ interface PreparedLarkIncomingEvent {
   config: StoredLarkChannelConfig;
   event: NormalizedLarkMessageEvent;
   botIdentity: LarkChannelBotInfo | null;
+  matchedMode: MatchedLarkSubstituteMode | null;
   substituteTaskId: string | null;
   effectiveConfig: StoredLarkChannelConfig;
   botMentioned: boolean;
@@ -1282,6 +1292,7 @@ export class LarkChannelService {
       config,
       event: enrichedEvent,
       botIdentity,
+      matchedMode,
       substituteTaskId,
       effectiveConfig,
       botMentioned,
@@ -1427,7 +1438,12 @@ export class LarkChannelService {
     const supplementalEvents = getSupplementalEvents(internal);
     const existing = this.store.findConversationByThread(botId, enrichedEvent.chatId, threadId);
     try {
-      if (existing) {
+      const reusableAgent = await this.resolveReusableSubstituteAgent({
+        existing,
+        matchedMode,
+        chatId: enrichedEvent.chatId,
+      });
+      if (reusableAgent) {
         await this.relayToExistingAgent({
           botId,
           config: effectiveConfig,
@@ -1435,8 +1451,8 @@ export class LarkChannelService {
           participants,
           threadId,
           replyMessageId,
-          agentId: existing.agentId,
-          previousMentionAt: existing.lastInboundAt,
+          agentId: reusableAgent.agentId,
+          previousMentionAt: reusableAgent.previousMentionAt,
           nowIso,
           supplementalEvents,
           substituteTaskId,
@@ -1534,33 +1550,43 @@ export class LarkChannelService {
       if (!target) throw new Error("替身模式未配置可用的 Agent 目标");
 
       const title = input.event.topicName;
-      const { snapshot } = await this.createAgent({
-        kind: "mcp",
-        provider: target.provider,
-        title,
-        workspaceTitle: title,
-        config: {
+      let agentId = await this.findReusableSubstituteAgentId(
+        input.matchedMode.mode,
+        input.event.chatId,
+      );
+      let previousMessage: string | null = null;
+      if (agentId) {
+        previousMessage = await this.agentManager.getLastAssistantMessage(agentId);
+      } else {
+        const { snapshot } = await this.createAgent({
+          kind: "mcp",
+          provider: target.provider,
           title,
-          ...(target.model ? { model: target.model } : {}),
-          ...(target.modeId ? { modeId: target.modeId } : {}),
-          ...(target.thinkingOptionId ? { thinkingOptionId: target.thinkingOptionId } : {}),
-          systemPrompt: LARK_CHANNEL_SYSTEM_PROMPT,
-        },
-        cwd: target.cwd,
-        workspaceId: target.workspaceId ?? undefined,
-        projectId: target.projectId ?? undefined,
-        labels: target.labels,
-        background: true,
-        notifyOnFinish: false,
-        promptFailure: "throw",
-      });
-      pendingAgentId = snapshot.id;
-      this.substituteTaskStore.attachAgent(taskId, snapshot.id, new Date().toISOString());
-      answerPromise = this.privateSubstituteAnswerWaiter.wait(snapshot.id, null);
+          workspaceTitle: title,
+          config: {
+            title,
+            ...(target.model ? { model: target.model } : {}),
+            ...(target.modeId ? { modeId: target.modeId } : {}),
+            ...(target.thinkingOptionId ? { thinkingOptionId: target.thinkingOptionId } : {}),
+            systemPrompt: LARK_CHANNEL_SYSTEM_PROMPT,
+          },
+          cwd: target.cwd,
+          workspaceId: target.workspaceId ?? undefined,
+          projectId: target.projectId ?? undefined,
+          labels: target.labels,
+          background: true,
+          notifyOnFinish: false,
+          promptFailure: "throw",
+        });
+        agentId = snapshot.id;
+      }
+      pendingAgentId = agentId;
+      this.substituteTaskStore.attachAgent(taskId, agentId, new Date().toISOString());
+      answerPromise = this.privateSubstituteAnswerWaiter.wait(agentId, previousMessage);
       await sendPromptToAgent({
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
-        agentId: snapshot.id,
+        agentId,
         prompt: target.initialPrompt,
         unarchive: true,
         logger: this.logger,
@@ -1568,7 +1594,7 @@ export class LarkChannelService {
       const answer = await answerPromise;
       if (answer.kind === "skip") {
         this.completeSubstituteTask(taskId, "skipped");
-        await this.autoArchiveSubstituteAgent(taskId, snapshot.id);
+        await this.autoArchiveSubstituteAgent(taskId, agentId);
         return answer;
       }
       const userDirective = extractLarkUserMentionDirective(answer.text);
@@ -1576,7 +1602,7 @@ export class LarkChannelService {
       return {
         kind: "answer",
         taskId,
-        agentId: snapshot.id,
+        agentId,
         text: substituteReply,
         trigger,
       };
@@ -1717,6 +1743,7 @@ export class LarkChannelService {
       config,
       event: enrichedEvent,
       botIdentity,
+      matchedMode,
       substituteTaskId,
       effectiveConfig,
       botMentioned,
@@ -1846,6 +1873,7 @@ export class LarkChannelService {
             supplementalEvents = await collectLarkSubstituteMessageContext({
               latestEvent: message.latestEvent,
               bufferedEvents: message.bufferedEvents,
+              limits: getLarkSubstituteMessageContext(matchedMode.mode),
               listChatMessages: this.adapter.listChatMessages
                 ? (window) => this.listChatMessages(botId, message.latestEvent.chatId, window)
                 : undefined,
@@ -1860,9 +1888,11 @@ export class LarkChannelService {
               },
               "Failed to fetch substitute-mode surrounding messages; using buffered messages",
             );
-            supplementalEvents = message.bufferedEvents.filter(
-              (candidate) => candidate.messageId !== message.latestEvent.messageId,
-            );
+            supplementalEvents = selectLarkSubstituteSupplementalEvents({
+              latestEvent: message.latestEvent,
+              events: message.bufferedEvents,
+              limits: getLarkSubstituteMessageContext(matchedMode.mode),
+            });
           }
           await this.handleIncomingEvent(botId, message.latestEvent, {
             bypassSubstituteDelay: true,
@@ -2263,6 +2293,49 @@ export class LarkChannelService {
     }
   }
 
+  private async findReusableSubstituteAgentId(
+    mode: LarkSubstituteMode,
+    chatId: string,
+  ): Promise<string | null> {
+    const agentId = findReusableLarkSubstituteAgentId({
+      mode,
+      chatId,
+      tasks: this.substituteTaskStore.list(),
+      isBusy: (candidateAgentId) => {
+        if (
+          this.pendingRelays.has(candidateAgentId) ||
+          this.privateSubstituteAnswerWaiter.hasPending(candidateAgentId)
+        ) {
+          return true;
+        }
+        const agent = this.agentManager.getAgent(candidateAgentId);
+        return (
+          agent?.lifecycle === "initializing" ||
+          agent?.lifecycle === "running" ||
+          agent?.lifecycle === "error"
+        );
+      },
+    });
+    if (!agentId) return null;
+    return (await this.agentStorage.get(agentId)) ? agentId : null;
+  }
+
+  private async resolveReusableSubstituteAgent(input: {
+    existing: LarkChannelConversation | null;
+    matchedMode: MatchedLarkSubstituteMode | null;
+    chatId: string;
+  }): Promise<ReusableLarkSubstituteAgent | null> {
+    if (input.existing) {
+      return {
+        agentId: input.existing.agentId,
+        previousMentionAt: input.existing.lastInboundAt,
+      };
+    }
+    if (!input.matchedMode) return null;
+    const agentId = await this.findReusableSubstituteAgentId(input.matchedMode.mode, input.chatId);
+    return agentId ? { agentId, previousMentionAt: null } : null;
+  }
+
   private async relayToExistingAgent(input: {
     botId: string;
     config: StoredLarkChannelConfig;
@@ -2304,15 +2377,17 @@ export class LarkChannelService {
         new Date().toISOString(),
       );
     }
-    this.store.recordThreadConversation(input.botId, {
-      agentId: input.agentId,
-      chatId: input.event.chatId,
-      threadId: input.threadId,
-      rootMessageId: input.event.rootMessageId ?? input.event.messageId,
-      userId: input.participants.userId,
-      title: input.event.topicName,
-      now: input.nowIso,
-    });
+    if (!input.createThreadOnReply) {
+      this.store.recordThreadConversation(input.botId, {
+        agentId: input.agentId,
+        chatId: input.event.chatId,
+        threadId: input.threadId,
+        rootMessageId: input.event.rootMessageId ?? input.event.messageId,
+        userId: input.participants.userId,
+        title: input.event.topicName,
+        now: input.nowIso,
+      });
+    }
     const prompt = await this.formatEventPromptWithHistory({
       config: input.config,
       event: input.event,

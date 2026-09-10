@@ -223,6 +223,18 @@ function useSubstituteModeForm(
     (value: string) => updateField("delaySeconds", value),
     [updateField],
   );
+  const setPrivatePreviousMessageCount = useCallback(
+    (value: string) => updateField("privatePreviousMessageCount", value),
+    [updateField],
+  );
+  const setGroupPreviousMessageCount = useCallback(
+    (value: string) => updateField("groupPreviousMessageCount", value),
+    [updateField],
+  );
+  const setGroupFollowingMessageCount = useCallback(
+    (value: string) => updateField("groupFollowingMessageCount", value),
+    [updateField],
+  );
   const setAutoArchiveAgent = useCallback(
     (value: boolean) => updateField("autoArchiveAgent", value),
     [updateField],
@@ -283,6 +295,9 @@ function useSubstituteModeForm(
     setDisclosurePrompt,
     setCustomPrompt,
     setDelaySeconds,
+    setPrivatePreviousMessageCount,
+    setGroupPreviousMessageCount,
+    setGroupFollowingMessageCount,
     setAutoArchiveAgent,
     setWeekdays,
     setStartTime,
@@ -644,6 +659,32 @@ export function LarkSubstituteModeEditor({
               keyboardType="number-pad"
             />
           </Field>
+          <View style={styles.inlineFields}>
+            <Field
+              label="私聊获取前文消息数"
+              hint="以等待窗口内最后一条消息为问题，补充读取此前消息。"
+            >
+              <FormTextInput
+                value={form.privatePreviousMessageCount}
+                onChangeText={controller.setPrivatePreviousMessageCount}
+                keyboardType="number-pad"
+              />
+            </Field>
+            <Field label="群聊获取前文消息数">
+              <FormTextInput
+                value={form.groupPreviousMessageCount}
+                onChangeText={controller.setGroupPreviousMessageCount}
+                keyboardType="number-pad"
+              />
+            </Field>
+            <Field label="群聊获取后文消息数">
+              <FormTextInput
+                value={form.groupFollowingMessageCount}
+                onChangeText={controller.setGroupFollowingMessageCount}
+                keyboardType="number-pad"
+              />
+            </Field>
+          </View>
           <View style={styles.switchRow}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>回答后自动归档 Agent</Text>

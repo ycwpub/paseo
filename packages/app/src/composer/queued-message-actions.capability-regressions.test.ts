@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QueueWriter, QueuedComposerMessage } from "@/composer/actions";
 import {
+  moveQueuedComposerMessage,
   removeQueuedComposerMessage,
+  reorderQueuedComposerMessages,
   sendQueuedComposerMessageNow,
 } from "@/composer/queued-message-actions";
 
@@ -35,6 +37,60 @@ describe("queued message actions", () => {
       }),
     ).toEqual(message("second"));
     expect(queue.state.get("agent")?.map((item) => item.id)).toEqual(["first", "third"]);
+  });
+
+  it("moves a queued message one position for accessible reorder actions", () => {
+    const queue = createQueue([message("first"), message("second"), message("third")]);
+
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "second",
+        direction: "up",
+        queue,
+      }),
+    ).toBe(true);
+    expect(queue.state.get("agent")?.map((item) => item.id)).toEqual(["second", "first", "third"]);
+
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "second",
+        direction: "up",
+        queue,
+      }),
+    ).toBe(false);
+  });
+
+  it("applies dragged order without losing queued resources", () => {
+    const selected = {
+      ...message("selected"),
+      selectedMcpServerIds: ["mcp"],
+      selectedSkillIds: ["skill"],
+    };
+    const queue = createQueue([message("first"), selected, message("third")]);
+
+    expect(
+      reorderQueuedComposerMessages({
+        agentId: "agent",
+        orderedMessageIds: ["third", "first", "selected"],
+        queue,
+      }),
+    ).toBe(true);
+    expect(queue.state.get("agent")).toEqual([message("third"), message("first"), selected]);
+  });
+
+  it("does not resurrect removed messages and leaves messages added during a drag at the end", () => {
+    const queue = createQueue([message("first"), message("third"), message("new")]);
+
+    expect(
+      reorderQueuedComposerMessages({
+        agentId: "agent",
+        orderedMessageIds: ["third", "second", "first"],
+        queue,
+      }),
+    ).toBe(true);
+    expect(queue.state.get("agent")?.map((item) => item.id)).toEqual(["third", "first", "new"]);
   });
 
   it("restores a failed immediate steer at its original queue position", async () => {

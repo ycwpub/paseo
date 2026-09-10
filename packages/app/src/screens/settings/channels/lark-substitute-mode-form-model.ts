@@ -13,9 +13,13 @@ import {
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT,
+  getLarkSubstituteMessageContext,
   getLarkSubstituteGroupScan,
 } from "@getpaseo/protocol/messages";
 import {
@@ -43,6 +47,9 @@ export interface LarkSubstituteModeFormState {
   disclosurePrompt: string;
   customPrompt: string;
   delaySeconds: string;
+  privatePreviousMessageCount: string;
+  groupPreviousMessageCount: string;
+  groupFollowingMessageCount: string;
   autoArchiveAgent: boolean;
   weekdays: number[];
   startTime: string;
@@ -129,6 +136,9 @@ function createDefaultFormState(
     disclosurePrompt: "【机器人代答】",
     customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
     delaySeconds: String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
+    privatePreviousMessageCount: String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT),
+    groupPreviousMessageCount: String(DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT),
+    groupFollowingMessageCount: String(DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT),
     autoArchiveAgent: false,
     weekdays: [1, 2, 3, 4, 5, 6, 7],
     startTime: "",
@@ -169,6 +179,9 @@ function createModeBehaviorFields(
   | "disclosurePrompt"
   | "customPrompt"
   | "delaySeconds"
+  | "privatePreviousMessageCount"
+  | "groupPreviousMessageCount"
+  | "groupFollowingMessageCount"
   | "autoArchiveAgent"
   | "audienceAllowRuleGroups"
   | "audienceDenyRuleGroups"
@@ -176,6 +189,7 @@ function createModeBehaviorFields(
   | "questionDenylist"
 > {
   const groupScan = getLarkSubstituteGroupScan(mode);
+  const messageContext = getLarkSubstituteMessageContext(mode);
   return {
     groupScanEnabled: groupScan.enabled,
     groupScanIntervalMinutes: String(groupScan.intervalMinutes),
@@ -189,6 +203,9 @@ function createModeBehaviorFields(
     disclosurePrompt: mode.disclosure.prompt,
     customPrompt: mode.customPrompt,
     delaySeconds: String(mode.delaySeconds),
+    privatePreviousMessageCount: String(messageContext.privatePreviousMessageCount),
+    groupPreviousMessageCount: String(messageContext.groupPreviousMessageCount),
+    groupFollowingMessageCount: String(messageContext.groupFollowingMessageCount),
     autoArchiveAgent: mode.autoArchiveAgent === true,
     ...createSubstituteRuleFormLists(mode),
   };
@@ -236,6 +253,14 @@ function parseScanMinutes(value: string, label: string, minimum: number): number
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < minimum) {
     throw new Error(`${label}必须是大于等于 ${minimum} 的整数分钟`);
+  }
+  return parsed;
+}
+
+function parseMessageCount(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+    throw new Error(`${label}必须是 0 到 100 的整数`);
   }
   return parsed;
 }
@@ -367,6 +392,20 @@ export function buildSubstituteModeInput(input: {
     },
     customPrompt: form.customPrompt.trim(),
     delaySeconds: parseDelaySeconds(form.delaySeconds),
+    messageContext: {
+      privatePreviousMessageCount: parseMessageCount(
+        form.privatePreviousMessageCount,
+        "私聊上文消息数",
+      ),
+      groupPreviousMessageCount: parseMessageCount(
+        form.groupPreviousMessageCount,
+        "群聊上文消息数",
+      ),
+      groupFollowingMessageCount: parseMessageCount(
+        form.groupFollowingMessageCount,
+        "群聊下文消息数",
+      ),
+    },
     autoArchiveAgent: form.autoArchiveAgent,
     activeTimeRanges: buildActiveTimeRanges(form, mode),
     ...ruleLists,

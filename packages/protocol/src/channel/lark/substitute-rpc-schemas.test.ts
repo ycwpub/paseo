@@ -5,10 +5,14 @@ import {
   LarkSubstituteModeUpdateRequestSchema,
 } from "./substitute-rpc-schemas.js";
 import {
+  DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT,
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   getLarkSubstituteGroupScan,
-} from "./substitute-types.js";
+  getLarkSubstituteMessageContext,
+} from "../../messages.js";
 
 const modeInput = {
   name: "工作时间替身",
@@ -32,6 +36,11 @@ const modeInput = {
   },
   customPrompt: "只回答研发相关问题",
   delaySeconds: 10,
+  messageContext: {
+    privatePreviousMessageCount: 7,
+    groupPreviousMessageCount: 8,
+    groupFollowingMessageCount: 9,
+  },
   activeTimeRanges: [
     {
       id: "workday",
@@ -100,6 +109,23 @@ describe("Lark substitute mode RPC schemas", () => {
     });
   });
 
+  it("keeps legacy modes on the default message context limits", () => {
+    const request = LarkSubstituteModeCreateRequestSchema.parse({
+      type: "channel.lark.substitute.create.request",
+      requestId: "request-default-message-context",
+      mode: {
+        ...modeInput,
+        messageContext: undefined,
+      },
+    });
+
+    expect(getLarkSubstituteMessageContext(request.mode)).toEqual({
+      privatePreviousMessageCount: DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT,
+      groupPreviousMessageCount: DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT,
+      groupFollowingMessageCount: DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT,
+    });
+  });
+
   it("accepts all independent substitute mode settings", () => {
     const request = LarkSubstituteModeCreateRequestSchema.parse({
       type: "channel.lark.substitute.create.request",
@@ -119,6 +145,11 @@ describe("Lark substitute mode RPC schemas", () => {
         excludeRecentMinutes: 20,
       },
       delaySeconds: 10,
+      messageContext: {
+        privatePreviousMessageCount: 7,
+        groupPreviousMessageCount: 8,
+        groupFollowingMessageCount: 9,
+      },
       target: {
         kind: "assistant",
         assistantId: "assistant-1",

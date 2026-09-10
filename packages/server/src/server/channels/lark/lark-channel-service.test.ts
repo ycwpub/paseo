@@ -1075,7 +1075,7 @@ describe("LarkChannelService", () => {
   test("generates a private substitute answer before forwarding and replying in the relay group", async () => {
     const harness = createHarness({ withPrivatePoller: true });
     const createTime = Date.now() - 20 * 60 * 1_000;
-    harness.adapter.searchPrivateMessagesAsUser = vi.fn(async () => [
+    let privateMessages = [
       {
         message_id: "om_private_question",
         chat_id: "oc_private_source",
@@ -1088,7 +1088,8 @@ describe("LarkChannelService", () => {
         },
         body: { content: JSON.stringify({ text: "一个商家可以同时使用两种分账方式吗？" }) },
       },
-    ]);
+    ];
+    harness.adapter.searchPrivateMessagesAsUser = vi.fn(async () => privateMessages);
     harness.adapter.createSubstituteRelayChat = vi.fn(async () => "oc_private_relay");
     harness.adapter.sendTextWithResult = vi.fn(async () => ({
       threadId: null,
@@ -1182,6 +1183,50 @@ describe("LarkChannelService", () => {
       }),
     ]);
     expect(harness.agentManager.archiveAgent).toHaveBeenCalledWith("agent-created");
+
+    privateMessages = [
+      {
+        message_id: "om_private_follow_up",
+        chat_id: "oc_private_source",
+        create_time: String(createTime + 1_000),
+        sender: {
+          id: "ou_private_peer",
+          id_type: "open_id",
+          sender_type: "user",
+          sender_name: "私聊用户",
+        },
+        body: { content: JSON.stringify({ text: "那第二个问题呢？" }) },
+      },
+    ];
+    const followUpScan = privatePoller.runMode({ ...storedMode, enabled: true });
+    await vi.waitFor(() => expect(harness.agentManager.streamAgent).toHaveBeenCalledTimes(2));
+
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    expect(harness.service.listSubstituteTasks(storedMode.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          messageId: "om_private_question",
+          agentId: "agent-created",
+        }),
+        expect.objectContaining({
+          messageId: "om_private_follow_up",
+          agentId: "agent-created",
+        }),
+      ]),
+    );
+
+    harness.lastMessages.set("agent-created", "第二个问题的回答。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+    await followUpScan;
+
+    expect(harness.adapter.createSubstituteRelayChat).toHaveBeenCalledTimes(1);
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "om_forwarded_private_question",
+      '<at user_id="ou_private_peer"></at> 【代授权用户回复】第二个问题的回答。',
+    );
+    expect(harness.agentManager.archiveAgent).toHaveBeenCalledTimes(2);
   });
 
   test("does not forward a private message when the agent rejects it by question policy", async () => {
@@ -1970,6 +2015,91 @@ describe("LarkChannelService", () => {
       rootMessageId: "om_new_substitute_topic",
     });
     expect(harness.agentManager.archiveAgent).not.toHaveBeenCalled();
+  });
+
+  test("reuses one Agent session for later substitute replies in the same group", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+    vi.mocked(harness.adapter.replyToMessageInThread)
+      .mockResolvedValueOnce({
+        threadId: "omt_first",
+        messageId: "om_first_reply",
+      })
+      .mockResolvedValueOnce({
+        threadId: "omt_second",
+        messageId: "om_second_reply",
+      });
+
+    const sendSubstituteQuestion = async (messageId: string, text: string) => {
+      await harness.service.handleIncomingEvent(harness.botId, {
+        eventId: `evt_${messageId}`,
+        messageId,
+        chatId: "oc_1",
+        chatType: "group",
+        threadId: null,
+        rootMessageId: null,
+        openId: "ou_1",
+        unionId: null,
+        displayName: "Alice",
+        topicName: "Release plan",
+        text,
+        createTime: Date.now(),
+        mentions: [
+          {
+            key: "@_user_1",
+            name: "张三",
+            openId: "ou_substitute",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+        ],
+      } satisfies NormalizedLarkMessageEvent);
+      await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1_000);
+    };
+
+    await sendSubstituteQuestion("om_first", "@张三 第一个问题");
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    expect(harness.agentManager.streamAgent).toHaveBeenCalledTimes(1);
+
+    harness.lastMessages.set("agent-created", "第一个回答");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    await sendSubstituteQuestion("om_second", "@张三 第二个问题");
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    expect(harness.agentManager.streamAgent).toHaveBeenCalledTimes(2);
+    expect(harness.service.listSubstituteTasks()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ messageId: "om_first", agentId: "agent-created" }),
+        expect.objectContaining({ messageId: "om_second", agentId: "agent-created" }),
+      ]),
+    );
+
+    harness.lastMessages.set("agent-created", "第二个回答");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      "om_first",
+      "【代张三回复】第一个回答",
+    );
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      "om_second",
+      "【代张三回复】第二个回答",
+    );
   });
 
   test("uses an independent substitute mode target and question policies", async () => {

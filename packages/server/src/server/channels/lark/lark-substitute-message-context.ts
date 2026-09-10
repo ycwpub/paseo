@@ -1,7 +1,12 @@
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 
 const CONTEXT_WINDOW_MS = 30 * 60 * 1_000;
-const MAX_CONTEXT_MESSAGES_PER_SIDE = 10;
+
+export interface LarkSubstituteMessageContextLimits {
+  privatePreviousMessageCount: number;
+  groupPreviousMessageCount: number;
+  groupFollowingMessageCount: number;
+}
 
 function normalizeTimestamp(value: number | null): number | null {
   if (value === null || !Number.isFinite(value)) return null;
@@ -26,9 +31,14 @@ function dedupeEvents(events: readonly NormalizedLarkMessageEvent[]): Normalized
   return [...byMessageId.values()].sort(compareEvents);
 }
 
+function takeLast<T>(values: readonly T[], count: number): T[] {
+  return count <= 0 ? [] : values.slice(-count);
+}
+
 export function selectLarkSubstituteSupplementalEvents(input: {
   latestEvent: NormalizedLarkMessageEvent;
   events: readonly NormalizedLarkMessageEvent[];
+  limits: LarkSubstituteMessageContextLimits;
 }): NormalizedLarkMessageEvent[] {
   const candidates = dedupeEvents(input.events).filter(
     (event) =>
@@ -40,7 +50,7 @@ export function selectLarkSubstituteSupplementalEvents(input: {
       const eventTime = normalizeTimestamp(event.createTime);
       return currentTime === null || eventTime === null || eventTime <= currentTime;
     });
-    return previous.slice(-MAX_CONTEXT_MESSAGES_PER_SIDE);
+    return takeLast(previous, input.limits.privatePreviousMessageCount);
   }
   const previous = candidates.filter((event) => {
     const eventTime = normalizeTimestamp(event.createTime);
@@ -51,14 +61,15 @@ export function selectLarkSubstituteSupplementalEvents(input: {
     return currentTime !== null && eventTime !== null && eventTime > currentTime;
   });
   return [
-    ...previous.slice(-MAX_CONTEXT_MESSAGES_PER_SIDE),
-    ...following.slice(0, MAX_CONTEXT_MESSAGES_PER_SIDE),
+    ...takeLast(previous, input.limits.groupPreviousMessageCount),
+    ...following.slice(0, input.limits.groupFollowingMessageCount),
   ];
 }
 
 export async function collectLarkSubstituteMessageContext(input: {
   latestEvent: NormalizedLarkMessageEvent;
   bufferedEvents: readonly NormalizedLarkMessageEvent[];
+  limits: LarkSubstituteMessageContextLimits;
   now?: Date;
   listChatMessages?: (window: { start: Date; end: Date }) => Promise<NormalizedLarkMessageEvent[]>;
 }): Promise<NormalizedLarkMessageEvent[]> {
@@ -74,6 +85,7 @@ export async function collectLarkSubstituteMessageContext(input: {
   return selectLarkSubstituteSupplementalEvents({
     latestEvent: input.latestEvent,
     events: [...history, ...input.bufferedEvents],
+    limits: input.limits,
   });
 }
 

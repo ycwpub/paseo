@@ -25,6 +25,7 @@ import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Composer } from "@/composer";
+import { resolveAgentComposerIdentity } from "@/composer/assistant-selector/agent-identity";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import {
   resolveComposerTrackControlClearance,
@@ -123,6 +124,7 @@ interface ChatAgentStateShape {
   runtimeInfo?: Agent["runtimeInfo"];
   features?: Agent["features"];
   lastError?: Agent["lastError"] | null;
+  labels: Agent["labels"];
 }
 
 const RECONNECT_TOAST_DELAY_MS = 1_000;
@@ -160,6 +162,7 @@ const EMPTY_CHAT_AGENT_STATE: ChatAgentSelectedState = {
   status: null,
   cwd: null,
   lastError: null,
+  labels: {},
   archivedAt: null,
   requiresAttention: false,
   attentionReason: null,
@@ -186,6 +189,7 @@ function selectChatAgentState(
     runtimeInfo: agent.runtimeInfo,
     features: agent.features,
     lastError: agent.lastError ?? null,
+    labels: agent.labels,
     archivedAt: agent.archivedAt ?? null,
     requiresAttention: agent.requiresAttention ?? false,
     attentionReason: agent.attentionReason ?? null,
@@ -1286,6 +1290,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   const hasPluginComposerPills = useHasPluginComposerPills(serverId, workspaceId, agentId);
   const hasActiveComposer = !agentState.archivedAt && !isArchivingCurrentAgent;
+  const agentIdentity = useMemo(
+    () => resolveAgentComposerIdentity(agentState.labels),
+    [agentState.labels],
+  );
   const hasVisibleAgentTracks = hasAgentTracks({
     subagentRows,
     tasks,
@@ -1347,6 +1355,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         isArchivingCurrentAgent={isArchivingCurrentAgent}
         archivedAt={agentState.archivedAt}
         cwd={cwd}
+        assistantId={agentIdentity.assistantId}
+        teamId={agentIdentity.teamId}
         isSubmitLoading={false}
         agentInputDraft={agentInputDraft}
         onAttentionInputFocus={onAttentionInputFocus}
@@ -1553,6 +1563,8 @@ const AgentComposerSection = memo(function AgentComposerSection({
   isArchivingCurrentAgent,
   archivedAt,
   cwd,
+  assistantId,
+  teamId,
   isSubmitLoading,
   agentInputDraft,
   onAttentionInputFocus,
@@ -1566,6 +1578,8 @@ const AgentComposerSection = memo(function AgentComposerSection({
   isArchivingCurrentAgent: boolean;
   archivedAt: Date | null;
   cwd: string;
+  assistantId: string | null;
+  teamId: string | null;
   isSubmitLoading: boolean;
   agentInputDraft: AgentInputDraft;
   onAttentionInputFocus: () => void;
@@ -1589,6 +1603,8 @@ const AgentComposerSection = memo(function AgentComposerSection({
       serverId={serverId}
       isPaneFocused={isPaneFocused}
       cwd={cwd}
+      assistantId={assistantId}
+      teamId={teamId}
       isSubmitLoading={isSubmitLoading}
       agentInputDraft={agentInputDraft}
       onAttentionInputFocus={onAttentionInputFocus}
@@ -1604,6 +1620,8 @@ function ActiveAgentComposer({
   serverId,
   isPaneFocused,
   cwd,
+  assistantId,
+  teamId,
   isSubmitLoading,
   agentInputDraft,
   onAttentionInputFocus,
@@ -1615,6 +1633,8 @@ function ActiveAgentComposer({
   serverId: string;
   isPaneFocused: boolean;
   cwd: string;
+  assistantId: string | null;
+  teamId: string | null;
   isSubmitLoading: boolean;
   agentInputDraft: AgentInputDraft;
   onAttentionInputFocus: () => void;
@@ -1736,6 +1756,8 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        assistantId={assistantId}
+        teamId={teamId}
       />
     </ReanimatedAnimated.View>
   );

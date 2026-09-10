@@ -17,9 +17,13 @@ import { createUserMessage, generateMessageId, type UserMessageItem } from "@/ty
 import type { MessageSubmissionRejectionOutcome } from "@/composer/submission/model";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
 export {
+  moveQueuedComposerMessage,
   removeQueuedComposerMessage,
+  reorderQueuedComposerMessages,
   sendQueuedComposerMessageNow,
+  type MoveQueuedComposerMessageInput,
   type RemoveQueuedComposerMessageInput,
+  type ReorderQueuedComposerMessagesInput,
   type SendQueuedComposerMessageNowInput,
   type SendQueuedComposerMessageNowResult,
 } from "@/composer/queued-message-actions";

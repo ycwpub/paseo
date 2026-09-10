@@ -89,6 +89,37 @@ export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES = 10;
 export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES = 30;
 export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES = 60;
 export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES = 10;
+export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT = 10;
+export const DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT = 10;
+export const DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT = 10;
+
+export const LarkSubstituteMessageContextSchema = z.object({
+  privatePreviousMessageCount: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT),
+  groupPreviousMessageCount: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT),
+  groupFollowingMessageCount: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT),
+});
+export type LarkSubstituteMessageContext = z.infer<typeof LarkSubstituteMessageContextSchema>;
+
+export function getLarkSubstituteMessageContext(
+  mode: Pick<LarkSubstituteMode, "messageContext">,
+): LarkSubstituteMessageContext {
+  return LarkSubstituteMessageContextSchema.parse(mode.messageContext ?? {});
+}
 
 export const LarkSubstitutePrivateScanSchema = z
   .object({
@@ -172,6 +203,11 @@ export const LarkSubstituteModeSchema = z.object({
   disclosure: LarkSubstituteDisclosureSchema,
   customPrompt: z.string().max(10_000).default(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT),
   delaySeconds: z.number().int().min(0).max(3_600).default(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
+  /**
+   * Optional for persisted modes created before configurable context windows.
+   * Runtime consumers must use getLarkSubstituteMessageContext().
+   */
+  messageContext: LarkSubstituteMessageContextSchema.optional(),
   autoArchiveAgent: z.boolean().default(false),
   activeTimeRanges: z.array(LarkSubstituteTimeRangeSchema).max(32).default([]),
   audienceAllowlist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),

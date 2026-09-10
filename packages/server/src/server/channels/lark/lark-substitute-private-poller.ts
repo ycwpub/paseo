@@ -1,10 +1,11 @@
 import type pino from "pino";
-import type {
-  LarkDirectory,
-  LarkSubstituteMode,
-  LarkSubstituteTask,
-  LarkSubstituteTaskFailureStage,
-  LarkSubstituteTaskScanRange,
+import {
+  getLarkSubstituteMessageContext,
+  type LarkDirectory,
+  type LarkSubstituteMode,
+  type LarkSubstituteTask,
+  type LarkSubstituteTaskFailureStage,
+  type LarkSubstituteTaskScanRange,
 } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
@@ -21,6 +22,7 @@ import {
   matchLarkSubstituteMode,
   type MatchedLarkSubstituteMode,
 } from "./lark-substitute-rule-matcher.js";
+import { selectLarkSubstituteSupplementalEvents } from "./lark-substitute-message-context.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 interface LarkSubstitutePrivatePollerAdapter extends Pick<
@@ -462,7 +464,11 @@ export class LarkSubstitutePrivatePoller {
           eventId: `private-scan:${source.messageId}`,
           chatType: "p2p",
         },
-        supplementalEvents: context,
+        supplementalEvents: selectLarkSubstituteSupplementalEvents({
+          latestEvent: source,
+          events: context,
+          limits: getLarkSubstituteMessageContext(mode),
+        }),
       });
     } catch (error) {
       throw new LarkPrivateSubstituteStageError("processing", error);

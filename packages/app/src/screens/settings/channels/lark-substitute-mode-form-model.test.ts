@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest";
 import {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT,
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   type LarkChannelBotStatus,
 } from "@getpaseo/protocol/messages";
@@ -17,6 +20,15 @@ describe("createSubstituteModeFormState", () => {
     expect(form.delaySeconds).toBe(String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS));
     expect(form.delaySeconds).toBe("600");
     expect(form.customPrompt).toBe(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT);
+    expect(form.privatePreviousMessageCount).toBe(
+      String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_PREVIOUS_MESSAGE_COUNT),
+    );
+    expect(form.groupPreviousMessageCount).toBe(
+      String(DEFAULT_LARK_SUBSTITUTE_GROUP_PREVIOUS_MESSAGE_COUNT),
+    );
+    expect(form.groupFollowingMessageCount).toBe(
+      String(DEFAULT_LARK_SUBSTITUTE_GROUP_FOLLOWING_MESSAGE_COUNT),
+    );
     expect(form.autoArchiveAgent).toBe(false);
     expect(form.groupScanEnabled).toBe(true);
     expect(form.groupScanExcludeRecentMinutes).toBe(
@@ -79,6 +91,11 @@ describe("createSubstituteModeFormState", () => {
     expect(input.questionAllowlist).toEqual([{ id: "question-allow", description: "研发问题" }]);
     expect(input.questionDenylist).toEqual([{ id: "question-deny", description: "人事问题" }]);
     expect(input.autoArchiveAgent).toBe(true);
+    expect(input.messageContext).toEqual({
+      privatePreviousMessageCount: 10,
+      groupPreviousMessageCount: 10,
+      groupFollowingMessageCount: 10,
+    });
     expect(input.groupScan).toEqual({
       enabled: true,
       intervalMinutes: 30,

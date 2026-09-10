@@ -6,6 +6,12 @@ import {
   selectLarkSubstituteSupplementalEvents,
 } from "./lark-substitute-message-context.js";
 
+const DEFAULT_LIMITS = {
+  privatePreviousMessageCount: 10,
+  groupPreviousMessageCount: 10,
+  groupFollowingMessageCount: 10,
+};
+
 function event(
   messageId: string,
   text: string,
@@ -41,6 +47,7 @@ describe("Lark substitute message context", () => {
           latest,
           event("om_4", "之后的消息", 4_000, "p2p"),
         ],
+        limits: DEFAULT_LIMITS,
       }).map((entry) => entry.messageId),
     ).toEqual(["om_1", "om_2"]);
   });
@@ -51,6 +58,7 @@ describe("Lark substitute message context", () => {
       selectLarkSubstituteSupplementalEvents({
         latestEvent: latest,
         events: [event("om_1", "上文", 1_000), latest, event("om_3", "下文", 3_000)],
+        limits: DEFAULT_LIMITS,
       }).map((entry) => entry.messageId),
     ).toEqual(["om_1", "om_3"]);
   });
@@ -66,6 +74,7 @@ describe("Lark substitute message context", () => {
         event("om_2", "延迟期间旧问题", Date.parse("2026-09-05T01:59:30.000Z"), "p2p"),
         latest,
       ],
+      limits: DEFAULT_LIMITS,
       now: new Date("2026-09-05T02:01:00.000Z"),
       listChatMessages,
     });
@@ -75,6 +84,46 @@ describe("Lark substitute message context", () => {
       start: new Date("2026-09-05T01:30:00.000Z"),
       end: new Date("2026-09-05T02:01:00.000Z"),
     });
+  });
+
+  test("applies independently configurable private and group context limits", () => {
+    const privateLatest = event("om_private_latest", "最终问题", 5_000, "p2p");
+    expect(
+      selectLarkSubstituteSupplementalEvents({
+        latestEvent: privateLatest,
+        events: [
+          event("om_1", "一", 1_000, "p2p"),
+          event("om_2", "二", 2_000, "p2p"),
+          event("om_3", "三", 3_000, "p2p"),
+          privateLatest,
+        ],
+        limits: {
+          privatePreviousMessageCount: 2,
+          groupPreviousMessageCount: 0,
+          groupFollowingMessageCount: 0,
+        },
+      }).map((entry) => entry.messageId),
+    ).toEqual(["om_2", "om_3"]);
+
+    const groupLatest = event("om_group_latest", "最终问题", 4_000);
+    expect(
+      selectLarkSubstituteSupplementalEvents({
+        latestEvent: groupLatest,
+        events: [
+          event("om_1", "一", 1_000),
+          event("om_2", "二", 2_000),
+          event("om_3", "三", 3_000),
+          groupLatest,
+          event("om_5", "五", 5_000),
+          event("om_6", "六", 6_000),
+        ],
+        limits: {
+          privatePreviousMessageCount: 0,
+          groupPreviousMessageCount: 1,
+          groupFollowingMessageCount: 1,
+        },
+      }).map((entry) => entry.messageId),
+    ).toEqual(["om_3", "om_5"]);
   });
 
   test("marks surrounding messages as supplemental rather than the current question", () => {

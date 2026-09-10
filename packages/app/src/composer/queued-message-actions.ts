@@ -8,6 +8,19 @@ export interface RemoveQueuedComposerMessageInput {
   queue: QueueWriter;
 }
 
+export interface MoveQueuedComposerMessageInput {
+  agentId: string;
+  messageId: string;
+  direction: "up" | "down";
+  queue: QueueWriter;
+}
+
+export interface ReorderQueuedComposerMessagesInput {
+  agentId: string;
+  orderedMessageIds: readonly string[];
+  queue: QueueWriter;
+}
+
 export function removeQueuedComposerMessage(
   input: RemoveQueuedComposerMessageInput,
 ): QueuedComposerMessage | null {
@@ -22,6 +35,54 @@ export function removeQueuedComposerMessage(
     return nextQueues;
   });
   return item;
+}
+
+export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput): boolean {
+  let moved = false;
+  input.queue.write((previousQueues) => {
+    const messages = [...(previousQueues.get(input.agentId) ?? [])];
+    const currentIndex = messages.findIndex((message) => message.id === input.messageId);
+    if (currentIndex === -1) return previousQueues;
+    const targetIndex = input.direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= messages.length) return previousQueues;
+
+    const [message] = messages.splice(currentIndex, 1);
+    messages.splice(targetIndex, 0, message);
+    const nextQueues = new Map(previousQueues);
+    nextQueues.set(input.agentId, messages);
+    moved = true;
+    return nextQueues;
+  });
+  return moved;
+}
+
+export function reorderQueuedComposerMessages(input: ReorderQueuedComposerMessagesInput): boolean {
+  if (new Set(input.orderedMessageIds).size !== input.orderedMessageIds.length) {
+    return false;
+  }
+
+  let reordered = false;
+  input.queue.write((previousQueues) => {
+    const messages = previousQueues.get(input.agentId) ?? [];
+    const messageById = new Map(messages.map((message) => [message.id, message]));
+    const orderedMessageIds = new Set(input.orderedMessageIds);
+    const orderedMessages = input.orderedMessageIds.flatMap((id) => {
+      const message = messageById.get(id);
+      return message ? [message] : [];
+    });
+    const messagesAddedDuringDrag = messages.filter(
+      (message) => !orderedMessageIds.has(message.id),
+    );
+    const nextMessages = [...orderedMessages, ...messagesAddedDuringDrag];
+    const isUnchanged = nextMessages.every((message, index) => message === messages[index]);
+    if (isUnchanged) return previousQueues;
+
+    const nextQueues = new Map(previousQueues);
+    nextQueues.set(input.agentId, nextMessages);
+    reordered = true;
+    return nextQueues;
+  });
+  return reordered;
 }
 
 export interface SendQueuedComposerMessageNowInput {

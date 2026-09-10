@@ -59,8 +59,10 @@ import {
   openComposerAttachment,
   pickAndPersistImages,
   queueComposerMessage,
+  moveQueuedComposerMessage,
   removeComposerAttachmentAtIndex,
   removeQueuedComposerMessage,
+  reorderQueuedComposerMessages,
   sendQueuedComposerMessageNow,
   toggleForgeAttachmentFromPicker,
   uploadFileAttachments,
@@ -1832,6 +1834,29 @@ function ComposerContentImpl({
     [agentId, queueWriter],
   );
 
+  const handleMoveQueuedMessage = useCallback(
+    (id: string, direction: "up" | "down") => {
+      moveQueuedComposerMessage({
+        agentId,
+        messageId: id,
+        direction,
+        queue: queueWriter,
+      });
+    },
+    [agentId, queueWriter],
+  );
+
+  const handleReorderQueuedMessages = useCallback(
+    (messages: readonly QueuedComposerMessage[]) => {
+      reorderQueuedComposerMessages({
+        agentId,
+        orderedMessageIds: messages.map((message) => message.id),
+        queue: queueWriter,
+      });
+    },
+    [agentId, queueWriter],
+  );
+
   const handleSteerQueuedMessage = useCallback(
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
@@ -2234,13 +2259,17 @@ function ComposerContentImpl({
           messages={visibleQueuedMessages}
           disabled={isEditingQueuedMessage}
           onEdit={editQueuedMessage}
+          onMove={handleMoveQueuedMessage}
           onRemove={handleRemoveQueuedMessage}
+          onReorder={handleReorderQueuedMessages}
           onSteer={handleSteerQueuedMessage}
         />
       ) : null,
     [
       editQueuedMessage,
+      handleMoveQueuedMessage,
       handleRemoveQueuedMessage,
+      handleReorderQueuedMessages,
       handleSteerQueuedMessage,
       isEditingQueuedMessage,
       visibleQueuedMessages,

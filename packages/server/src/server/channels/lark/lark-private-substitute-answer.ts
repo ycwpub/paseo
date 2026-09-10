@@ -16,6 +16,10 @@ interface PendingPrivateSubstituteAnswer {
 export class LarkPrivateSubstituteAnswerWaiter {
   private readonly pending = new Map<string, PendingPrivateSubstituteAnswer>();
 
+  hasPending(agentId: string): boolean {
+    return this.pending.has(agentId);
+  }
+
   wait(
     agentId: string,
     previousMessage: string | null,

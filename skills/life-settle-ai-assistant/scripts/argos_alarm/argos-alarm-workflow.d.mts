@@ -42,7 +42,7 @@ export function extractArgosAlertFromMessage(message: ArgosMessage): ArgosAlert 
 export function buildArgosBaseRecord(
   alert: ArgosAlert,
   fieldNames?: string[],
-  status?: string
-): Record<string, any>;
+  status?: string,
+): Record<string, unknown>;
 
 export function isValidFeishuDocumentUrl(value: unknown): boolean;

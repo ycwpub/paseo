@@ -16,36 +16,42 @@ export interface ArgosGroupsScanPlan {
   scanTasks: Array<Record<string, unknown>>;
 }
 
+export type ArgosRunnerResult = Record<string, unknown>;
+
 export function buildArgosGroupsScanPlan(input?: Record<string, unknown>): ArgosGroupsScanPlan;
 
 export function createArgosAlarmRunner(options?: {
-  execFile?: (command: string, args: string[], options?: Record<string, unknown>) => Promise<{ stdout?: string; stderr?: string }>;
+  execFile?: (
+    command: string,
+    args: string[],
+    options?: Record<string, unknown>,
+  ) => Promise<{ stdout?: string; stderr?: string }>;
   env?: NodeJS.ProcessEnv;
   sleep?: (ms: number) => Promise<void>;
   templateUrl?: string;
 }): {
-  scanChatToBase(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  prepareAutoTroubleshoot(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  splitWorkItems(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  resumeAutoOrchestration(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  closeReadyWorkItems(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  recoverProcessingRecords(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  syncDailyBaseTemplateOrder(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  doctorDailyBase(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  inspectResult(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  prepareSingleTroubleshootData(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  publishTroubleshootingDoc(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  publishSopDoc(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  normalizeModelResultJson(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  normalizeResultDocLinks(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  closeWorkItem(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  validateResultDir(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  buildAutoTroubleshootDrainSummary(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  renderRunReport(input?: Record<string, unknown>): Promise<Record<string, any>>;
-  runGroupsScanAndPrepare(input?: Record<string, unknown>): Promise<Record<string, any>>;
+  scanChatToBase(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  prepareAutoTroubleshoot(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  splitWorkItems(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  resumeAutoOrchestration(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  closeReadyWorkItems(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  recoverProcessingRecords(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  syncDailyBaseTemplateOrder(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  doctorDailyBase(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  inspectResult(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  prepareSingleTroubleshootData(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  publishTroubleshootingDoc(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  publishSopDoc(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  normalizeModelResultJson(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  normalizeResultDocLinks(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  closeWorkItem(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  validateResultDir(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  buildAutoTroubleshootDrainSummary(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  renderRunReport(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
+  runGroupsScanAndPrepare(input?: Record<string, unknown>): Promise<ArgosRunnerResult>;
 };
 
 export function runArgosAlarmRunnerCli(
   args?: string[],
-  options?: { runner?: Record<string, any> }
-): Promise<Record<string, any>>;
+  options?: { runner?: Record<string, unknown> },
+): Promise<ArgosRunnerResult>;

@@ -28,7 +28,7 @@ function unique(values) {
 
 function extractUrls(text) {
   return unique(String(text || "").match(/https?:\/\/[^\s)\]<>"]+/g) || []).map((url) =>
-    url.replace(/[),，。；;]+$/g, "")
+    url.replace(/[),，。；;]+$/g, ""),
   );
 }
 
@@ -41,14 +41,22 @@ function parseUrl(value) {
 }
 
 function isArgosRuleUrl(url) {
-  return /\/argos\/alarm\/detail\/[^/?#]+(?:\/[^/?#]+)?(?:[?#]|$)/.test(url) && !url.includes("/single/") && !url.includes("/event/");
+  return (
+    /\/argos\/alarm\/detail\/[^/?#]+(?:\/[^/?#]+)?(?:[?#]|$)/.test(url) &&
+    !url.includes("/single/") &&
+    !url.includes("/event/")
+  );
 }
 
 function extractArgosLevel(title) {
   const source = String(title || "");
-  const severity = source.match(/[【\[]([^】\]]*(?:argos-)?(?:critical|warning|fatal|info)[^】\]]*)[】\]]/i);
+  const severity = source.match(
+    /[【\u005B]([^】\u005D]*(?:argos-)?(?:critical|warning|fatal|info)[^】\u005D]*)[】\u005D]/i,
+  );
   const raw = severity?.[1] || findFirst(source, [/^\[([^\]]+)]/, /^【([^】]+)】/]);
-  const normalized = String(raw || "").trim().toLowerCase();
+  const normalized = String(raw || "")
+    .trim()
+    .toLowerCase();
   if (normalized.includes("critical")) return "critical";
   if (normalized.includes("warning")) return "warning";
   return "";
@@ -83,6 +91,7 @@ export function normalizeArgosRuleName(ruleName) {
     .trim();
 }
 
+// eslint-disable-next-line complexity -- Supports all known Argos alarm URL variants in one parser.
 export function extractArgosIdentifiers(text) {
   const urls = extractUrls(text);
   let ruleId = "";
@@ -125,10 +134,11 @@ export function extractArgosIdentifiers(text) {
     ruleId,
     problemId,
     alertGroupId,
-    sendItemId
+    sendItemId,
   };
 }
 
+// eslint-disable-next-line complexity -- Normalizes multiple historical Argos card formats.
 export function extractArgosAlertFromMessage(message) {
   const content = htmlUnescape(message?.content ?? JSON.stringify(message ?? {}));
   if (!/cloud\.bytedance\.net\/argos\/alarm/.test(content)) return null;
@@ -136,23 +146,31 @@ export function extractArgosAlertFromMessage(message) {
   const title = findFirst(content, [/<card\s+title="([^"]+)"/, /<card\s+title='([^']+)'/]);
   const identifiers = extractArgosIdentifiers(content);
   const urls = extractUrls(content);
-  const resultUrl = urls.find((url) => url.includes("/argos/alarm/detail/single/") || url.includes("/argos/alarm/detail/event/")) || "";
+  const resultUrl =
+    urls.find(
+      (url) =>
+        url.includes("/argos/alarm/detail/single/") || url.includes("/argos/alarm/detail/event/"),
+    ) || "";
   const ruleUrl = urls.find((url) => isArgosRuleUrl(url)) || "";
   const resultUrlObject = parseUrl(resultUrl);
   const ruleUrlObject = parseUrl(ruleUrl);
   const psm = cleanMarkdownFieldValue(
     findFirst(content, [/服务:\s*([^\n\r]+)/, /\bpsm=([^&\s)]+)/]) ||
-    resultUrlObject?.searchParams.get("psm") ||
-    ruleUrlObject?.searchParams.get("psm") ||
-    ""
+      resultUrlObject?.searchParams.get("psm") ||
+      ruleUrlObject?.searchParams.get("psm") ||
+      "",
   );
-  const resultTime = findFirst(content, [/[报告]警时间:\**\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/]);
+  const resultTime = findFirst(content, [
+    /[报告]警时间:\**\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/,
+  ]);
   const ruleName = normalizeArgosRuleName(title || findFirst(content, [/规则:\s*([^\n\r[]+)/]));
 
   if (!identifiers.ruleId || !identifiers.resultId || !psm || !ruleName) return null;
 
   const level = extractArgosLevel(title);
-  const ruleContent = extractSection(content, /\*\*Tags:\s*\*\*|Tags:\s*/i, [/\*\*Argos根因分析\*\*/i]);
+  const ruleContent = extractSection(content, /\*\*Tags:\s*\*\*|Tags:\s*/i, [
+    /\*\*Argos根因分析\*\*/i,
+  ]);
   const resultContent = extractSection(content, /\*\*Argos根因分析\*\*/i, [/<\/card>/i]);
 
   return {
@@ -177,8 +195,8 @@ export function extractArgosAlertFromMessage(message) {
       raw_title: title,
       alert_group_id: identifiers.alertGroupId || identifiers.resultId,
       problem_id: identifiers.problemId,
-      send_item_id: identifiers.sendItemId
-    }
+      send_item_id: identifiers.sendItemId,
+    },
   };
 }
 
@@ -191,11 +209,14 @@ export function buildArgosBaseRecord(alert, fieldNames = [], status = "init") {
     result_id: resultId,
     status: [status],
     rule_content: "",
-    extra: JSON.stringify(alert?.extra || {})
+    extra: JSON.stringify(alert?.extra || {}),
   };
   const record = {};
   for (const fieldName of fieldNames) {
-    if (Object.prototype.hasOwnProperty.call(source, fieldName) && source[fieldName] !== undefined) {
+    if (
+      Object.prototype.hasOwnProperty.call(source, fieldName) &&
+      source[fieldName] !== undefined
+    ) {
       record[fieldName] = source[fieldName];
     }
   }

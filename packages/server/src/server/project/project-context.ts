@@ -193,6 +193,7 @@ export function buildProjectContextPrompt(input: {
   directories: ResolvedProjectDirectories;
   knowledge?: ResolvedProjectKnowledge;
   pluginProjectPrompt?: string;
+  substituteProjectPrompt?: string;
   larkContextPrompt?: string;
 }): string {
   const indexInstructions =
@@ -241,6 +242,7 @@ export function buildProjectContextPrompt(input: {
       knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
     }),
     ...(input.pluginProjectPrompt ? [input.pluginProjectPrompt] : []),
+    ...(input.substituteProjectPrompt ? [input.substituteProjectPrompt] : []),
     ...(input.larkContextPrompt ? [input.larkContextPrompt] : []),
   ].join("\n");
 }
@@ -284,6 +286,7 @@ export async function loadProjectAgentContext(input: {
   paseoHome?: string;
   cloudDocumentCacheService?: CloudDocumentCacheService;
   readPluginProjectContext?: (projectId: string) => string | null;
+  readSubstituteProjectContext?: (projectId: string) => string | null;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAgentContext | null> {
   const workspace = await input.workspaceRegistry.get(input.workspaceId);
@@ -415,6 +418,10 @@ export async function loadProjectAgentContext(input: {
     input.readPluginProjectContext,
     project.projectId,
   );
+  const substituteProjectPrompt = readPluginProjectPrompt(
+    input.readSubstituteProjectContext,
+    project.projectId,
+  );
   const managedWorkspacePath = input.paseoHome
     ? resolveManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId)
     : null;
@@ -451,6 +458,7 @@ export async function loadProjectAgentContext(input: {
       directories,
       knowledge,
       pluginProjectPrompt,
+      substituteProjectPrompt,
       larkContextPrompt,
     }),
   };
@@ -464,6 +472,7 @@ export async function withProjectAgentContext(input: {
   paseoHome?: string;
   cloudDocumentCacheService?: CloudDocumentCacheService;
   readPluginProjectContext?: (projectId: string) => string | null;
+  readSubstituteProjectContext?: (projectId: string) => string | null;
   onAuthIssues?: (issues: readonly CloudDocumentAuthenticationIssue[]) => void;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAwareAgentSessionConfig> {

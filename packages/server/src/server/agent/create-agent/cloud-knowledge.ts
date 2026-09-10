@@ -26,6 +26,7 @@ interface PrepareAgentCloudKnowledgeInput {
   projectRegistry?: Pick<ProjectRegistry, "get">;
   workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
   readPluginProjectContext?: (projectId: string) => string | null;
+  readSubstituteProjectContext?: (projectId: string) => string | null;
   logger: Logger;
 }
 
@@ -100,6 +101,7 @@ async function resolveProjectContext(input: PrepareAgentCloudKnowledgeInput): Pr
     paseoHome: input.paseoHome,
     cloudDocumentCacheService: input.service,
     readPluginProjectContext: input.readPluginProjectContext,
+    readSubstituteProjectContext: input.readSubstituteProjectContext,
     onAuthIssues: (issues) => {
       if (!projectId) return;
       for (const issue of issues) {

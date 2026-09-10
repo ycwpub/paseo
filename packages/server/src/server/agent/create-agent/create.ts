@@ -55,6 +55,7 @@ export interface CreateAgentCommandDependencies {
   readGlobalKnowledge?: () => PaseoHostKnowledge | undefined;
   readAssistant?: (assistantId: string) => Assistant | null;
   readPluginProjectContext?: (projectId: string) => string | null;
+  readSubstituteProjectContext?: (projectId: string) => string | null;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -213,6 +214,7 @@ export async function createAgentCommand(
     projectRegistry: dependencies.projectRegistry,
     workspaceRegistry: dependencies.workspaceRegistry,
     readPluginProjectContext: dependencies.readPluginProjectContext,
+    readSubstituteProjectContext: dependencies.readSubstituteProjectContext,
     logger: dependencies.logger,
   });
 

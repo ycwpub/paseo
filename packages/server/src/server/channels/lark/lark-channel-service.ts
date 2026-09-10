@@ -70,7 +70,9 @@ import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
 import { archiveLarkSubstituteAgentForTask } from "./lark-substitute-agent-archive.js";
 import { sendLarkSubstituteAgentReply } from "./lark-substitute-agent-reply.js";
+import { LarkSubstituteAgentRedelivery } from "./lark-substitute-agent-redelivery.js";
 import { LarkSubstituteProjectSkillSync } from "./lark-substitute-project-skill.js";
+import { buildLarkSubstituteProjectAgentContext } from "./lark-substitute-project-binding.js";
 import {
   createLarkSubstituteRetryEvent,
   isLarkSubstituteOperationalFailure,
@@ -509,6 +511,7 @@ export class LarkChannelService {
   private readonly substituteProjectSkillSync: LarkSubstituteProjectSkillSync;
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
+  private readonly substituteAgentRedelivery: LarkSubstituteAgentRedelivery;
   private readonly substituteBotLoopGuard = new LarkSubstituteBotLoopGuard();
   private readonly privateSubstituteAnswerWaiter = new LarkPrivateSubstituteAnswerWaiter();
   private readonly substitutePrivatePoller: LarkSubstitutePrivatePoller | null;
@@ -642,6 +645,13 @@ export class LarkChannelService {
           })
         : null;
     this.incomingMessageObserver = options.incomingMessageObserver ?? null;
+    this.substituteAgentRedelivery = new LarkSubstituteAgentRedelivery({
+      listTasks: () => this.substituteTaskStore.list(),
+      getLastAssistantMessage: (agentId) => this.agentManager.getLastAssistantMessage(agentId),
+      send: (agentId, text) => this.replyToSubstituteConversation(agentId, text),
+      warn: (input, message) => this.logger.warn(input, message),
+      error: (input, message) => this.logger.error(input, message),
+    });
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
     });
@@ -1023,13 +1033,22 @@ export class LarkChannelService {
     return this.substituteModeStore.list();
   }
 
+  buildSubstituteProjectAgentContext(projectId: string): string | null {
+    return buildLarkSubstituteProjectAgentContext({
+      projectId,
+      paseoHome: this.paseoHome,
+      modes: this.listSubstituteModes(),
+      tasks: this.substituteTaskStore.list(),
+    });
+  }
+
   listSubstituteTasks(modeId?: string): LarkSubstituteTask[] {
     const tasks = this.substituteTaskStore.list();
     return modeId ? tasks.filter((task) => task.modeId === modeId) : tasks;
   }
 
   async replyToSubstituteConversation(agentId: string, text: string) {
-    return sendLarkSubstituteAgentReply(
+    const reply = await sendLarkSubstituteAgentReply(
       {
         paseoHome: this.paseoHome,
         listTasks: () => this.substituteTaskStore.list(),
@@ -1045,6 +1064,8 @@ export class LarkChannelService {
       },
       { agentId, text },
     );
+    this.substituteAgentRedelivery.noteDelivered(agentId);
+    return reply;
   }
 
   async scanSubstituteTasksNow(
@@ -2812,6 +2833,7 @@ export class LarkChannelService {
 
   private async handleAgentManagerEvent(event: AgentManagerEvent): Promise<void> {
     if (await this.privateSubstituteAnswerWaiter.handle(event, this.agentManager)) return;
+    await this.substituteAgentRedelivery.handle(event);
     if (event.type !== "agent_state") return;
     const relay = this.pendingRelays.get(event.agent.id);
     if (!relay) return;

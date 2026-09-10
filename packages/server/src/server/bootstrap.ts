@@ -1609,6 +1609,8 @@ export async function createPaseoDaemon(
     cloudDocumentCacheService,
     readGlobalKnowledge: () => daemonConfigStore.get().knowledge,
     readPluginProjectContext: (projectId) => pluginService.buildProjectAgentContext(projectId),
+    readSubstituteProjectContext: (projectId) =>
+      larkChannelService?.buildSubstituteProjectAgentContext(projectId) ?? null,
     readAssistant: (assistantId) => assistantStore.get(assistantId),
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,

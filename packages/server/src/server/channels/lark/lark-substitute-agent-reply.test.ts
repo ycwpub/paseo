@@ -139,6 +139,21 @@ describe("sendLarkSubstituteAgentReply", () => {
     });
   });
 
+  it("removes internal Lark routing directives before sending", async () => {
+    const deps = dependencies();
+
+    await sendLarkSubstituteAgentReply(deps, {
+      agentId: "agent-1",
+      text: "<!-- paseo:lark-route=user -->\n这是重新生成的答复",
+    });
+
+    expect(deps.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "【代答】这是重新生成的答复",
+      }),
+    );
+  });
+
   it("rejects an Agent that is no longer in the substitute Project", async () => {
     const promise = sendLarkSubstituteAgentReply(
       dependencies({ getAgent: async () => ({ cwd: "/projects/other" }) }),

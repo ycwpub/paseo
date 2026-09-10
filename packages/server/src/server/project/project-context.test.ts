@@ -222,6 +222,14 @@ describe("loadProjectAgentContext", () => {
               "</paseo_plugin_project>",
             ].join("\n")
           : null,
+      readSubstituteProjectContext: (projectId) =>
+        projectId === project.projectId
+          ? [
+              "<paseo_lark_substitute_project>",
+              "Project capability: lark-substitute-reply",
+              "</paseo_lark_substitute_project>",
+            ].join("\n")
+          : null,
     });
 
     expect(context?.directories.project).toEqual([
@@ -233,6 +241,7 @@ describe("loadProjectAgentContext", () => {
     expect(context?.prompt).toContain("Plugin-project knowledge: settlement rules");
     expect(context?.prompt).toContain("get_plugin_project");
     expect(context?.prompt).toContain("update_plugin_project");
+    expect(context?.prompt).toContain("Project capability: lark-substitute-reply");
   });
 
   it("classifies unregistered managed repositories as general knowledge", async () => {

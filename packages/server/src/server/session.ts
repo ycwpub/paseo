@@ -813,6 +813,7 @@ export class Session {
   private readonly daemonSession: DaemonSession;
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly larkChannelSession: LarkChannelSession | null;
+  private readonly larkChannelService: LarkChannelService | null;
   private readonly assistantSession: AssistantSession | null;
   private readonly memorySession: MemorySession | null;
   private readonly cloudDocumentCacheSession: CloudDocumentCacheSession | null;
@@ -1102,6 +1103,7 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    this.larkChannelService = larkChannelService ?? null;
     this.assistantSession = assistantStore
       ? new AssistantSession({
           host: {
@@ -4066,6 +4068,8 @@ export class Session {
           readAssistant: (assistantId) => this.assistantStore?.get(assistantId) ?? null,
           readPluginProjectContext: (projectId) =>
             this.pluginService?.buildProjectAgentContext(projectId) ?? null,
+          readSubstituteProjectContext: (projectId) =>
+            this.larkChannelService?.buildSubstituteProjectAgentContext(projectId) ?? null,
         },
         {
           kind: "session",

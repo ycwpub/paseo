@@ -126,6 +126,20 @@ describe("LarkChannelService", () => {
     const agentStorage = {
       get: vi.fn(async (agentId: string) => {
         const archivedAt = archivedAtByAgent.get(agentId);
+        const activeAgent = agents.get(agentId);
+        if (activeAgent) {
+          return {
+            id: agentId,
+            provider: activeAgent.provider,
+            cwd: activeAgent.cwd,
+            createdAt: "2026-09-09T00:00:00.000Z",
+            updatedAt: "2026-09-09T00:00:01.000Z",
+            archivedAt: null,
+            labels: {},
+            lastStatus: activeAgent.lifecycle,
+            config: activeAgent.config,
+          } as const;
+        }
         return archivedAt
           ? ({
               id: agentId,
@@ -229,13 +243,21 @@ describe("LarkChannelService", () => {
         type: "agent_state",
         agent: makeAgent(agentId, lifecycle),
       });
+    const emitAgentEvent = (event: AgentManagerEvent) =>
+      (
+        service as unknown as {
+          handleAgentManagerEvent(event: AgentManagerEvent): Promise<void>;
+        }
+      ).handleAgentManagerEvent(event);
 
     return {
       adapter,
       agentManager,
+      agents,
       botId: bot.id,
       createAgent,
       directoryStore,
+      emitAgentEvent,
       emitAgentState,
       lastMessages,
       service,
@@ -244,6 +266,113 @@ describe("LarkChannelService", () => {
       teamStore,
     };
   }
+
+  test("redelivers the completed answer when a substitute task Agent asks to resend to Lark", async () => {
+    const harness = createHarness();
+    const mode = harness.service.createSubstituteMode({
+      name: "工作替身",
+      enabled: false,
+      botId: harness.botId,
+      privateScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      groupScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      disclosure: { enabled: true, prompt: "【代答】" },
+      customPrompt: "",
+      delaySeconds: 600,
+      autoArchiveAgent: false,
+      activeTimeRanges: [],
+      audienceAllowlist: [],
+      audienceDenylist: [],
+      questionAllowlist: [],
+      questionDenylist: [],
+      allowlist: [],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "codex",
+        model: null,
+        cwd: "/repo",
+        workspaceId: null,
+        projectId: "prj-support",
+      },
+    });
+    const taskStore = (
+      harness.service as unknown as { substituteTaskStore: LarkSubstituteTaskStore }
+    ).substituteTaskStore;
+    const task = taskStore.enqueue(
+      {
+        modeId: mode.id,
+        modeName: mode.name,
+        botId: harness.botId,
+        source: "group_listener",
+        chatId: "oc_1",
+        chatName: "工作群",
+        messageId: "om_original",
+        senderOpenId: "ou_1",
+        senderName: "Alice",
+        content: "原问题",
+        scheduledAt: null,
+      },
+      "2026-09-10T00:00:00.000Z",
+    );
+    taskStore.attachAgent(task.id, "agent-substitute", "2026-09-10T00:00:01.000Z");
+    taskStore.markCompleted(task.id, "completed", "2026-09-10T00:00:02.000Z");
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_original",
+      rootMessageId: "om_original",
+      userId: "lark-user:ou_1",
+      agentId: "agent-substitute",
+      title: "原问题",
+      now: "2026-09-10T00:00:00.000Z",
+    });
+    const activeAgent = makeAgent("agent-substitute", "running");
+    harness.agents.set(activeAgent.id, activeAgent);
+    harness.lastMessages.set("agent-substitute", "旧回答");
+
+    await harness.emitAgentEvent({
+      type: "agent_stream",
+      agentId: "agent-substitute",
+      event: {
+        type: "timeline",
+        provider: "codex",
+        turnId: "turn-redelivery",
+        item: {
+          type: "user_message",
+          text: "把最新回答，重新通过飞书发送给用户",
+          clientMessageId: "client-redelivery",
+        },
+      },
+    });
+    harness.lastMessages.set(
+      "agent-substitute",
+      "<!-- paseo:lark-route=user -->\n这是修正后的最终回答。",
+    );
+    await harness.emitAgentEvent({
+      type: "agent_stream",
+      agentId: "agent-substitute",
+      event: {
+        type: "turn_completed",
+        provider: "codex",
+        turnId: "turn-redelivery",
+      },
+    });
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_original",
+      '<at user_id="ou_1"></at> 【代答】这是修正后的最终回答。',
+    );
+  });
 
   test("uses a thread root message as the reply anchor for existing Lark topics", async () => {
     const harness = createHarness();

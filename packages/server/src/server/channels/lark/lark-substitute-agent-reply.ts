@@ -9,7 +9,11 @@ import type {
   StoredLarkChannelBot,
   StoredLarkChannelConfig,
 } from "./lark-channel-store.js";
-import { formatLarkSubstituteReply, type LarkSubstituteTrigger } from "./lark-message-format.js";
+import {
+  extractLarkUserMentionDirective,
+  formatLarkSubstituteReply,
+  type LarkSubstituteTrigger,
+} from "./lark-message-format.js";
 import { resolveLarkTargetProjectId } from "./lark-project-target.js";
 
 export class LarkSubstituteAgentReplyError extends Error {
@@ -116,7 +120,7 @@ function formatOptimizedReply(
   mode: LarkSubstituteMode,
   openId: string | null,
 ): string {
-  const trimmed = text.trim();
+  const trimmed = extractLarkUserMentionDirective(text).text.trim();
   const disclosure = mode.disclosure.prompt.trim();
   if (mode.disclosure.enabled && disclosure && trimmed.startsWith(disclosure)) {
     return trimmed;

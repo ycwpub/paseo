@@ -215,6 +215,9 @@ must remain excluded.
 - Queued Agent instructions remain user-reorderable before execution. Dragging changes the client
   queue order consumed by the runtime, while accessibility reorder actions move one item at a time
   without dropping attachments, MCP selections, or Skill selections.
+- Provider-native turn IDs remain mapped to their Paseo turn after completion. A delayed reasoning,
+  tool, or Assistant event from an earlier turn is inserted before newer prompts and must never be
+  relabeled as the currently active turn.
 
 ### Substitute realtime coalescing
 

@@ -19,10 +19,12 @@ function assistantTimeline(
   text: string,
   provider: AgentProvider = "claude",
   messageId?: string,
+  turnId?: string,
 ): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
+    ...(turnId ? { turnId } : {}),
     item: { type: "assistant_message", text, ...(messageId ? { messageId } : {}) },
   };
 }
@@ -233,6 +235,111 @@ describe("turn lifecycle events", () => {
         ["assistant_message", "Retried with HTTP."],
       ],
     );
+  });
+  it("places a late answer before the next turn instead of under its prompt", () => {
+    const firstPrompt = createUserMessage({
+      id: "first-prompt",
+      turnId: "turn-1",
+      text: "Investigate the billing issue.",
+      timestamp: new Date("2025-01-01T15:03:18Z"),
+    });
+    const secondPrompt = createUserMessage({
+      id: "second-prompt",
+      turnId: "turn-2",
+      text: "Commit and push the changes.",
+      timestamp: new Date("2025-01-01T15:03:20Z"),
+    });
+    const currentThought: StreamItem = {
+      kind: "thought",
+      id: "turn-2-thought",
+      turnId: "turn-2",
+      text: "Checking the repository.",
+      timestamp: new Date("2025-01-01T15:03:21Z"),
+      status: "loading",
+    };
+
+    const result = applyStreamEvent({
+      tail: [firstPrompt, secondPrompt],
+      head: [currentThought],
+      event: assistantTimeline(
+        "The billing issue is resolved.",
+        "codex",
+        "turn-1-answer",
+        "turn-1",
+      ),
+      timestamp: new Date("2025-01-01T15:03:22Z"),
+    });
+
+    expect(
+      [...result.tail, ...result.head].map((item) => ({
+        kind: item.kind,
+        turnId: item.turnId,
+        text:
+          item.kind === "assistant_message" ||
+          item.kind === "user_message" ||
+          item.kind === "thought"
+            ? item.text
+            : null,
+      })),
+    ).toEqual([
+      {
+        kind: "user_message",
+        turnId: "turn-1",
+        text: "Investigate the billing issue.",
+      },
+      {
+        kind: "assistant_message",
+        turnId: "turn-1",
+        text: "The billing issue is resolved.",
+      },
+      {
+        kind: "user_message",
+        turnId: "turn-2",
+        text: "Commit and push the changes.",
+      },
+      {
+        kind: "thought",
+        turnId: "turn-2",
+        text: "Checking the repository.",
+      },
+    ]);
+    expect(result.head).toEqual([currentThought]);
+  });
+  it("keeps a late answer out of a newer turn that is still entirely in the head", () => {
+    const firstPrompt = createUserMessage({
+      id: "first-head-prompt",
+      turnId: "turn-1",
+      text: "Investigate the billing issue.",
+      timestamp: new Date("2025-01-01T15:03:18Z"),
+    });
+    const secondPrompt = createUserMessage({
+      id: "second-head-prompt",
+      turnId: "turn-2",
+      text: "Commit and push the changes.",
+      timestamp: new Date("2025-01-01T15:03:20Z"),
+    });
+
+    const result = applyStreamEvent({
+      tail: [firstPrompt],
+      head: [secondPrompt],
+      event: assistantTimeline(
+        "The billing issue is resolved.",
+        "codex",
+        "turn-1-head-answer",
+        "turn-1",
+      ),
+      timestamp: new Date("2025-01-01T15:03:22Z"),
+    });
+
+    expect(result.tail).toEqual([
+      firstPrompt,
+      expect.objectContaining({
+        kind: "assistant_message",
+        turnId: "turn-1",
+        text: "The billing issue is resolved.",
+      }),
+    ]);
+    expect(result.head).toEqual([secondPrompt]);
   });
   it("hands rich optimistic content to an authoritative create message without duplicating it", () => {
     const timestamp = new Date("2025-01-01T15:03:20Z");

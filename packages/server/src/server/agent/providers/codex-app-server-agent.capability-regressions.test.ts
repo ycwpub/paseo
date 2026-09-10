@@ -1119,6 +1119,53 @@ describe("Codex app-server provider", () => {
       },
     ]);
   });
+  test("keeps a late assistant event attached to the Codex turn that produced it", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    session.activeForegroundTurnId = "foreground-turn-1";
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-1" },
+    });
+    asInternals(session).handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-1", status: "completed", error: null },
+    });
+
+    session.activeForegroundTurnId = "foreground-turn-2";
+    asInternals(session).handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "native-turn-2" },
+    });
+    events.length = 0;
+
+    asInternals(session).handleNotification("item/completed", {
+      threadId: "test-thread",
+      turnId: "native-turn-1",
+      item: {
+        id: "late-answer-from-turn-1",
+        type: "agentMessage",
+        phase: "final_answer",
+        text: "This belongs to the previous request.",
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "foreground-turn-1",
+        item: {
+          type: "assistant_message",
+          messageId: "late-answer-from-turn-1",
+          text: "This belongs to the previous request.",
+        },
+      },
+    ]);
+    expect(session.activeForegroundTurnId).toBe("foreground-turn-2");
+  });
   test("uses the started Codex agent message phase when completion omits it", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

@@ -1821,6 +1821,80 @@ function applyCompletionToTail(
   return reduceStreamUpdate(finalized, event, timestamp, { source });
 }
 
+function belongsToLaterTurn(item: StreamItem, turnId: string): boolean {
+  return (
+    (item.turnId !== undefined && item.turnId !== turnId) ||
+    (item.kind === "user_message" && item.turnId !== turnId)
+  );
+}
+
+function findHistoricalTurnBoundary(
+  tail: StreamItem[],
+  head: StreamItem[],
+  turnId: string,
+): number | null {
+  const lastTurnItemIndex = tail.findLastIndex((item) => item.turnId === turnId);
+  if (lastTurnItemIndex < 0) {
+    return null;
+  }
+  for (let index = lastTurnItemIndex + 1; index < tail.length; index += 1) {
+    const item = tail[index];
+    if (!item) continue;
+    if (belongsToLaterTurn(item, turnId)) {
+      return index;
+    }
+  }
+  return head.some((item) => belongsToLaterTurn(item, turnId)) ? tail.length : null;
+}
+
+function applyHistoricalTurnEvent(params: {
+  tail: StreamItem[];
+  head: StreamItem[];
+  event: AgentStreamEventPayload;
+  timestamp: Date;
+  source: StreamUpdateSource;
+  timelineCursor?: TimelinePosition;
+  transformTimelineItem?: TimelineItemTransform;
+  transformedTimelineItems?: InstalledPluginTimelineItem[];
+}): ApplyStreamEventResult | null {
+  const { event } = params;
+  const turnId = "turnId" in event ? event.turnId : undefined;
+  if (
+    !turnId ||
+    (event.type !== "timeline" &&
+      event.type !== "turn_completed" &&
+      event.type !== "turn_failed" &&
+      event.type !== "turn_canceled")
+  ) {
+    return null;
+  }
+  const boundary = findHistoricalTurnBoundary(params.tail, params.head, turnId);
+  if (boundary === null) {
+    return null;
+  }
+  const historicalTail = params.tail.slice(0, boundary);
+  const reduced = reduceStreamUpdate(historicalTail, event, params.timestamp, {
+    source: params.source,
+    timelineCursor: params.timelineCursor,
+    transformTimelineItem: params.transformTimelineItem,
+    transformedTimelineItems: params.transformedTimelineItems ?? null,
+  });
+  if (reduced === historicalTail) {
+    return {
+      tail: params.tail,
+      head: params.head,
+      changedTail: false,
+      changedHead: false,
+    };
+  }
+  return {
+    tail: [...reduced, ...params.tail.slice(boundary)],
+    head: params.head,
+    changedTail: true,
+    changedHead: false,
+  };
+}
+
 /**
  * Determine what kind of StreamItem an event would produce
  */
@@ -2192,6 +2266,17 @@ export function applyStreamEvent(params: {
       : null;
   if (canonicalUserResult) return canonicalUserResult;
   const source = params.source ?? "live";
+  const historicalTurnResult = applyHistoricalTurnEvent({
+    tail,
+    head,
+    event,
+    timestamp,
+    source,
+    timelineCursor: params.timelineCursor,
+    transformTimelineItem: params.transformTimelineItem,
+    transformedTimelineItems,
+  });
+  if (historicalTurnResult) return historicalTurnResult;
   let nextTail = tail;
   let nextHead = head;
   let changedTail = false;

@@ -168,6 +168,7 @@ const CODEX_NON_ORIGINATING_APP_SERVER_CLIENT_INFO = {
 const ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN = "\n\n---\n\n";
 const MAX_PENDING_SUB_AGENT_THREADS = 32;
 const MAX_PENDING_SUB_AGENT_NOTIFICATIONS_PER_THREAD = 128;
+const MAX_RETAINED_CODEX_TURN_MAPPINGS = 64;
 // COMPAT(codexLegacyCollabAgentToolCall): Codex <0.143 emits this shape. Added in
 // Paseo v0.1.105; remove after 2027-01-09 once the supported Codex floor is >=0.143.
 const CODEX_TOOL_THREAD_ITEM_TYPES = new Set([
@@ -2240,6 +2241,7 @@ const ErrorNotificationSchema = z
 const TurnPlanUpdatedNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     plan: z.array(
       z
         .object({
@@ -2254,6 +2256,7 @@ const TurnPlanUpdatedNotificationSchema = z
 const TurnDiffUpdatedNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     diff: z.string(),
   })
   .passthrough();
@@ -2261,6 +2264,7 @@ const TurnDiffUpdatedNotificationSchema = z
 const ThreadTokenUsageUpdatedNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     tokenUsage: z.unknown(),
   })
   .passthrough();
@@ -2268,6 +2272,7 @@ const ThreadTokenUsageUpdatedNotificationSchema = z
 const ItemTextDeltaNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     itemId: z.string(),
     delta: z.string(),
   })
@@ -2276,6 +2281,7 @@ const ItemTextDeltaNotificationSchema = z
 const ItemLifecycleNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     item: z
       .object({
         id: z.string().optional(),
@@ -2295,6 +2301,8 @@ const ContextCompactedNotificationSchema = z
 const CodexEventThreadIdFields = {
   threadId: z.string().optional(),
   thread_id: z.string().optional(),
+  turnId: z.string().optional(),
+  turn_id: z.string().optional(),
 };
 
 function getCodexEventThreadId(params: {
@@ -2303,6 +2311,14 @@ function getCodexEventThreadId(params: {
   msg: { threadId?: string; thread_id?: string };
 }): string | null {
   return params.threadId ?? params.thread_id ?? params.msg.threadId ?? params.msg.thread_id ?? null;
+}
+
+function getCodexEventTurnId(params: {
+  turnId?: string;
+  turn_id?: string;
+  msg: { turnId?: string; turn_id?: string };
+}): string | null {
+  return params.turnId ?? params.turn_id ?? params.msg.turnId ?? params.msg.turn_id ?? null;
 }
 
 const CodexEventTurnAbortedNotificationSchema = z
@@ -2420,6 +2436,7 @@ const CodexEventTerminalInteractionNotificationSchema = z
 const ItemCommandExecutionTerminalInteractionNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     itemId: z.string().optional(),
     processId: z.union([z.string(), z.number()]).optional(),
     stdin: z.string().optional(),
@@ -2460,6 +2477,7 @@ const CodexEventPatchApplyEndNotificationSchema = z
 const ItemFileChangeOutputDeltaNotificationSchema = z
   .object({
     threadId: z.string().optional(),
+    turnId: z.string().optional(),
     itemId: z.string(),
     delta: z.string().optional(),
     chunk: z.string().optional(),
@@ -2499,6 +2517,7 @@ type ParsedCodexNotification =
   | { kind: "turn_started"; turnId: string; threadId: string | null }
   | {
       kind: "turn_completed";
+      turnId: string | null;
       status: string;
       errorMessage: string | null;
       threadId: string | null;
@@ -2516,23 +2535,43 @@ type ParsedCodexNotification =
     }
   | {
       kind: "plan_updated";
+      turnId: string | null;
       plan: Array<{ step: string | null; status: string | null }>;
       threadId: string | null;
     }
-  | { kind: "diff_updated"; diff: string; threadId: string | null }
-  | { kind: "token_usage_updated"; tokenUsage: unknown; threadId: string | null }
-  | { kind: "agent_message_delta"; itemId: string; delta: string; threadId: string | null }
-  | { kind: "reasoning_delta"; itemId: string; delta: string; threadId: string | null }
+  | { kind: "diff_updated"; diff: string; threadId: string | null; turnId: string | null }
+  | {
+      kind: "token_usage_updated";
+      tokenUsage: unknown;
+      threadId: string | null;
+      turnId: string | null;
+    }
+  | {
+      kind: "agent_message_delta";
+      itemId: string;
+      delta: string;
+      threadId: string | null;
+      turnId: string | null;
+    }
+  | {
+      kind: "reasoning_delta";
+      itemId: string;
+      delta: string;
+      threadId: string | null;
+      turnId: string | null;
+    }
   | {
       kind: "item_completed";
       source: "item" | "codex_event";
       threadId: string | null;
+      turnId: string | null;
       item: { id?: string; type?: string; [key: string]: unknown };
     }
   | {
       kind: "item_started";
       source: "item" | "codex_event";
       threadId: string | null;
+      turnId: string | null;
       item: { id?: string; type?: string; [key: string]: unknown };
     }
   | {
@@ -2541,6 +2580,7 @@ type ParsedCodexNotification =
       command: unknown;
       cwd: string | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "exec_command_completed";
@@ -2552,6 +2592,7 @@ type ParsedCodexNotification =
       success: boolean | null;
       stderr: string | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "exec_command_output_delta";
@@ -2559,6 +2600,7 @@ type ParsedCodexNotification =
       stream: string | null;
       chunk: string | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "terminal_interaction";
@@ -2567,12 +2609,14 @@ type ParsedCodexNotification =
       processId: string | null;
       stdin: string | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "patch_apply_started";
       callId: string | null;
       changes: unknown;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "patch_apply_completed";
@@ -2582,12 +2626,14 @@ type ParsedCodexNotification =
       stderr: string | null;
       success: boolean | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | {
       kind: "file_change_output_delta";
       itemId: string;
       delta: string | null;
       threadId: string | null;
+      turnId: string | null;
     }
   | { kind: "thread_rolled_back"; numTurns: number; threadId: string | null }
   | { kind: "context_compacted"; threadId: string; turnId: string | null }
@@ -2612,6 +2658,13 @@ type CodexThreadRoute =
 
 function getCodexNotificationThreadId(parsed: ParsedCodexNotification): string | null {
   return "threadId" in parsed ? parsed.threadId : null;
+}
+
+function getCodexNotificationTurnId(parsed: ParsedCodexNotification): string | null {
+  if (parsed.kind === "turn_started") {
+    return parsed.turnId;
+  }
+  return "turnId" in parsed ? parsed.turnId : null;
 }
 
 function isCodexDeltaNotification(
@@ -2660,6 +2713,7 @@ const CodexNotificationSchema = z.union([
     .transform(
       ({ params }): ParsedCodexNotification => ({
         kind: "turn_completed",
+        turnId: params.turn.id ?? null,
         status: params.turn.status,
         errorMessage: params.turn.error?.message ?? null,
         threadId: params.threadId ?? null,
@@ -2693,6 +2747,7 @@ const CodexNotificationSchema = z.union([
     .transform(
       ({ params }): ParsedCodexNotification => ({
         kind: "plan_updated",
+        turnId: params.turnId ?? null,
         plan: params.plan.map((entry) => ({
           step: entry.step ?? null,
           status: entry.status ?? null,
@@ -2712,6 +2767,7 @@ const CodexNotificationSchema = z.union([
     .transform(
       ({ params }): ParsedCodexNotification => ({
         kind: "diff_updated",
+        turnId: params.turnId ?? null,
         diff: params.diff,
         threadId: params.threadId ?? null,
       }),
@@ -2733,6 +2789,7 @@ const CodexNotificationSchema = z.union([
         kind: "token_usage_updated",
         tokenUsage: params.tokenUsage,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("thread/tokenUsage/updated"), params: z.unknown() }).transform(
@@ -2769,6 +2826,7 @@ const CodexNotificationSchema = z.union([
         itemId: params.itemId,
         delta: params.delta,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("item/agentMessage/delta"), params: z.unknown() }).transform(
@@ -2789,6 +2847,7 @@ const CodexNotificationSchema = z.union([
         itemId: params.itemId,
         delta: params.delta,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("item/reasoning/summaryTextDelta"), params: z.unknown() }).transform(
@@ -2809,6 +2868,7 @@ const CodexNotificationSchema = z.union([
         itemId: params.itemId,
         delta: params.delta,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("item/reasoning/textDelta"), params: z.unknown() }).transform(
@@ -2825,6 +2885,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_completed",
         source: "item",
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
         item: params.item,
       }),
     ),
@@ -2842,6 +2903,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_started",
         source: "item",
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
         item: params.item,
       }),
     ),
@@ -2862,6 +2924,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_started",
         source: "codex_event",
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
         item: params.msg.item,
       }),
     ),
@@ -2882,6 +2945,7 @@ const CodexNotificationSchema = z.union([
         kind: "item_completed",
         source: "codex_event",
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
         item: params.msg.item,
       }),
     ),
@@ -2904,6 +2968,7 @@ const CodexNotificationSchema = z.union([
         command: params.msg.command ?? null,
         cwd: params.msg.cwd ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z.object({ method: z.literal("codex/event/exec_command_begin"), params: z.unknown() }).transform(
@@ -2934,6 +2999,7 @@ const CodexNotificationSchema = z.union([
         success: params.msg.success ?? null,
         stderr: params.msg.stderr ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z.object({ method: z.literal("codex/event/exec_command_end"), params: z.unknown() }).transform(
@@ -2955,6 +3021,7 @@ const CodexNotificationSchema = z.union([
         stream: params.msg.stream ?? null,
         chunk: params.msg.chunk ?? params.msg.delta ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z
@@ -2985,6 +3052,7 @@ const CodexNotificationSchema = z.union([
             : (params.msg.process_id ?? null),
         stdin: params.msg.stdin ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z
@@ -3012,6 +3080,7 @@ const CodexNotificationSchema = z.union([
             : (params.processId ?? null),
         stdin: params.stdin ?? null,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z
@@ -3037,6 +3106,7 @@ const CodexNotificationSchema = z.union([
         callId: params.msg.call_id ?? null,
         changes: params.msg.changes ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z.object({ method: z.literal("codex/event/patch_apply_begin"), params: z.unknown() }).transform(
@@ -3060,6 +3130,7 @@ const CodexNotificationSchema = z.union([
         stderr: params.msg.stderr ?? null,
         success: params.msg.success ?? null,
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z.object({ method: z.literal("codex/event/patch_apply_end"), params: z.unknown() }).transform(
@@ -3080,6 +3151,7 @@ const CodexNotificationSchema = z.union([
         itemId: params.itemId,
         delta: params.delta ?? params.chunk ?? null,
         threadId: params.threadId ?? null,
+        turnId: params.turnId ?? null,
       }),
     ),
   z.object({ method: z.literal("item/fileChange/outputDelta"), params: z.unknown() }).transform(
@@ -3099,6 +3171,7 @@ const CodexNotificationSchema = z.union([
         kind: "diff_updated",
         diff: params.msg.unified_diff ?? params.msg.diff ?? "",
         threadId: getCodexEventThreadId(params),
+        turnId: getCodexEventTurnId(params),
       }),
     ),
   z.object({ method: z.literal("codex/event/turn_diff"), params: z.unknown() }).transform(
@@ -3116,6 +3189,7 @@ const CodexNotificationSchema = z.union([
     .transform(
       ({ params }): ParsedCodexNotification => ({
         kind: "turn_completed",
+        turnId: getCodexEventTurnId(params),
         status: "interrupted",
         errorMessage: null,
         threadId: getCodexEventThreadId(params),
@@ -3136,6 +3210,7 @@ const CodexNotificationSchema = z.union([
     .transform(
       ({ params }): ParsedCodexNotification => ({
         kind: "turn_completed",
+        turnId: getCodexEventTurnId(params),
         status: "completed",
         errorMessage: null,
         threadId: getCodexEventThreadId(params),
@@ -3445,6 +3520,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
+  private readonly foregroundTurnIdByNativeTurnId = new Map<string, string>();
+  private notificationForegroundTurnId: string | null | undefined;
   private activeClientMessageId: string | null = null;
   private activeTurnStartParams: Record<string, unknown> | null = null;
   private maxOutputTokensContinuationAttempts = 0;
@@ -4932,6 +5009,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingAutomaticCompactionStarts = 0;
     this.pendingRootCompactionItemIds.clear();
     this.pendingAnonymousRootCompactions = 0;
+    this.foregroundTurnIdByNativeTurnId.clear();
+    this.notificationForegroundTurnId = undefined;
     if (this.client) {
       await this.client.dispose();
     }
@@ -5354,7 +5433,11 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private notifySubscribers(event: AgentStreamEvent): void {
-    const turnId = this.activeForegroundTurnId;
+    const turnId =
+      getAgentStreamEventTurnId(event) ??
+      (this.notificationForegroundTurnId !== undefined
+        ? this.notificationForegroundTurnId
+        : this.activeForegroundTurnId);
     const tagged = turnId ? { ...event, turnId } : event;
     this.logger.trace(
       {
@@ -5377,6 +5460,63 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   private createTurnId(): string {
     return `codex-turn-${this.nextTurnOrdinal++}`;
+  }
+
+  private rememberForegroundTurnId(nativeTurnId: string, foregroundTurnId: string): void {
+    this.foregroundTurnIdByNativeTurnId.delete(nativeTurnId);
+    this.foregroundTurnIdByNativeTurnId.set(nativeTurnId, foregroundTurnId);
+    while (this.foregroundTurnIdByNativeTurnId.size > MAX_RETAINED_CODEX_TURN_MAPPINGS) {
+      const oldestNativeTurnId = this.foregroundTurnIdByNativeTurnId.keys().next().value;
+      if (typeof oldestNativeTurnId !== "string") {
+        break;
+      }
+      this.foregroundTurnIdByNativeTurnId.delete(oldestNativeTurnId);
+    }
+  }
+
+  private resolveNotificationForegroundTurnId(
+    parsed: ParsedCodexNotification,
+  ): string | null | undefined {
+    const nativeTurnId = getCodexNotificationTurnId(parsed);
+    if (!nativeTurnId) {
+      // COMPAT(codexNotificationWithoutTurnId): Codex app-server versions before
+      // the v2 notification fields rely on ordered delivery and the active turn.
+      // Added in v0.1.105; remove after 2027-03-10.
+      return undefined;
+    }
+    const remembered = this.foregroundTurnIdByNativeTurnId.get(nativeTurnId);
+    if (remembered) {
+      return remembered;
+    }
+    if (parsed.kind === "turn_started" && this.activeForegroundTurnId) {
+      this.rememberForegroundTurnId(nativeTurnId, this.activeForegroundTurnId);
+      return this.activeForegroundTurnId;
+    }
+    if (this.activeForegroundTurnId && !this.currentTurnId) {
+      this.rememberForegroundTurnId(nativeTurnId, this.activeForegroundTurnId);
+      return this.activeForegroundTurnId;
+    }
+    if (nativeTurnId === this.currentTurnId) {
+      return this.activeForegroundTurnId;
+    }
+    if (
+      parsed.kind === "context_compacted" &&
+      !this.activeForegroundTurnId &&
+      !this.currentTurnId
+    ) {
+      return nativeTurnId;
+    }
+    return null;
+  }
+
+  private dispatchRootNotification(parsed: ParsedCodexNotification): void {
+    const previousForegroundTurnId = this.notificationForegroundTurnId;
+    this.notificationForegroundTurnId = this.resolveNotificationForegroundTurnId(parsed);
+    try {
+      this.dispatchParsedNotification(parsed);
+    } finally {
+      this.notificationForegroundTurnId = previousForegroundTurnId;
+    }
   }
 
   private handleNotification(method: string, params: unknown): void {
@@ -5412,7 +5552,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.dispatchSubAgentNotification(parsed, route.callId);
       return;
     }
-    this.dispatchParsedNotification(parsed);
+    this.dispatchRootNotification(parsed);
   }
 
   private dispatchSubAgentNotification(parsed: ParsedCodexNotification, callId: string): void {
@@ -6124,6 +6264,14 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, "running", { reopen: true });
       return;
     }
+    const foregroundTurnId = this.foregroundTurnIdByNativeTurnId.get(parsed.turnId);
+    if (
+      foregroundTurnId &&
+      this.activeForegroundTurnId &&
+      foregroundTurnId !== this.activeForegroundTurnId
+    ) {
+      return;
+    }
     this.currentTurnId = parsed.turnId;
     const pendingIdentification = this.pendingForegroundTurnIdentification;
     if (
@@ -6176,6 +6324,13 @@ export class CodexAppServerAgentSession implements AgentSession {
         provider: CODEX_PROVIDER,
         usage: this.latestUsage,
       });
+    }
+    if (
+      this.notificationForegroundTurnId &&
+      this.activeForegroundTurnId &&
+      this.notificationForegroundTurnId !== this.activeForegroundTurnId
+    ) {
+      return;
     }
     this.activeForegroundTurnId = null;
     this.activeClientMessageId = null;
@@ -6464,7 +6619,6 @@ export class CodexAppServerAgentSession implements AgentSession {
       type: "timeline",
       provider: CODEX_PROVIDER,
       item: this.createContextCompactionTimelineItem("completed", pendingItemId),
-      ...(parsed.turnId ? { turnId: parsed.turnId } : {}),
     });
   }
 

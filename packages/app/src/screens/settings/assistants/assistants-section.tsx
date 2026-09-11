@@ -658,6 +658,7 @@ export function AssistantEditorPage({
           </Field>
           <Field label="助手提示词" testID="assistant-prompt-field">
             <SettingsTextAreaCard
+              key={`assistant-prompt-${formResetKey}`}
               value={prompt}
               onChangeText={setPrompt}
               placeholder="使用 Markdown 描述该助手的行为规范。"

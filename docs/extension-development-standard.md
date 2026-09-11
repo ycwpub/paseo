@@ -483,3 +483,11 @@ identity in agent labels and the active conversation composer must restore its s
 labels. Do not treat injected assistant prompts as a substitute for UI identity, and do not inject
 the assistant prompt a second time merely to repair the selector display. Cover both assistant and
 team labels with a targeted capability regression test.
+
+## Assistant editor prompt hydration
+
+Assistant edit pages must explicitly reset the prompt editing surface after the selected Assistant
+is hydrated. `EditingTextInput` intentionally owns in-progress text to preserve web IME composition,
+so changing its `initialValue` alone does not update the visible value. Key the prompt editor to the
+form reset identity rather than converting it to a controlled input. Tests must model this
+initial-value behavior so an empty prompt regression cannot be hidden by a controlled textarea mock.

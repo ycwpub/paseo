@@ -260,14 +260,19 @@ vi.mock("@/components/settings-textarea", () => ({
     onChangeText: (value: string) => void;
     placeholder?: string;
     accessibilityLabel: string;
-  }) =>
-    React.createElement("textarea", {
+  }) => {
+    const [text, setText] = React.useState(value);
+    return React.createElement("textarea", {
       "aria-label": accessibilityLabel,
-      value,
+      value: text,
       placeholder,
-      onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
-        onChangeText(event.currentTarget.value),
-    }),
+      onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const nextValue = event.currentTarget.value;
+        setText(nextValue);
+        onChangeText(nextValue);
+      },
+    });
+  },
 }));
 
 vi.mock("@/screens/settings/settings-section", () => ({
@@ -474,6 +479,28 @@ describe("AssistantsSection", () => {
     expect(screen.queryByLabelText("记忆总文件内容")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "配置记忆" }));
     expect(onOpenMemory).toHaveBeenCalledWith("assistant-1");
+  });
+
+  test("hydrates the saved prompt when the editor initializes from an Assistant", async () => {
+    const assistant = makeAssistant();
+    const onDone = vi.fn();
+    assistantsState.current.assistants = [assistant];
+    assistantsState.current.updateAssistant.mockResolvedValue(assistant);
+
+    render(<AssistantEditorPage serverId="server-1" assistantId="assistant-1" onDone={onDone} />);
+
+    const promptInput = (await screen.findByLabelText("助手提示词")) as HTMLTextAreaElement;
+    expect(promptInput.value).toBe("Review carefully.");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
+    await waitFor(() =>
+      expect(assistantsState.current.updateAssistant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "assistant-1",
+          prompt: "Review carefully.",
+        }),
+      ),
+    );
   });
 
   test("paginates MCP and Skill lists independently with 10 items per page", () => {

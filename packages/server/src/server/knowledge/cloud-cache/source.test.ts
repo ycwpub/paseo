@@ -85,13 +85,8 @@ describe("DefaultCloudDocumentSourceReader", () => {
       .mockRejectedValueOnce(error)
       .mockResolvedValueOnce({
         stdout: JSON.stringify({
-          status: "success",
-          data: {
-            login_status: "pending",
-            complete_token: "completion-token",
-            verification_uri_complete:
-              "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
-          },
+          device_code: "device-code",
+          verification_url: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
         }),
         stderr: "",
       });
@@ -101,13 +96,14 @@ describe("DefaultCloudDocumentSourceReader", () => {
       issue: {
         source,
         loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
-        completionToken: "completion-token",
+        completionToken: "device-code",
+        authCommand: "lark-cli auth login --domain docs,drive,wiki --recommend",
       },
     });
     expect(runCommand).toHaveBeenNthCalledWith(
       2,
-      "bytedcli",
-      ["--json", "feishu", "login", "--begin", "--force-oauth", "--no-terminal-qr"],
+      "lark-cli",
+      ["auth", "login", "--domain", "docs,drive,wiki", "--recommend", "--no-wait", "--json"],
       expect.objectContaining({
         env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
       }),
@@ -156,10 +152,7 @@ describe("DefaultCloudDocumentSourceReader", () => {
 
   it("completes the saved Feishu OAuth challenge before retrying the document", async () => {
     const runCommand = vi.fn(async () => ({
-      stdout: JSON.stringify({
-        status: "success",
-        data: { login_status: "success" },
-      }),
+      stdout: JSON.stringify({ ok: true }),
       stderr: "",
     }));
 
@@ -170,14 +163,14 @@ describe("DefaultCloudDocumentSourceReader", () => {
         message: "需要重新授权",
         loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=flow",
         authCommand: "bytedcli feishu login",
-        completionToken: "completion-token",
+        completionToken: "device-code",
       },
       runCommand,
     );
 
     expect(runCommand).toHaveBeenCalledWith(
-      "bytedcli",
-      ["--json", "feishu", "login", "--complete", "completion-token"],
+      "lark-cli",
+      ["auth", "login", "--device-code", "device-code", "--json"],
       expect.objectContaining({
         env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
       }),

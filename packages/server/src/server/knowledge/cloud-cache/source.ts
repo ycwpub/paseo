@@ -13,11 +13,12 @@ const HTTP_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_TEXT_PATTERN =
   /auth(?:entication|orization)?|login|log in|sign in|sso|oauth|unauthorized|forbidden|invalid[_ -]?grant|refresh token|token.{0,20}expired|20037|扫码|登录|授权|无权限/iu;
 const AUTHORIZATION_URL_PATH_PATTERN =
-  /(^|\.)(lark_applink_url|verification_uri_complete|verificationUriComplete|preferred_url|preferredUrl|authorization_url|authorizationUrl|authorize_url|authorizeUrl|login_url|loginUrl|approval_url|approvalUrl|browser_url|browserUrl)$/u;
+  /(^|\.)(lark_applink_url|verification_uri_complete|verificationUriComplete|verification_url|verificationUrl|preferred_url|preferredUrl|authorization_url|authorizationUrl|authorize_url|authorizeUrl|login_url|loginUrl|approval_url|approvalUrl|browser_url|browserUrl)$/u;
 const VERIFICATION_URL_PATH_PATTERN = /(^|\.)(verification_uri|verificationUri)$/u;
 const USER_CODE_PATH_PATTERN = /(^|\.)(user_code|userCode)$/u;
-const COMPLETION_TOKEN_PATH_PATTERN = /(^|\.)(complete_token|completeToken)$/u;
+const COMPLETION_TOKEN_PATH_PATTERN = /(^|\.)(complete_token|completeToken|device_code)$/u;
 const BYTEDCLI_ENV = { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" };
+const LARK_LOGIN_COMMAND = "lark-cli auth login --domain docs,drive,wiki --recommend";
 
 export class CloudDocumentAuthenticationError extends Error {
   readonly issue: CloudDocumentAuthenticationIssue;
@@ -233,7 +234,7 @@ function extractAuthenticationIssue(
     source,
     message,
     loginUrl: fields.loginUrl,
-    authCommand: fields.authCommand ?? "bytedcli feishu login",
+    authCommand: fields.authCommand ?? LARK_LOGIN_COMMAND,
     completionToken: fields.completionToken,
   };
 }
@@ -245,8 +246,8 @@ async function createBytedcliAuthorizationChallenge(
 ): Promise<CloudDocumentAuthenticationIssue> {
   try {
     const result = await runCommand(
-      "bytedcli",
-      ["--json", "feishu", "login", "--begin", "--force-oauth", "--no-terminal-qr"],
+      "lark-cli",
+      ["auth", "login", "--domain", "docs,drive,wiki", "--recommend", "--no-wait", "--json"],
       {
         timeoutMs: 30_000,
         maxBufferBytes: MAX_DOCUMENT_BYTES,
@@ -257,7 +258,7 @@ async function createBytedcliAuthorizationChallenge(
     return {
       ...issue,
       loginUrl: fields.loginUrl ?? issue.loginUrl,
-      authCommand: fields.authCommand ?? issue.authCommand,
+      authCommand: fields.authCommand ?? LARK_LOGIN_COMMAND,
       completionToken: fields.completionToken ?? issue.completionToken,
     };
   } catch (error) {
@@ -271,7 +272,7 @@ async function createBytedcliAuthorizationChallenge(
     return {
       ...issue,
       loginUrl: fields.loginUrl ?? issue.loginUrl,
-      authCommand: fields.authCommand ?? issue.authCommand,
+      authCommand: fields.authCommand ?? LARK_LOGIN_COMMAND,
       completionToken: fields.completionToken ?? issue.completionToken,
     };
   }
@@ -283,8 +284,8 @@ export async function completeCloudDocumentAuthentication(
 ): Promise<void> {
   if (!issue.completionToken) return;
   const result = await runCommand(
-    "bytedcli",
-    ["--json", "feishu", "login", "--complete", issue.completionToken],
+    "lark-cli",
+    ["auth", "login", "--device-code", issue.completionToken, "--json"],
     {
       timeoutMs: 60_000,
       maxBufferBytes: MAX_DOCUMENT_BYTES,
@@ -293,9 +294,10 @@ export async function completeCloudDocumentAuthentication(
   );
   const parsed = parseJsonValues(result.stdout).at(-1);
   const entries = walkStrings(parsed);
+  const ok = parsed && typeof parsed === "object" ? Reflect.get(parsed, "ok") : undefined;
   const resultStatus = findString(entries, /(^|\.)status$/u);
   const status = findString(entries, /(^|\.)(login_status|loginStatus)$/u);
-  if (resultStatus === "error") {
+  if (ok === false || resultStatus === "error") {
     throw new Error("飞书授权确认失败，请重新打开授权链接后重试。");
   }
   if (status && status !== "success") {

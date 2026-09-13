@@ -768,6 +768,24 @@ const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown
     ToolCallCanceledPayloadSchema,
   ]);
 
+const AgentTurnChangeFileSchema = z.object({
+  path: z.string(),
+  oldPath: z.string().optional(),
+  isNew: z.boolean(),
+  isDeleted: z.boolean(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+});
+
+const AgentTurnChangesSnapshotSchema = z.object({
+  repositories: z.array(
+    z.object({
+      cwd: z.string(),
+      files: z.array(AgentTurnChangeFileSchema),
+    }),
+  ),
+});
+
 // zod-aot 0.20.4 miscompiles this as a nested discriminated union by omitting
 // the inner tool_call branch from the generated outer dispatch.
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
@@ -781,6 +799,8 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     type: z.literal("assistant_message"),
     text: z.string(),
     messageId: z.string().optional(),
+    // COMPAT(turnGitChanges): added in v0.7.0, remove fallback after 2027-03-13.
+    turnChanges: AgentTurnChangesSnapshotSchema.optional(),
   }),
   z.object({
     type: z.literal("reasoning"),
@@ -828,6 +848,7 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
     provider: AgentProviderSchema,
     turnId: z.string().optional(),
     usage: AgentUsageSchema.optional(),
+    turnChanges: AgentTurnChangesSnapshotSchema.optional(),
   }),
   z.object({
     type: z.literal("turn_failed"),

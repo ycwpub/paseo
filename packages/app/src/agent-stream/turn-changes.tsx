@@ -15,10 +15,12 @@ import { CHECKOUT_STATUS_STALE_TIME, useCheckoutStatusQuery } from "@/git/use-st
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
 import type { StreamItem } from "@/types/stream";
+import type { AgentTurnChangeFile, AgentTurnChangesSnapshot } from "@getpaseo/protocol/agent-types";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   collectTurnChangeCwds,
   collectTurnChangedPaths,
+  convertTurnChangeSnapshotFiles,
   selectTurnChangedFiles,
   selectVisibleTurnChangedFiles,
   summarizeTurnChangedFiles,
@@ -36,6 +38,7 @@ interface TurnChangesProps {
   cwd: string;
   readOnly: boolean;
   items: StreamItem[];
+  snapshot?: AgentTurnChangesSnapshot;
   toast: ToastApi | null;
   onReview: (cwd: string, path?: string) => void;
 }
@@ -45,13 +48,20 @@ export const TurnChanges = memo(function TurnChanges({
   cwd,
   readOnly,
   items,
+  snapshot,
   toast,
   onReview,
 }: TurnChangesProps) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const candidateCwds = useMemo(() => collectTurnChangeCwds(items, cwd), [cwd, items]);
+  const candidateCwds = useMemo(
+    () =>
+      snapshot
+        ? snapshot.repositories.map((repository) => repository.cwd)
+        : collectTurnChangeCwds(items, cwd),
+    [cwd, items, snapshot],
+  );
   const statusQueries = useFetchQueries<CheckoutStatusPayload>(
     candidateCwds.map((candidateCwd) => ({
       queryKey: checkoutStatusQueryKey(serverId, candidateCwd),
@@ -69,6 +79,9 @@ export const TurnChanges = memo(function TurnChanges({
     })),
   );
   const repositoryRoots = useMemo(() => {
+    if (snapshot) {
+      return snapshot.repositories.map((repository) => repository.cwd);
+    }
     const roots = new Set<string>();
     for (const query of statusQueries) {
       if (query.data?.isGit) {
@@ -76,7 +89,7 @@ export const TurnChanges = memo(function TurnChanges({
       }
     }
     return [...roots];
-  }, [statusQueries]);
+  }, [snapshot, statusQueries]);
 
   if (repositoryRoots.length === 0) {
     return null;
@@ -90,6 +103,9 @@ export const TurnChanges = memo(function TurnChanges({
           serverId={serverId}
           cwd={repositoryRoot}
           sourceCwd={cwd}
+          snapshotFiles={
+            snapshot?.repositories.find((repository) => repository.cwd === repositoryRoot)?.files
+          }
           readOnly={readOnly}
           items={items}
           toast={toast}
@@ -108,7 +124,12 @@ const TurnRepositoryChanges = memo(function TurnRepositoryChanges({
   items,
   toast,
   onReview,
-}: Omit<TurnChangesProps, "cwd"> & { cwd: string; sourceCwd: string }) {
+  snapshotFiles,
+}: Omit<TurnChangesProps, "cwd" | "snapshot"> & {
+  cwd: string;
+  sourceCwd: string;
+  snapshotFiles?: readonly AgentTurnChangeFile[];
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const { status } = useCheckoutStatusQuery({ serverId, cwd });
@@ -129,10 +150,13 @@ const TurnRepositoryChanges = memo(function TurnRepositoryChanges({
     cwd,
     mode: "base",
     baseRef,
-    enabled: Boolean(status?.isGit && cwd && explicitPaths.size > 0),
+    enabled: Boolean(!snapshotFiles && status?.isGit && cwd && explicitPaths.size > 0),
     queryScope: "agent-turn-base-changes",
   });
   const turnFiles = useMemo(() => {
+    if (snapshotFiles) {
+      return convertTurnChangeSnapshotFiles(snapshotFiles);
+    }
     const uncommittedTurnFiles = selectTurnChangedFiles({
       items,
       files: uncommittedFiles,
@@ -150,7 +174,7 @@ const TurnRepositoryChanges = memo(function TurnRepositoryChanges({
       sourceCwd,
     }).filter((file) => !selectedPaths.has(file.path));
     return [...uncommittedTurnFiles, ...committedTurnFiles];
-  }, [baseFiles, cwd, explicitPaths.size, items, sourceCwd, uncommittedFiles]);
+  }, [baseFiles, cwd, explicitPaths.size, items, snapshotFiles, sourceCwd, uncommittedFiles]);
   const revertablePaths = useMemo(
     () => new Set(uncommittedFiles.map((file) => file.path)),
     [uncommittedFiles],

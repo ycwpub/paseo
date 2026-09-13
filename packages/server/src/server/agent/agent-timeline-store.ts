@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
+import type { AgentTurnChangesSnapshot } from "./agent-sdk-types.js";
 import type {
   AgentTimelineFetchOptions,
   AgentTimelineFetchResult,
@@ -303,6 +304,30 @@ export class InMemoryAgentTimelineStore {
     }
 
     return chunks.toReversed().join("");
+  }
+
+  attachTurnChangesToLastAssistant(
+    agentId: string,
+    turnId: string,
+    turnChanges: AgentTurnChangesSnapshot,
+  ): AgentTimelineRow | null {
+    const state = this.requireState(agentId);
+    const index = state.rows.findLastIndex(
+      (row) => row.turnId === turnId && row.item.type === "assistant_message",
+    );
+    const row = state.rows[index];
+    if (!row || row.item.type !== "assistant_message") {
+      return null;
+    }
+    const updated: AgentTimelineRow = {
+      ...row,
+      item: {
+        ...row.item,
+        turnChanges,
+      },
+    };
+    state.rows[index] = updated;
+    return cloneRow(updated);
   }
 
   private requireState(agentId: string): AgentTimelineState {

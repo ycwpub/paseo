@@ -347,9 +347,32 @@ export interface AgentTaskItem {
   activeForm?: string;
 }
 
+export interface AgentTurnChangeFile {
+  path: string;
+  oldPath?: string;
+  isNew: boolean;
+  isDeleted: boolean;
+  additions: number;
+  deletions: number;
+}
+
+export interface AgentTurnChangeRepository {
+  cwd: string;
+  files: AgentTurnChangeFile[];
+}
+
+export interface AgentTurnChangesSnapshot {
+  repositories: AgentTurnChangeRepository[];
+}
+
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
-  | { type: "assistant_message"; text: string; messageId?: string }
+  | {
+      type: "assistant_message";
+      text: string;
+      messageId?: string;
+      turnChanges?: AgentTurnChangesSnapshot;
+    }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
@@ -359,7 +382,13 @@ export type AgentTimelineItem =
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
-  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
+  | {
+      type: "turn_completed";
+      provider: AgentProvider;
+      usage?: AgentUsage;
+      turnId?: string;
+      turnChanges?: AgentTurnChangesSnapshot;
+    }
   | { type: "usage_updated"; provider: AgentProvider; usage: AgentUsage; turnId?: string }
   | {
       type: "mode_changed";

@@ -1349,6 +1349,92 @@ describe("turn lifecycle events", () => {
     );
   });
 
+  it("attaches live completion changes to the matching assistant response", () => {
+    const turnChanges = {
+      repositories: [
+        {
+          cwd: "/project/repos/service",
+          files: [
+            {
+              path: "src/handler.ts",
+              isNew: false,
+              isDeleted: false,
+              additions: 4,
+              deletions: 2,
+            },
+          ],
+        },
+      ],
+    };
+    let state = reduceStreamUpdate(
+      [],
+      {
+        type: "timeline",
+        provider: "traecli",
+        turnId: "turn-1",
+        item: { type: "assistant_message", text: "done" },
+      },
+      new Date("2026-09-13T08:00:00.000Z"),
+    );
+
+    state = reduceStreamUpdate(
+      state,
+      {
+        type: "turn_completed",
+        provider: "traecli",
+        turnId: "turn-1",
+        turnChanges,
+      },
+      new Date("2026-09-13T08:00:01.000Z"),
+    );
+
+    expect(state).toEqual([
+      expect.objectContaining({
+        kind: "assistant_message",
+        turnId: "turn-1",
+        turnChanges,
+      }),
+    ]);
+  });
+
+  it("hydrates persisted assistant change snapshots", () => {
+    const turnChanges = {
+      repositories: [
+        {
+          cwd: "/project/repos/service",
+          files: [
+            {
+              path: "src/handler.ts",
+              isNew: false,
+              isDeleted: false,
+              additions: 4,
+              deletions: 2,
+            },
+          ],
+        },
+      ],
+    };
+    const state = hydrateStreamState([
+      {
+        event: {
+          type: "timeline",
+          provider: "traecli",
+          turnId: "turn-1",
+          item: { type: "assistant_message", text: "done", turnChanges },
+        },
+        timestamp: new Date("2026-09-13T08:00:00.000Z"),
+      },
+    ]);
+
+    expect(state).toEqual([
+      expect.objectContaining({
+        kind: "assistant_message",
+        turnId: "turn-1",
+        turnChanges,
+      }),
+    ]);
+  });
+
   it("hydrates canonical timeline rows without synthetic turn rows", () => {
     const state = hydrateStreamState([
       {

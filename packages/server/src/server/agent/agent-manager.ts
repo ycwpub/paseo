@@ -53,6 +53,7 @@ import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import { inferWritableProjectDirectoriesFromSystemPrompt } from "./project-directory-access.js";
 import { inferReadOnlyProjectDirectoriesFromSystemPrompt } from "./project-reference-directory-access.js";
 import {
+  readProjectDirectoryAgentConfig,
   toProjectAwareAgentSessionConfig,
   type ProjectAwareAgentSessionConfig,
 } from "./project-directory-agent-config.js";
@@ -98,6 +99,11 @@ import { shouldPublishWhileForegroundRunIsPending } from "./pending-run-event-po
 import type { McpStore } from "../mcp/mcp-store.js";
 import type { SkillMaterializer } from "../skill/skill-materializer.js";
 import type { SkillStore } from "../skill/skill-store.js";
+import {
+  defaultTurnGitChangeCapture,
+  type TurnGitBaseline,
+  type TurnGitChangeCapture,
+} from "./turn-git-change-snapshot.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -327,6 +333,7 @@ export interface AgentManagerOptions {
     agentId: string;
     expectedTurnId: string;
   }) => Promise<void>;
+  turnGitChangeCapture?: TurnGitChangeCapture;
   logger: Logger;
 }
 
@@ -773,7 +780,9 @@ export class AgentManager {
     Map<string, FrameworkPermissionRequest["onResponse"]>
   >();
   private readonly lifecycleMutationTails = new Map<string, Promise<void>>();
+  private readonly turnGitBaselines = new Map<string, TurnGitBaseline>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
+  private readonly turnGitChangeCapture: TurnGitChangeCapture;
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
   private readonly mcpStore: Pick<McpStore, "list"> | null;
@@ -820,6 +829,7 @@ export class AgentManager {
         options.rescueTimeouts?.interruptSessionMs ?? INTERRUPT_SESSION_TIMEOUT_MS,
     };
     this.beforeSteerUnavailableFallback = options.beforeSteerUnavailableFallback;
+    this.turnGitChangeCapture = this.configureTurnGitChangeCapture(options);
     this.agentStreamCoalescer = new AgentStreamCoalescer({
       windowMs: options.agentStreamCoalesceWindowMs ?? AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
       timers: { setTimeout, clearTimeout },
@@ -837,6 +847,10 @@ export class AgentManager {
   private configurePaseoTools(options: AgentManagerOptions): void {
     this.paseoToolsEnabled = options.paseoToolsEnabled ?? true;
     this.paseoToolCatalogFactory = options.paseoToolCatalogFactory ?? null;
+  }
+
+  private configureTurnGitChangeCapture(options: AgentManagerOptions): TurnGitChangeCapture {
+    return options.turnGitChangeCapture ?? defaultTurnGitChangeCapture;
   }
 
   private configureSharedResources(options: AgentManagerOptions): {
@@ -2446,6 +2460,7 @@ export class AgentManager {
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
       let turnId: string;
       let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
+      const turnGitBaseline = await this.captureTurnGitBaselineForAgent(agent);
       turnId = await this.startPendingForegroundTurn({
         agent,
         agentId,
@@ -2453,6 +2468,9 @@ export class AgentManager {
         prompt,
         options,
       });
+      if (turnGitBaseline) {
+        this.turnGitBaselines.set(this.turnGitBaselineKey(agent.id, turnId), turnGitBaseline);
+      }
 
       if (isReplacement) {
         agent.pendingReplacement = false;
@@ -4120,6 +4138,13 @@ export class AgentManager {
       this.agentStreamCoalescer.flushFor(agent.id);
     }
 
+    event = await this.prepareTurnGitTerminalEvent(
+      agent,
+      event,
+      eventTurnId,
+      options?.fromHistory === true,
+    );
+
     let terminalDisposition: ActiveTurnTerminalDisposition = "untracked";
     if (isTurnTerminalEvent(event)) {
       terminalDisposition = this.applyActiveTurnTerminal(
@@ -4410,6 +4435,80 @@ export class AgentManager {
       this.emitState(agent);
     }
     void this.refreshRuntimeInfo(agent);
+  }
+
+  private turnGitBaselineKey(agentId: string, turnId: string): string {
+    return `${agentId}:${turnId}`;
+  }
+
+  private async prepareTurnGitTerminalEvent(
+    agent: ActiveManagedAgent,
+    event: AgentStreamEvent,
+    turnId: string | undefined,
+    fromHistory: boolean,
+  ): Promise<AgentStreamEvent> {
+    if (fromHistory || !turnId) {
+      return event;
+    }
+    if (event.type === "turn_completed") {
+      return await this.attachTurnGitChanges(agent, event, turnId);
+    }
+    if (isTurnTerminalEvent(event)) {
+      this.turnGitBaselines.delete(this.turnGitBaselineKey(agent.id, turnId));
+    }
+    return event;
+  }
+
+  private async captureTurnGitBaselineForAgent(
+    agent: ActiveManagedAgent,
+  ): Promise<TurnGitBaseline | null> {
+    try {
+      const { writableProjectDirectories } = readProjectDirectoryAgentConfig(agent.config);
+      return await this.turnGitChangeCapture.captureBaseline({
+        cwd: agent.cwd,
+        writableProjectDirectories,
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, agentId: agent.id },
+        "Failed to capture Git baseline for Agent turn",
+      );
+      return null;
+    }
+  }
+
+  private async attachTurnGitChanges(
+    agent: ActiveManagedAgent,
+    event: Extract<AgentStreamEvent, { type: "turn_completed" }>,
+    turnId: string,
+  ): Promise<Extract<AgentStreamEvent, { type: "turn_completed" }>> {
+    const key = this.turnGitBaselineKey(agent.id, turnId);
+    const baseline = this.turnGitBaselines.get(key);
+    this.turnGitBaselines.delete(key);
+    if (!baseline) {
+      return event;
+    }
+    try {
+      const turnChanges = await this.turnGitChangeCapture.captureChanges(baseline);
+      if (turnChanges.repositories.length === 0) {
+        return event;
+      }
+      const updatedRow = this.timelineStore.attachTurnChangesToLastAssistant(
+        agent.id,
+        turnId,
+        turnChanges,
+      );
+      if (updatedRow) {
+        this.enqueueDurableTimelineUpdate(agent.id, updatedRow);
+      }
+      return { ...event, turnChanges };
+    } catch (error) {
+      this.logger.warn(
+        { err: error, agentId: agent.id, turnId },
+        "Failed to capture Git changes for Agent turn",
+      );
+      return event;
+    }
   }
 
   private async onStreamTurnFailed(params: {

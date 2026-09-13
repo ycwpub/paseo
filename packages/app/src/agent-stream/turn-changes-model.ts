@@ -1,7 +1,17 @@
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import type { StreamItem } from "@/types/stream";
+import type { AgentTurnChangeFile } from "@getpaseo/protocol/agent-types";
 
 export const DEFAULT_VISIBLE_TURN_CHANGE_COUNT = 3;
+
+export function convertTurnChangeSnapshotFiles(
+  files: readonly AgentTurnChangeFile[],
+): ParsedDiffFile[] {
+  return files.map((file) => ({
+    ...file,
+    hunks: [],
+  }));
+}
 
 function normalizeAbsolutePath(path: string): string {
   const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");

@@ -64,6 +64,47 @@ describe("projectTimelineRows", () => {
     });
   });
 
+  test("preserves the completed turn change snapshot when assistant chunks merge", () => {
+    const turnChanges = {
+      repositories: [
+        {
+          cwd: "/project/repos/service",
+          files: [
+            {
+              path: "src/handler.ts",
+              isNew: false,
+              isDeleted: false,
+              additions: 2,
+              deletions: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        timestamp: "2026-09-13T00:00:00.000Z",
+        turnId: "turn-1",
+        item: { type: "assistant_message", text: "Hel" },
+      },
+      {
+        seq: 2,
+        timestamp: "2026-09-13T00:00:00.100Z",
+        turnId: "turn-1",
+        item: { type: "assistant_message", text: "lo", turnChanges },
+      },
+    ];
+
+    const projected = projectTimelineRows({ rows, mode: "projected" });
+
+    expect(projected[0]?.item).toEqual({
+      type: "assistant_message",
+      text: "Hello",
+      turnChanges,
+    });
+  });
+
   test("keeps adjacent assistant chunks with different message ids separate in projected mode", () => {
     const rows: AgentTimelineRow[] = [
       {

@@ -129,6 +129,14 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
       }),
     [items, startIndex, strategy],
   );
+  const snapshot = useMemo(
+    () =>
+      (changeItems ?? turnItems).findLast(
+        (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+          item.kind === "assistant_message" && item.turnChanges !== undefined,
+      )?.turnChanges,
+    [changeItems, turnItems],
+  );
   return (
     <TurnFooterRow>
       <CompletedTurnFooter
@@ -139,7 +147,9 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
       />
-      {changes ? <TurnChanges {...changes} items={changeItems ?? turnItems} /> : null}
+      {changes ? (
+        <TurnChanges {...changes} items={changeItems ?? turnItems} snapshot={snapshot} />
+      ) : null}
     </TurnFooterRow>
   );
 });

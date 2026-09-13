@@ -4,6 +4,7 @@ import type { StreamItem } from "@/types/stream";
 import {
   collectTurnChangeCwds,
   collectTurnChangedPaths,
+  convertTurnChangeSnapshotFiles,
   selectTurnChangedFiles,
   selectVisibleTurnChangedFiles,
   summarizeTurnChangedFiles,
@@ -158,5 +159,45 @@ describe("turn changes", () => {
       "c.ts",
     ]);
     expect(selectVisibleTurnChangedFiles(files, true)).toEqual(files);
+  });
+
+  it("converts persisted snapshot files into stable card rows", () => {
+    expect(
+      convertTurnChangeSnapshotFiles([
+        {
+          path: "src/new.ts",
+          isNew: true,
+          isDeleted: false,
+          additions: 8,
+          deletions: 0,
+        },
+        {
+          path: "src/renamed.ts",
+          oldPath: "src/old.ts",
+          isNew: false,
+          isDeleted: false,
+          additions: 1,
+          deletions: 1,
+        },
+      ]),
+    ).toEqual([
+      {
+        path: "src/new.ts",
+        isNew: true,
+        isDeleted: false,
+        additions: 8,
+        deletions: 0,
+        hunks: [],
+      },
+      {
+        path: "src/renamed.ts",
+        oldPath: "src/old.ts",
+        isNew: false,
+        isDeleted: false,
+        additions: 1,
+        deletions: 1,
+        hunks: [],
+      },
+    ]);
   });
 });

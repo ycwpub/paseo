@@ -1,6 +1,7 @@
 import type {
   AgentProvider,
   AgentTimelineItem,
+  AgentTurnChangesSnapshot,
   ToolCallDetail,
 } from "@getpaseo/protocol/agent-types";
 import { getReasoningTimelineSource } from "@getpaseo/protocol/reasoning-timeline-source";
@@ -769,6 +770,7 @@ export interface AssistantMessageItem {
   timestamp: Date;
   blockGroupId?: string;
   blockIndex?: number;
+  turnChanges?: AgentTurnChangesSnapshot;
 }
 
 export interface TimelinePosition {
@@ -1020,6 +1022,7 @@ function appendAssistantMessage(
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
   timelineCursor?: TimelinePosition,
+  turnChanges?: AgentTurnChangesSnapshot,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -1032,12 +1035,15 @@ function appendAssistantMessage(
     last.kind === "assistant_message" &&
     (messageId === undefined || last.messageId === messageId);
   if (shouldAppendToLast) {
-    const updated: AssistantMessageItem = {
-      ...last,
-      text: `${last.text}${chunk}`,
-      timestamp,
-      ...(timelineCursor ? { timelineCursor } : {}),
-    };
+    const updated = withAssistantTimelineMetadata(
+      {
+        ...last,
+        text: `${last.text}${chunk}`,
+        timestamp,
+      },
+      timelineCursor,
+      turnChanges,
+    );
     return [...state.slice(0, -1), updated];
   }
 
@@ -1050,12 +1056,15 @@ function appendAssistantMessage(
     secondLast?.kind === "assistant_message" &&
     (messageId === undefined || secondLast.messageId === messageId)
   ) {
-    const updated: AssistantMessageItem = {
-      ...secondLast,
-      text: `${secondLast.text}${chunk}`,
-      timestamp,
-      ...(timelineCursor ? { timelineCursor } : {}),
-    };
+    const updated = withAssistantTimelineMetadata(
+      {
+        ...secondLast,
+        text: `${secondLast.text}${chunk}`,
+        timestamp,
+      },
+      timelineCursor,
+      turnChanges,
+    );
     return [...state.slice(0, -2), updated, last];
   }
 
@@ -1065,15 +1074,30 @@ function appendAssistantMessage(
 
   const idSeed = chunk.trim() || chunk;
   const entryId = createAssistantItemId(state, messageId, idSeed, timestamp, reservedItemIds);
-  const item: AssistantMessageItem = {
-    kind: "assistant_message",
-    id: entryId,
-    ...(messageId ? { messageId } : {}),
-    ...(timelineCursor ? { timelineCursor } : {}),
-    text: chunk,
-    timestamp,
-  };
+  const item = withAssistantTimelineMetadata(
+    {
+      kind: "assistant_message",
+      id: entryId,
+      ...(messageId ? { messageId } : {}),
+      text: chunk,
+      timestamp,
+    },
+    timelineCursor,
+    turnChanges,
+  );
   return [...state, item];
+}
+
+function withAssistantTimelineMetadata(
+  item: AssistantMessageItem,
+  timelineCursor?: TimelinePosition,
+  turnChanges?: AgentTurnChangesSnapshot,
+): AssistantMessageItem {
+  return {
+    ...item,
+    ...(timelineCursor ? { timelineCursor } : {}),
+    ...(turnChanges ? { turnChanges } : {}),
+  };
 }
 
 function appendThought(
@@ -1629,6 +1653,7 @@ function reduceTimelineEvent(
           item.messageId,
           reservedItemIds,
           timelineCursor,
+          item.turnChanges,
         ),
         timestamp,
       );
@@ -1706,12 +1731,13 @@ export function reduceStreamUpdate(
       );
     case "thread_started":
     case "turn_started":
-    case "turn_completed":
     case "turn_failed":
     case "permission_requested":
     case "permission_resolved":
     case "attention_required":
       return finalizeActiveThoughts(state, timestamp);
+    case "turn_completed":
+      return reduceTurnCompletedEvent(state, event, timestamp);
     case "turn_canceled": {
       const message = getTurnInterruptionMessage(event);
       const activity: ActivityLogItem = {
@@ -1728,6 +1754,29 @@ export function reduceStreamUpdate(
     default:
       return state;
   }
+}
+
+function reduceTurnCompletedEvent(
+  state: StreamItem[],
+  event: Extract<AgentStreamEventPayload, { type: "turn_completed" }>,
+  timestamp: Date,
+): StreamItem[] {
+  const finalized = finalizeActiveThoughts(state, timestamp);
+  if (!event.turnChanges) {
+    return finalized;
+  }
+  const assistantIndex = finalized.findLastIndex(
+    (item) =>
+      item.kind === "assistant_message" &&
+      (event.turnId === undefined || item.turnId === event.turnId),
+  );
+  const assistant = finalized[assistantIndex];
+  if (!assistant || assistant.kind !== "assistant_message") {
+    return finalized;
+  }
+  const next = [...finalized];
+  next[assistantIndex] = { ...assistant, turnChanges: event.turnChanges };
+  return next;
 }
 
 function applyTimelineTurnId(

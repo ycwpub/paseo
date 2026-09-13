@@ -1,13 +1,14 @@
 import type {
   AgentProviderNotice,
   AgentTaskItem,
+  AgentTurnChangesSnapshot,
   ProviderOptions,
   ToolPolicy,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { PaseoToolCatalog } from "./tools/types.js";
 
-export type { AgentProviderNotice, AgentTaskItem };
+export type { AgentProviderNotice, AgentTaskItem, AgentTurnChangesSnapshot };
 
 export type AgentProvider = string;
 
@@ -392,7 +393,12 @@ export interface CompactionTimelineItem {
 
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
-  | { type: "assistant_message"; text: string; messageId?: string }
+  | {
+      type: "assistant_message";
+      text: string;
+      messageId?: string;
+      turnChanges?: AgentTurnChangesSnapshot;
+    }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
@@ -402,7 +408,13 @@ export type AgentTimelineItem =
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
-  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
+  | {
+      type: "turn_completed";
+      provider: AgentProvider;
+      usage?: AgentUsage;
+      turnId?: string;
+      turnChanges?: AgentTurnChangesSnapshot;
+    }
   | { type: "usage_updated"; provider: AgentProvider; usage: AgentUsage; turnId?: string }
   | {
       type: "mode_changed";

@@ -74,6 +74,96 @@ describe("shared messages stream parsing", () => {
     expect(parsed.payload.entries[0]?.item.type).toBe("assistant_message");
   });
 
+  it("preserves turn Git change snapshots on history and live completion events", () => {
+    const turnChanges = {
+      repositories: [
+        {
+          cwd: "/project/repos/api",
+          files: [
+            {
+              path: "src/handler.ts",
+              isNew: false,
+              isDeleted: false,
+              additions: 4,
+              deletions: 2,
+            },
+          ],
+        },
+        {
+          cwd: "/project/repos/web",
+          files: [
+            {
+              path: "src/page.tsx",
+              oldPath: "src/old-page.tsx",
+              isNew: false,
+              isDeleted: false,
+              additions: 3,
+              deletions: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const history = FetchAgentTimelineResponseMessageSchema.parse({
+      type: "fetch_agent_timeline_response",
+      payload: {
+        requestId: "req-turn-changes",
+        agentId: "agent_live",
+        agent: null,
+        direction: "tail",
+        projection: "projected",
+        epoch: "epoch-1",
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window: { minSeq: 1, maxSeq: 1, nextSeq: 2 },
+        startCursor: { epoch: "epoch-1", seq: 1 },
+        endCursor: { epoch: "epoch-1", seq: 1 },
+        hasOlder: false,
+        hasNewer: false,
+        entries: [
+          {
+            provider: "traecli",
+            item: {
+              type: "assistant_message",
+              text: "done",
+              turnChanges,
+            },
+            timestamp: "2026-09-13T08:00:00.000Z",
+            seqStart: 1,
+            seqEnd: 1,
+            sourceSeqRanges: [{ startSeq: 1, endSeq: 1 }],
+            collapsed: [],
+          },
+        ],
+        error: null,
+      },
+    });
+    const completion = AgentStreamMessageSchema.parse({
+      type: "agent_stream",
+      payload: {
+        agentId: "agent_live",
+        timestamp: "2026-09-13T08:00:01.000Z",
+        event: {
+          type: "turn_completed",
+          provider: "traecli",
+          turnId: "turn-1",
+          turnChanges,
+        },
+      },
+    });
+
+    const historyItem = history.payload.entries[0]?.item;
+    expect(historyItem?.type === "assistant_message" ? historyItem.turnChanges : undefined).toEqual(
+      turnChanges,
+    );
+    expect(
+      completion.payload.event.type === "turn_completed"
+        ? completion.payload.event.turnChanges
+        : undefined,
+    ).toEqual(turnChanges);
+  });
+
   it("parses legacy worktree setup timeline entries without per-command log", () => {
     const parsed = FetchAgentTimelineResponseMessageSchema.parse({
       type: "fetch_agent_timeline_response",

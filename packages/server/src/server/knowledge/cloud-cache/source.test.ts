@@ -114,6 +114,46 @@ describe("DefaultCloudDocumentSourceReader", () => {
     );
   });
 
+  it("returns the fallback verification URL when the login challenge omits the complete URL", async () => {
+    const source = "https://bytedance.larkoffice.com/wiki/private";
+    const error = Object.assign(new Error("command failed"), {
+      stdout: JSON.stringify({
+        status: "error",
+        data: null,
+        error: {
+          error: "invalid_grant",
+          error_description: "The refresh token has expired.",
+          code: 20037,
+        },
+      }),
+      stderr: "",
+    });
+    const runCommand = vi
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          status: "success",
+          data: {
+            login_status: "pending",
+            complete_token: "completion-token",
+            verification_uri: "https://accounts.feishu.cn/oauth/v1/device/verify",
+            user_code: "ABCD-EFGH",
+          },
+        }),
+        stderr: "",
+      });
+    const reader = new DefaultCloudDocumentSourceReader(runCommand);
+
+    await expect(reader.fetch({ source })).rejects.toMatchObject({
+      issue: {
+        source,
+        loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?user_code=ABCD-EFGH",
+        completionToken: "completion-token",
+      },
+    });
+  });
+
   it("completes the saved Feishu OAuth challenge before retrying the document", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: JSON.stringify({

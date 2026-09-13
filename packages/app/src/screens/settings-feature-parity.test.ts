@@ -31,6 +31,15 @@ describe("feature_paseo integration parity", () => {
     expect(layout).toContain("<PluginAppPanelHost compact");
   });
 
+  test("keeps the desktop window rename dialog connected to the app shell", () => {
+    const layout = source("../app/_layout.tsx");
+
+    expect(layout).toContain(
+      'import { DesktopWindowNameDialog } from "@/components/desktop-window-name-dialog"',
+    );
+    expect(layout).toContain("<DesktopWindowNameDialog />");
+  });
+
   test("keeps workflow and installed plugins reachable from the sidebar", () => {
     const sidebar = runtimeSource("../components/left-sidebar.tsx");
 

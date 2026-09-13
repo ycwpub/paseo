@@ -13,7 +13,9 @@ const HTTP_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_TEXT_PATTERN =
   /auth(?:entication|orization)?|login|log in|sign in|sso|oauth|unauthorized|forbidden|invalid[_ -]?grant|refresh token|token.{0,20}expired|20037|扫码|登录|授权|无权限/iu;
 const AUTHORIZATION_URL_PATH_PATTERN =
-  /(^|\.)(lark_applink_url|verification_uri_complete|authorization_url|authorizationUrl|authorize_url|authorizeUrl|login_url|loginUrl|approval_url|approvalUrl|browser_url|browserUrl)$/u;
+  /(^|\.)(lark_applink_url|verification_uri_complete|verificationUriComplete|preferred_url|preferredUrl|authorization_url|authorizationUrl|authorize_url|authorizeUrl|login_url|loginUrl|approval_url|approvalUrl|browser_url|browserUrl)$/u;
+const VERIFICATION_URL_PATH_PATTERN = /(^|\.)(verification_uri|verificationUri)$/u;
+const USER_CODE_PATH_PATTERN = /(^|\.)(user_code|userCode)$/u;
 const COMPLETION_TOKEN_PATH_PATTERN = /(^|\.)(complete_token|completeToken)$/u;
 const BYTEDCLI_ENV = { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" };
 
@@ -128,6 +130,19 @@ function normalizeHttpUrl(value: string | null, source: string): string | null {
   }
 }
 
+function appendUserCode(value: string | null, userCode: string | null): string | null {
+  if (!value || !userCode) return value;
+  try {
+    const url = new URL(value);
+    if (!url.searchParams.has("user_code")) {
+      url.searchParams.set("user_code", userCode);
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 function extractAuthorizationFields(
   source: string,
   rawParts: readonly string[],
@@ -140,11 +155,11 @@ function extractAuthorizationFields(
 } {
   const parsedValues = rawParts.flatMap(parseJsonValues);
   const strings = parsedValues.flatMap((value) => walkStrings(value));
+  const directLoginUrl = findString(strings, AUTHORIZATION_URL_PATH_PATTERN, /^https?:\/\//u);
+  const verificationUrl = findString(strings, VERIFICATION_URL_PATH_PATTERN, /^https?:\/\//u);
+  const userCode = findString(strings, USER_CODE_PATH_PATTERN);
   return {
-    loginUrl: normalizeHttpUrl(
-      findString(strings, AUTHORIZATION_URL_PATH_PATTERN, /^https?:\/\//u),
-      source,
-    ),
+    loginUrl: normalizeHttpUrl(directLoginUrl ?? appendUserCode(verificationUrl, userCode), source),
     authCommand: findString(strings, /(^|\.)(auth_command|authCommand|login_command)$/u),
     completionToken: findString(strings, COMPLETION_TOKEN_PATH_PATTERN),
     errorCode: findString(strings, /(^|\.)(code|error_code|errorCode)$/u) ?? "",

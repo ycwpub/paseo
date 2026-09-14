@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -605,3 +605,90 @@ test("does not expand daemon-managed skill when provider owns the same slash com
   await manager.runAgent(snapshot.id, "/review keep native behavior");
   expect(client.sessions[0]?.prompts[0]).toBe("/review keep native behavior");
 });
+test("replaceAgentRun recreates a provider session that stays foreground-locked after cancel", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-stale-provider-lock-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class ForegroundLockedSession extends TestAgentSession {
+    private active = false;
+
+    override async startTurn(): Promise<{ turnId: string }> {
+      if (this.active) {
+        throw new Error("A foreground turn is already active");
+      }
+      this.active = true;
+      const turnId = "locked-turn";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+
+    override async interrupt(): Promise<void> {
+      // TRAE can acknowledge cancel while its prompt request remains unsettled.
+    }
+  }
+
+  class RecoveringClient extends TestAgentClient {
+    readonly lockedSession = new ForegroundLockedSession({
+      provider: "codex",
+      cwd: workdir,
+    });
+    resumeSessionCalls = 0;
+
+    override async createSession(): Promise<AgentSession> {
+      return this.lockedSession;
+    }
+
+    override async resumeSession(
+      _handle: AgentPersistenceHandle,
+      config?: Partial<AgentSessionConfig>,
+    ): Promise<AgentSession> {
+      this.resumeSessionCalls += 1;
+      return new TestAgentSession({
+        provider: "codex",
+        cwd: config?.cwd ?? workdir,
+      });
+    }
+  }
+
+  const agentId = "00000000-0000-4000-8000-000000000501";
+  const client = new RecoveringClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    idFactory: () => agentId,
+  });
+
+  try {
+    const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const firstRun = manager.streamAgent(snapshot.id, "hanging prompt");
+    const firstRunDrain = (async () => {
+      for await (const _event of firstRun) {
+        // Drain until cancellation settles the manager-owned run.
+      }
+    })();
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const replacement = await manager.replaceAgentRun(snapshot.id, "replacement prompt");
+    const replacementEvents: AgentStreamEvent[] = [];
+    for await (const event of replacement) {
+      replacementEvents.push(event);
+    }
+    await firstRunDrain;
+
+    expect(client.resumeSessionCalls).toBe(1);
+    expect(replacementEvents.some((event) => event.type === "turn_completed")).toBe(true);
+    expect(manager.getAgent(snapshot.id)).toMatchObject({
+      lifecycle: "idle",
+      activeForegroundTurnId: null,
+    });
+  } finally {
+    await manager.closeAgent(agentId).catch(() => undefined);
+    await storage.flush().catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+}, 10_000);

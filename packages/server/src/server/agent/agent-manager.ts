@@ -1533,11 +1533,11 @@ export class AgentManager {
   private async reloadAgentSessionInternal(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>,
-    options?: { rehydrateFromDisk?: boolean },
+    options?: { rehydrateFromDisk?: boolean; skipRunCancellation?: boolean },
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     let existing = this.requireSessionAgent(agentId);
-    if (this.hasInFlightRun(agentId)) {
+    if (!options?.skipRunCancellation && this.hasInFlightRun(agentId)) {
       await this.cancelAgentRunBefore(agentId, "reload");
       existing = this.requireSessionAgent(agentId);
     }
@@ -3038,7 +3038,7 @@ export class AgentManager {
     if (settlement === "timed_out" && run.turnId) {
       this.logger.warn(
         { agentId, turnId: run.turnId, kind: run.kind },
-        "cancelAgentRun: acknowledged turn still active after timeout, force-canceling",
+        "cancelAgentRun: acknowledged turn still active after timeout, force-canceling and reloading session",
       );
       await this.dispatchSessionEvent(agent, {
         type: "turn_canceled",
@@ -3047,6 +3047,12 @@ export class AgentManager {
         turnId: run.turnId,
       });
       await run.settledPromise;
+      // The provider may acknowledge cancellation without settling its prompt request. The
+      // manager-owned run is settled above, but reusing that provider session can leave its local
+      // foreground lock active and reject the replacement turn.
+      await this.reloadAgentSessionInternal(agentId, undefined, {
+        skipRunCancellation: true,
+      });
     } else if (settlement === "timed_out" && run.kind === "foreground") {
       this.logger.warn(
         { agentId, kind: run.kind },

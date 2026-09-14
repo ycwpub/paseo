@@ -29,6 +29,7 @@ describe("TraeACPModeFallbackAgentClient", () => {
 
     expect(mockState.constructorOptions).toEqual([
       expect.objectContaining({
+        backgroundAppBundleMcpProcesses: true,
         waitForInitialCommands: true,
       }),
     ]);

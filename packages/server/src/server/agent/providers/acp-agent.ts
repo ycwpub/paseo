@@ -125,6 +125,7 @@ import {
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import { resolveBackgroundMcpCommand } from "./macos-background-mcp-command.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
 
@@ -438,6 +439,7 @@ interface ACPAgentClientOptions {
   extensionCommandsParser?: ACPExtensionCommandsParser;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
+  backgroundAppBundleMcpProcesses?: boolean;
   terminateProcess?: ProcessTerminator;
 }
 
@@ -471,6 +473,7 @@ interface ACPAgentSessionOptions {
   launchEnv?: Record<string, string>;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
+  backgroundAppBundleMcpProcesses?: boolean;
   terminateProcess?: ProcessTerminator;
 }
 
@@ -843,6 +846,7 @@ export class ACPAgentClient implements AgentClient {
   ) => Promise<void>;
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
+  private readonly backgroundAppBundleMcpProcesses: boolean;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   protected readonly terminateProcess: ProcessTerminator;
 
@@ -871,6 +875,7 @@ export class ACPAgentClient implements AgentClient {
     this.thinkingOptionWriter = options.thinkingOptionWriter;
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
+    this.backgroundAppBundleMcpProcesses = options.backgroundAppBundleMcpProcesses ?? false;
     this.extensionCommandsParser = options.extensionCommandsParser;
   }
 
@@ -904,6 +909,7 @@ export class ACPAgentClient implements AgentClient {
         extensionCommandsParser: this.extensionCommandsParser,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
+        backgroundAppBundleMcpProcesses: this.backgroundAppBundleMcpProcesses,
       },
     );
     await session.initializeNewSession();
@@ -955,6 +961,7 @@ export class ACPAgentClient implements AgentClient {
       extensionCommandsParser: this.extensionCommandsParser,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
+      backgroundAppBundleMcpProcesses: this.backgroundAppBundleMcpProcesses,
     });
     await session.initializeResumedSession();
     return session;
@@ -1469,6 +1476,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private commandsReadySettled = false;
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
+  private readonly backgroundAppBundleMcpProcesses: boolean;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
@@ -1509,6 +1517,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.currentTitle = config.title ?? null;
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
+    this.backgroundAppBundleMcpProcesses = options.backgroundAppBundleMcpProcesses ?? false;
     this.extensionCommandsParser = options.extensionCommandsParser;
   }
 
@@ -2562,7 +2571,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }
 
   private acpMcpServers(): McpServer[] {
-    return this.capabilities.supportsMcpServers ? normalizeMcpServers(this.config.mcpServers) : [];
+    return this.capabilities.supportsMcpServers
+      ? normalizeMcpServers(this.config.mcpServers, this.backgroundAppBundleMcpProcesses)
+      : [];
   }
 
   private applySessionState(response: SessionStateResponse): void {
@@ -3147,7 +3158,10 @@ function deriveCurrentConfigValue(
   return option?.currentValue ?? null;
 }
 
-function normalizeMcpServers(servers?: Record<string, McpServerConfig>): McpServer[] {
+function normalizeMcpServers(
+  servers: Record<string, McpServerConfig> | undefined,
+  backgroundAppBundleProcesses: boolean,
+): McpServer[] {
   if (!servers) {
     return [];
   }
@@ -3156,7 +3170,9 @@ function normalizeMcpServers(servers?: Record<string, McpServerConfig>): McpServ
     if (config.type === "stdio") {
       return {
         name,
-        command: config.command,
+        command: backgroundAppBundleProcesses
+          ? resolveBackgroundMcpCommand(config.command)
+          : config.command,
         args: config.args ?? [],
         env: Object.entries(config.env ?? {}).map(([envName, value]) => ({
           name: envName,

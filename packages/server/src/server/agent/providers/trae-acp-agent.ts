@@ -25,6 +25,7 @@ export class TraeACPAgentClient extends GenericACPAgentClient {
       // traecli publishes slash commands and skills asynchronously via available_commands_update.
       waitForInitialCommands: true,
       initialCommandsWaitTimeoutMs: TRAE_INITIAL_COMMANDS_WAIT_TIMEOUT_MS,
+      backgroundAppBundleMcpProcesses: true,
     });
   }
 }

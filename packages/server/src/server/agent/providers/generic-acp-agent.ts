@@ -46,6 +46,7 @@ interface GenericACPAgentClientOptions {
   providerParams?: unknown;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
+  backgroundAppBundleMcpProcesses?: boolean;
   diagnosticPhaseTimeoutMs?: number;
   clientCapabilityMeta?: ACPClientCapabilityMeta;
   configFeatureOptions?: ACPConfigFeatureOption[];
@@ -71,6 +72,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       capabilities: buildGenericACPCapabilities(providerParams),
       waitForInitialCommands: options.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,
+      backgroundAppBundleMcpProcesses: options.backgroundAppBundleMcpProcesses,
       clientCapabilities: providerParams.clientCapabilities,
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,

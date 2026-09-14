@@ -1122,6 +1122,13 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   secondaryLabelActive: {
     color: theme.colors.foreground,
   },
+  metadataLabel: {
+    flexShrink: 0,
+    marginLeft: theme.spacing[2],
+    color: theme.colors.foregroundMuted,
+    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontVariant: ["tabular-nums"],
+  },
   shimmerText: {
     color: "transparent",
     fontSize: theme.fontSize.base,
@@ -2335,6 +2342,7 @@ export const TodoListCard = memo(function TodoListCard({
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
+  metadataLabel?: string;
   icon?: ComponentType<{ size?: number; color?: string }>;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
@@ -2418,6 +2426,7 @@ interface ExpandableBadgeLabelRowProps {
   label: string;
   labelStyle: StyleProp<TextStyle>;
   secondaryLabel?: string;
+  metadataLabel?: string;
   secondaryLabelStyle: StyleProp<TextStyle>;
   shouldMeasureWebShimmer: boolean;
   shouldMeasureNativeShimmer: boolean;
@@ -2444,6 +2453,7 @@ function ExpandableBadgeLabelRow({
   label,
   labelStyle,
   secondaryLabel,
+  metadataLabel,
   secondaryLabelStyle,
   shouldMeasureWebShimmer,
   shouldMeasureNativeShimmer,
@@ -2500,6 +2510,11 @@ function ExpandableBadgeLabelRow({
             uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         </Pressable>
+      ) : null}
+      {metadataLabel ? (
+        <Text style={expandableBadgeStylesheet.metadataLabel} numberOfLines={1}>
+          {metadataLabel}
+        </Text>
       ) : null}
       {isWebShimmer ? (
         <ExpandableBadgeWebShimmerOverlay
@@ -2699,6 +2714,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
   secondaryLabel,
+  metadataLabel,
   icon,
   isExpanded,
   onToggle,
@@ -2983,6 +2999,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             label={label}
             labelStyle={labelStyle}
             secondaryLabel={secondaryLabel}
+            metadataLabel={metadataLabel}
             secondaryLabelStyle={secondaryLabelStyle}
             shouldMeasureWebShimmer={shouldMeasureWebShimmer}
             shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
@@ -3023,6 +3040,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
 function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: ExpandableBadgeProps) {
   if (previous.label !== next.label) return false;
   if (previous.secondaryLabel !== next.secondaryLabel) return false;
+  if (previous.metadataLabel !== next.metadataLabel) return false;
   if (previous.icon !== next.icon) return false;
   if (previous.isExpanded !== next.isExpanded) return false;
   if (previous.style !== next.style) return false;
@@ -3048,6 +3066,8 @@ interface ToolCallProps {
   detail?: ToolCallDetail;
   cwd?: string;
   metadata?: Record<string, unknown>;
+  startedAt?: Date;
+  completedAt?: Date;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
@@ -3067,6 +3087,8 @@ export const ToolCall = memo(function ToolCall({
   detail,
   cwd,
   metadata,
+  startedAt,
+  completedAt,
   isLastInSequence = false,
   disableOuterSpacing,
   onInlineDetailsHoverChange,
@@ -3105,9 +3127,11 @@ export const ToolCall = memo(function ToolCall({
         detail: effectiveDetail,
         metadata,
         cwd,
+        startedAt,
+        completedAt,
         resolveIcon: resolveToolCallIcon,
       }),
-    [toolName, status, error, effectiveDetail, metadata, cwd],
+    [toolName, status, error, effectiveDetail, metadata, cwd, startedAt, completedAt],
   );
   const handleOpenFile = useMemo(() => {
     const openFilePath = presentation.openFilePath;
@@ -3202,6 +3226,7 @@ export const ToolCall = memo(function ToolCall({
       testID="tool-call-badge"
       label={presentation.displayName}
       secondaryLabel={presentation.summary}
+      metadataLabel={presentation.metadataLabel}
       icon={presentation.icon}
       isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
@@ -3216,6 +3241,13 @@ export const ToolCall = memo(function ToolCall({
   );
 }, areToolCallPropsEqual);
 
+function areToolCallTimestampsEqual(previous: ToolCallProps, next: ToolCallProps): boolean {
+  return (
+    previous.startedAt?.getTime() === next.startedAt?.getTime() &&
+    previous.completedAt?.getTime() === next.completedAt?.getTime()
+  );
+}
+
 function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.toolName !== next.toolName) return false;
   if (previous.args !== next.args) return false;
@@ -3225,6 +3257,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.detail !== next.detail) return false;
   if (previous.cwd !== next.cwd) return false;
   if (previous.metadata !== next.metadata) return false;
+  if (!areToolCallTimestampsEqual(previous, next)) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;

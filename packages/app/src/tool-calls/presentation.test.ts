@@ -91,4 +91,39 @@ describe("tool-call presentation", () => {
     expect(presentation.isPlan).toBe(true);
     expect(presentation.icon).toBe(fakeIcons.brain);
   });
+
+  it("includes the command start and end times in the badge metadata", () => {
+    const presentation = buildToolCallPresentation({
+      toolName: "exec_command",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "shell",
+        command: "npm test",
+        output: "ok",
+        exitCode: 0,
+      },
+      startedAt: new Date(2026, 8, 15, 12, 1, 3),
+      completedAt: new Date(2026, 8, 15, 12, 1, 9),
+      resolveIcon: fakeResolveIcon,
+    });
+
+    expect(presentation.metadataLabel).toMatch(/12:01:03.*→.*12:01:09/);
+  });
+
+  it("keeps the command end time open while it is running", () => {
+    const presentation = buildToolCallPresentation({
+      toolName: "exec_command",
+      status: "running",
+      error: null,
+      detail: {
+        type: "shell",
+        command: "npm test",
+      },
+      startedAt: new Date(2026, 8, 15, 12, 1, 3),
+      resolveIcon: fakeResolveIcon,
+    });
+
+    expect(presentation.metadataLabel).toMatch(/12:01:03.*→.*…/);
+  });
 });

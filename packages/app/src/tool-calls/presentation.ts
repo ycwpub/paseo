@@ -3,6 +3,7 @@ import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { ToolCallDisplayInput } from "@/utils/tool-call-display";
 import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
 import { extractToolCallFilePath } from "@/utils/extract-tool-call-file-path";
+import { formatActionTimeRange } from "@/utils/action-time";
 import {
   hasMeaningfulToolCallDetail,
   isPendingToolCallDetail,
@@ -18,12 +19,15 @@ interface BuildToolCallPresentationInput {
   detail?: ToolCallDetail;
   cwd?: string;
   metadata?: Record<string, unknown>;
+  startedAt?: Date;
+  completedAt?: Date;
   resolveIcon: ToolCallIconResolver;
 }
 
 export interface ToolCallPresentation {
   displayName: string;
   summary?: string;
+  metadataLabel?: string;
   errorText?: string;
   icon: ToolCallPresentationIcon;
   isLoadingDetails: boolean;
@@ -68,6 +72,12 @@ export function buildToolCallPresentation(
   return {
     displayName: displayModel.displayName,
     summary: displayModel.summary,
+    metadataLabel: input.startedAt
+      ? formatActionTimeRange({
+          startedAt: input.startedAt,
+          completedAt: input.completedAt,
+        })
+      : undefined,
     errorText: displayModel.errorText,
     icon: input.resolveIcon(input.toolName, input.detail),
     isLoadingDetails,

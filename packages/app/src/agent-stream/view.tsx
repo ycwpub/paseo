@@ -870,6 +870,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               detail={data.detail}
               cwd={context.cwd}
               metadata={data.metadata}
+              startedAt={item.startedAt ?? item.timestamp}
+              completedAt={
+                data.status === "running" ? undefined : (item.completedAt ?? item.timestamp)
+              }
               isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
               maxDetailHeight={maxDetailHeight}
@@ -886,6 +890,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
+            startedAt={item.startedAt ?? item.timestamp}
+            completedAt={
+              data.status === "executing" ? undefined : (item.completedAt ?? item.timestamp)
+            }
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
             maxDetailHeight={maxDetailHeight}

@@ -217,6 +217,8 @@ credential flow.
 
 ### Agent provider lifecycle
 
+- Command tool-call rows must display their recorded start and end timestamps. Running commands
+  show an open end until a terminal update arrives.
 - When cancellation is acknowledged but the Provider turn does not settle before the rescue
   timeout, replace/reload must recreate the Provider Session before accepting another foreground
   turn. Manager state must not hide a Provider-local foreground lock.

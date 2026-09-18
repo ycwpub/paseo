@@ -12,12 +12,18 @@ interface TraeACPAgentClientOptions {
 }
 
 const TRAE_INITIAL_COMMANDS_WAIT_TIMEOUT_MS = 10_000;
+const TRAE_REASONING_ARGS = [
+  "-c",
+  "hide_agent_reasoning=false",
+  "-c",
+  'model_reasoning_summary="auto"',
+] as const;
 
 export class TraeACPAgentClient extends GenericACPAgentClient {
   constructor(options: TraeACPAgentClientOptions) {
     super({
       logger: options.logger,
-      command: options.command,
+      command: [...options.command, ...TRAE_REASONING_ARGS],
       env: options.env,
       providerId: options.providerId,
       label: options.label,

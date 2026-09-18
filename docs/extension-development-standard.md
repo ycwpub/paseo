@@ -217,14 +217,17 @@ credential flow.
 
 ### Agent provider lifecycle
 
+- TRAE ACP launches with agent reasoning visible and automatic reasoning summaries enabled so
+  supported models emit standard `agent_thought_chunk` updates. Paseo must not enable raw reasoning
+  output or reinterpret ordinary Assistant messages as reasoning.
 - Command tool-call rows must display their recorded start and end timestamps. Running commands
   show an open end until a terminal update arrives.
 - When cancellation is acknowledged but the Provider turn does not settle before the rescue
   timeout, replace/reload must recreate the Provider Session before accepting another foreground
   turn. Manager state must not hide a Provider-local foreground lock.
-- On macOS, TRAE-launched MCP executables sourced from another `.app` bundle run from a
-  Paseo-private executable copy so process attribution does not surface the source application's
-  Dock icon. Other ACP providers keep their configured executable path.
+- On macOS, Paseo-launched Codex-bundled background MCP executables run from a Paseo-private
+  executable copy so process attribution does not surface the Codex Dock icon. Other configured
+  executables keep their original path.
 
 ### Agent message queue
 

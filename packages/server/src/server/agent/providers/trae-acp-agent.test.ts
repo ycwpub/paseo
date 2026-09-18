@@ -1,40 +1,54 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
-
-const mockState = vi.hoisted(() => ({
-  constructorOptions: [] as unknown[],
-}));
-
-vi.mock("./generic-acp-agent.js", () => ({
-  GenericACPAgentClient: class GenericACPAgentClient {
-    protected readonly defaultModes: unknown[] = [];
-
-    constructor(options: unknown) {
-      mockState.constructorOptions.push(options);
-    }
-  },
-}));
-
+import { TraeACPAgentClient } from "./trae-acp-agent.js";
 import { TraeACPModeFallbackAgentClient } from "./trae-acp-mode-fallback-agent.js";
 
-describe("TraeACPModeFallbackAgentClient", () => {
-  test("provides Trae permission modes when ACP discovery omits them", () => {
-    const client = new TraeACPModeFallbackAgentClient({
+class TestTraeACPAgentClient extends TraeACPAgentClient {
+  getLaunchCommand() {
+    return this.resolveLaunchCommand();
+  }
+}
+
+class TestTraeACPModeFallbackAgentClient extends TraeACPModeFallbackAgentClient {
+  getDefaultModes() {
+    return this.defaultModes;
+  }
+}
+
+describe("TraeACPAgentClient", () => {
+  test("enables reasoning summaries in the TRAE ACP child process", async () => {
+    const client = new TestTraeACPAgentClient({
       logger: createTestLogger(),
       command: ["traecli", "acp", "serve"],
       providerId: "traecli",
       label: "TRAE CLI",
     });
 
-    expect(mockState.constructorOptions).toEqual([
-      expect.objectContaining({
-        backgroundAppBundleMcpProcesses: true,
-        waitForInitialCommands: true,
-      }),
-    ]);
-    expect(mockState.constructorOptions[0]).not.toHaveProperty("defaultModes");
-    expect((client as unknown as { defaultModes: unknown[] }).defaultModes).toEqual([
+    await expect(client.getLaunchCommand()).resolves.toEqual({
+      command: "traecli",
+      args: [
+        "acp",
+        "serve",
+        "-c",
+        "hide_agent_reasoning=false",
+        "-c",
+        'model_reasoning_summary="auto"',
+      ],
+    });
+  });
+});
+
+describe("TraeACPModeFallbackAgentClient", () => {
+  test("provides Trae permission modes when ACP discovery omits them", () => {
+    const client = new TestTraeACPModeFallbackAgentClient({
+      logger: createTestLogger(),
+      command: ["traecli", "acp", "serve"],
+      providerId: "traecli",
+      label: "TRAE CLI",
+    });
+
+    expect(client.getDefaultModes()).toEqual([
       expect.objectContaining({ id: "default" }),
       expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
       expect.objectContaining({ id: "plan" }),

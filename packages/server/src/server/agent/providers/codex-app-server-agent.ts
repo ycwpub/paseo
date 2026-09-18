@@ -127,6 +127,7 @@ import {
   type AidenModelRecord,
 } from "./aiden/model-catalog.js";
 import { formatCodexProviderRetryMessage } from "./codex-provider-retry-message.js";
+import { resolveBackgroundMcpCommand } from "./macos-background-mcp-command.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -855,7 +856,7 @@ function toCodexMcpConfig(config: McpServerConfig): CodexMcpServerConfig {
   switch (config.type) {
     case "stdio":
       return {
-        command: config.command,
+        command: resolveBackgroundMcpCommand(config.command),
         args: config.args,
         env: config.env,
       };

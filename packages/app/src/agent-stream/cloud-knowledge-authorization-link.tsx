@@ -27,7 +27,9 @@ export function CloudKnowledgeAuthorizationLink({
   if (!authorizationUrl) return null;
   return (
     <View style={styles.container} testID="cloud-knowledge-authorization-link">
-      <Text style={styles.label}>授权链接：</Text>
+      <Text selectable style={styles.label}>
+        授权链接：
+      </Text>
       <ExternalLink
         href={authorizationUrl}
         label="立即授权"

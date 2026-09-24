@@ -97,7 +97,7 @@ describe("DefaultCloudDocumentSourceReader", () => {
         source,
         loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
         completionToken: "device-code",
-        authCommand: "lark-cli auth login --domain docs,drive,wiki --recommend",
+        authCommand: null,
       },
     });
     expect(runCommand).toHaveBeenNthCalledWith(
@@ -146,6 +146,79 @@ describe("DefaultCloudDocumentSourceReader", () => {
         source,
         loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?user_code=ABCD-EFGH",
         completionToken: "completion-token",
+      },
+    });
+  });
+
+  it("reports authorization initialization failures without delegating a login command to the user", async () => {
+    const source = "https://bytedance.larkoffice.com/wiki/private";
+    const loginError = Object.assign(new Error("command failed"), {
+      stdout: JSON.stringify({
+        status: "error",
+        error: {
+          error: "invalid_grant",
+          error_description: "The refresh token has expired.",
+          code: 20037,
+        },
+      }),
+      stderr: "",
+    });
+    const challengeError = Object.assign(new Error("spawn lark-cli ENOENT"), {
+      code: "ENOENT",
+      stdout: "",
+      stderr: "",
+    });
+    const runCommand = vi
+      .fn()
+      .mockRejectedValueOnce(loginError)
+      .mockRejectedValueOnce(challengeError);
+    const reader = new DefaultCloudDocumentSourceReader(runCommand);
+
+    await expect(reader.fetch({ source })).rejects.toMatchObject({
+      issue: {
+        source,
+        loginUrl: null,
+        completionToken: null,
+        authCommand: null,
+        message: expect.stringContaining("Paseo 自动生成飞书授权链接失败"),
+      },
+    });
+  });
+
+  it("rejects a successful challenge process that did not return an authorization link", async () => {
+    const source = "https://bytedance.larkoffice.com/wiki/private";
+    const loginError = Object.assign(new Error("command failed"), {
+      stdout: JSON.stringify({
+        status: "error",
+        error: {
+          error: "invalid_grant",
+          error_description: "The refresh token has expired.",
+          code: 20037,
+        },
+      }),
+      stderr: "",
+    });
+    const runCommand = vi
+      .fn()
+      .mockRejectedValueOnce(loginError)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          ok: false,
+          error: {
+            message: "device flow unavailable",
+          },
+        }),
+        stderr: "",
+      });
+    const reader = new DefaultCloudDocumentSourceReader(runCommand);
+
+    await expect(reader.fetch({ source })).rejects.toMatchObject({
+      issue: {
+        source,
+        loginUrl: null,
+        completionToken: null,
+        authCommand: null,
+        message: expect.stringContaining("device flow unavailable"),
       },
     });
   });

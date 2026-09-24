@@ -10,12 +10,9 @@ export interface CloudKnowledgeAuthorizationRequest {
 }
 
 function permissionDescription(issue: CloudDocumentAuthenticationIssue): string {
-  let instructions = "请先完成对应云文档服务的登录或授权，然后重试缓存。";
-  if (issue.loginUrl) {
-    instructions = "请先打开登录链接完成授权，然后点击“已完成授权，重试缓存”。";
-  } else if (issue.authCommand) {
-    instructions = `请先在主机执行：${issue.authCommand}，然后点击“已完成授权，重试缓存”。`;
-  }
+  const instructions = issue.loginUrl
+    ? "请先打开登录链接完成授权，然后点击“已完成授权，重试缓存”。"
+    : "Paseo 未能自动生成授权链接。请点击“重新生成授权链接”再次尝试，无需手动执行命令。";
   return [`无法读取云文档：${issue.source}`, issue.message, instructions].join("\n\n");
 }
 
@@ -51,7 +48,16 @@ async function handlePermissionResponse(input: {
     });
     return;
   }
-  const detail = resolved.authIssue?.message ?? resolved.error ?? "未知错误";
+  if (resolved.authIssue) {
+    await requestCloudKnowledgeAuthorization({
+      agentId: input.agentId,
+      requests: [{ target: input.target, issue: resolved.authIssue }],
+      service: input.service,
+      agentManager: input.agentManager,
+    });
+    return;
+  }
+  const detail = resolved.error ?? "未知错误";
   await input.agentManager.appendTimelineItem(input.agentId, {
     type: "assistant_message",
     text: `云文档缓存仍然失败：${input.target.source}\n${detail}`,
@@ -71,6 +77,7 @@ export async function requestCloudKnowledgeAuthorization(input: {
     ]),
   );
   for (const { target, issue } of uniqueRequests.values()) {
+    const hasAuthorizationLink = Boolean(issue.loginUrl);
     await input.agentManager.requestFrameworkPermission(input.agentId, {
       request: {
         name: "cloud-knowledge-auth",
@@ -79,8 +86,8 @@ export async function requestCloudKnowledgeAuthorization(input: {
         description: permissionDescription(issue),
         actions: [
           {
-            id: "retry-after-auth",
-            label: "已完成授权，重试缓存",
+            id: hasAuthorizationLink ? "retry-after-auth" : "retry-auth-link",
+            label: hasAuthorizationLink ? "已完成授权，重试缓存" : "重新生成授权链接",
             behavior: "allow",
             variant: "primary",
           },

@@ -1735,24 +1735,32 @@ function PermissionRequestCard({
 
   return (
     <View style={permissionStyles.container}>
-      <Text style={permissionStyles.title}>{title}</Text>
+      <View style={permissionStyles.copyContent}>
+        <Text selectable style={permissionStyles.title}>
+          {title}
+        </Text>
 
-      {description ? <Text style={permissionStyles.description}>{description}</Text> : null}
+        {description ? (
+          <Text selectable style={permissionStyles.description}>
+            {description}
+          </Text>
+        ) : null}
 
-      <CloudKnowledgeAuthorizationLink metadata={request.metadata} />
+        <CloudKnowledgeAuthorizationLink metadata={request.metadata} />
 
-      {planMarkdown ? (
-        <PlanCard
-          title={t("agentStream.permission.proposedPlan")}
-          text={planMarkdown}
-          testID="permission-plan-card"
-          disableOuterSpacing
-        />
-      ) : null}
+        {planMarkdown ? (
+          <PlanCard
+            title={t("agentStream.permission.proposedPlan")}
+            text={planMarkdown}
+            testID="permission-plan-card"
+            disableOuterSpacing
+          />
+        ) : null}
 
-      {!isPlanRequest ? (
-        <ToolCallDetailsContent detail={resolvedToolCallDetail} maxHeight={200} />
-      ) : null}
+        {!isPlanRequest ? (
+          <ToolCallDetailsContent detail={resolvedToolCallDetail} maxHeight={200} />
+        ) : null}
+      </View>
 
       {footer}
     </View>
@@ -1858,6 +1866,10 @@ const permissionStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
     borderColor: theme.colors.border,
+  },
+  copyContent: {
+    gap: theme.spacing[2],
+    ...(isWeb ? { userSelect: "text" as const } : {}),
   },
   title: {
     fontSize: theme.fontSize.base,

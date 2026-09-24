@@ -19,6 +19,7 @@ const USER_CODE_PATH_PATTERN = /(^|\.)(user_code|userCode)$/u;
 const COMPLETION_TOKEN_PATH_PATTERN = /(^|\.)(complete_token|completeToken|device_code)$/u;
 const BYTEDCLI_ENV = { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" };
 const LARK_LOGIN_COMMAND = "lark-cli auth login --domain docs,drive,wiki --recommend";
+const AUTHORIZATION_CHALLENGE_FAILURE_PREFIX = "Paseo 自动生成飞书授权链接失败";
 
 export class CloudDocumentAuthenticationError extends Error {
   readonly issue: CloudDocumentAuthenticationIssue;
@@ -244,6 +245,27 @@ async function createBytedcliAuthorizationChallenge(
   issue: CloudDocumentAuthenticationIssue,
   runCommand: CloudDocumentCommandRunner,
 ): Promise<CloudDocumentAuthenticationIssue> {
+  const resolveChallenge = (
+    fields: ReturnType<typeof extractAuthorizationFields>,
+    fallbackMessage: string,
+  ): CloudDocumentAuthenticationIssue => {
+    if (fields.loginUrl) {
+      return {
+        ...issue,
+        loginUrl: fields.loginUrl,
+        authCommand: null,
+        completionToken: fields.completionToken ?? issue.completionToken ?? null,
+      };
+    }
+    return {
+      ...issue,
+      message: `${AUTHORIZATION_CHALLENGE_FAILURE_PREFIX}：${fields.message ?? fallbackMessage}`,
+      loginUrl: null,
+      authCommand: null,
+      completionToken: null,
+    };
+  };
+
   try {
     const result = await runCommand(
       "lark-cli",
@@ -255,12 +277,7 @@ async function createBytedcliAuthorizationChallenge(
       },
     );
     const fields = extractAuthorizationFields(source, [result.stdout, result.stderr]);
-    return {
-      ...issue,
-      loginUrl: fields.loginUrl ?? issue.loginUrl,
-      authCommand: fields.authCommand ?? LARK_LOGIN_COMMAND,
-      completionToken: fields.completionToken ?? issue.completionToken,
-    };
+    return resolveChallenge(fields, "lark-cli 未返回授权链接。");
   } catch (error) {
     const candidate = error as Error & { stdout?: unknown; stderr?: unknown };
     const fields = extractAuthorizationFields(
@@ -269,12 +286,7 @@ async function createBytedcliAuthorizationChallenge(
         (value): value is string => Boolean(value),
       ),
     );
-    return {
-      ...issue,
-      loginUrl: fields.loginUrl ?? issue.loginUrl,
-      authCommand: fields.authCommand ?? LARK_LOGIN_COMMAND,
-      completionToken: fields.completionToken ?? issue.completionToken,
-    };
+    return resolveChallenge(fields, candidate.message || "无法启动 lark-cli。");
   }
 }
 

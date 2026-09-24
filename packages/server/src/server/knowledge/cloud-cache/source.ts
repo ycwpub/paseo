@@ -21,6 +21,12 @@ const BYTEDCLI_ENV = { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" };
 const LARK_LOGIN_COMMAND = "lark-cli auth login --domain docs,drive,wiki --recommend";
 const AUTHORIZATION_CHALLENGE_FAILURE_PREFIX = "Paseo 自动生成飞书授权链接失败";
 
+function createLarkDeviceAuthorizationEnvironment(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...BYTEDCLI_ENV };
+  delete env.LARKSUITE_CLI_USER_ACCESS_TOKEN;
+  return env;
+}
+
 export class CloudDocumentAuthenticationError extends Error {
   readonly issue: CloudDocumentAuthenticationIssue;
 
@@ -273,7 +279,7 @@ async function createBytedcliAuthorizationChallenge(
       {
         timeoutMs: 30_000,
         maxBufferBytes: MAX_DOCUMENT_BYTES,
-        env: BYTEDCLI_ENV,
+        env: createLarkDeviceAuthorizationEnvironment(),
       },
     );
     const fields = extractAuthorizationFields(source, [result.stdout, result.stderr]);
@@ -301,7 +307,7 @@ export async function completeCloudDocumentAuthentication(
     {
       timeoutMs: 60_000,
       maxBufferBytes: MAX_DOCUMENT_BYTES,
-      env: BYTEDCLI_ENV,
+      env: createLarkDeviceAuthorizationEnvironment(),
     },
   );
   const parsed = parseJsonValues(result.stdout).at(-1);

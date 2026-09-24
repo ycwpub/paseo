@@ -8,6 +8,7 @@ import {
 describe("DefaultCloudDocumentSourceReader", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("extracts markdown from bytedcli JSON output", async () => {
@@ -108,6 +109,40 @@ describe("DefaultCloudDocumentSourceReader", () => {
         env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
       }),
     );
+  });
+
+  it("does not pass a host-managed user token into device authorization initialization", async () => {
+    vi.stubEnv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "host-managed-token");
+    vi.resetModules();
+    const { DefaultCloudDocumentSourceReader: IsolatedSourceReader } = await import("./source.js");
+    const source = "https://bytedance.larkoffice.com/wiki/private";
+    const loginError = Object.assign(new Error("command failed"), {
+      stdout: JSON.stringify({
+        status: "error",
+        error: {
+          error: "invalid_grant",
+          error_description: "The refresh token has expired.",
+          code: 20037,
+        },
+      }),
+      stderr: "",
+    });
+    const runCommand = vi
+      .fn()
+      .mockRejectedValueOnce(loginError)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          device_code: "device-code",
+          verification_url: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
+        }),
+        stderr: "",
+      });
+    const reader = new IsolatedSourceReader(runCommand);
+
+    await expect(reader.fetch({ source })).rejects.toBeInstanceOf(Error);
+
+    const challengeOptions = runCommand.mock.calls[1]?.[2];
+    expect(challengeOptions?.env).not.toHaveProperty("LARKSUITE_CLI_USER_ACCESS_TOKEN");
   });
 
   it("returns the fallback verification URL when the login challenge omits the complete URL", async () => {
@@ -248,6 +283,32 @@ describe("DefaultCloudDocumentSourceReader", () => {
         env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
       }),
     );
+  });
+
+  it("does not pass a host-managed user token when completing device authorization", async () => {
+    vi.stubEnv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "host-managed-token");
+    vi.resetModules();
+    const { completeCloudDocumentAuthentication: completeIsolatedAuthentication } =
+      await import("./source.js");
+    const runCommand = vi.fn(async () => ({
+      stdout: JSON.stringify({ ok: true }),
+      stderr: "",
+    }));
+
+    await completeIsolatedAuthentication(
+      {
+        kind: "authentication_required",
+        source: "https://bytedance.larkoffice.com/wiki/private",
+        message: "需要重新授权",
+        loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=flow",
+        authCommand: null,
+        completionToken: "device-code",
+      },
+      runCommand,
+    );
+
+    const completionOptions = runCommand.mock.calls[0]?.[2];
+    expect(completionOptions?.env).not.toHaveProperty("LARKSUITE_CLI_USER_ACCESS_TOKEN");
   });
 
   it("bounds HTTP cloud document downloads with a timeout signal", async () => {

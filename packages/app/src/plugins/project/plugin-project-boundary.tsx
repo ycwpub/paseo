@@ -12,28 +12,44 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { SelectField } from "@/components/ui/select-field";
+import {
+  SelectField,
+  type SelectFieldDisplay,
+  type SelectFieldOption,
+} from "@/components/ui/select-field";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { getHostProjectId, useHostProjects } from "@/projects/host-projects";
+import { useHostProjects } from "@/projects/host-projects";
 import {
   getCurrentProjectRemoveReadiness,
   removeProjectFromHosts,
 } from "@/projects/project-remove";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
-import { useHostFeature } from "@/runtime/host-features";
-import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useHostFeatureMap } from "@/runtime/host-features";
+import {
+  getHostRuntimeStore,
+  useHostRuntimeConnectionStatuses,
+  useHosts,
+} from "@/runtime/host-runtime";
 import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import {
   navigateToWorkspace,
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { buildNewWorkspaceRoute, buildProjectSettingsRoute } from "@/utils/host-routes";
 import {
-  type ManagedPluginProject,
-  buildManagedPluginProjects,
+  buildHostedPluginProjectRemoveTarget,
+  buildHostedPluginProjects,
+  type HostedPluginProject,
+  pluginProjectHostKey,
+  resolvePluginProjectHostIds,
+  resolvePluginProjectInitialHostId,
+  resolvePluginProjectSelectionKey,
+} from "./plugin-project-host-model";
+import { configurePluginProjectOnHost } from "./plugin-project-host-actions";
+import {
   removePluginProjectState,
-  resolveInitialManagedPluginProjectId,
   upsertPluginProjectState,
 } from "./plugin-project-management-model";
 import {
@@ -50,7 +66,8 @@ import {
 import { PluginProjectDefaultAgentField } from "./plugin-project-default-agent-field";
 import { PluginProjectList } from "./plugin-project-list";
 import { resolvePluginProjectConversationWorkspace } from "./plugin-project-navigation-model";
-import { pluginProjectsQueryKey, usePluginProjects } from "./use-plugin-projects";
+import { pluginProjectsQueryKey } from "./use-plugin-projects";
+import { usePluginProjectHosts } from "./use-plugin-project-hosts";
 
 type PluginProjectMode = "existing" | "new";
 type PluginProjectView = "detail" | "create" | "edit" | "copy";
@@ -70,6 +87,8 @@ function pluginProjectSaveLabel(view: "create" | "edit" | "copy"): string {
 }
 
 export interface PluginProjectContext {
+  serverId: string;
+  hostLabel: string;
   projectId: string;
   projectName: string;
   sourceDirectory: string | null;
@@ -87,10 +106,17 @@ function projectDisplay(option: PluginProjectOption | null) {
   return option ? { label: option.label, description: option.description } : null;
 }
 
+function hostDisplay(option: SelectFieldOption<string> | null): SelectFieldDisplay | null {
+  return option ? { label: option.label, description: option.description } : null;
+}
+
 function PluginProjectEditor({
   view,
   active,
   serverId,
+  hostOptions,
+  selectedHost,
+  hostLoading,
   projectMode,
   selectedOption,
   projectOptions,
@@ -100,6 +126,7 @@ function PluginProjectEditor({
   canCreateNewProject,
   error,
   onProjectModeChange,
+  onHostChange,
   onProjectChange,
   onNewProjectNameChange,
   onDefaultAgentChange,
@@ -109,6 +136,9 @@ function PluginProjectEditor({
   view: "create" | "edit" | "copy";
   active: boolean;
   serverId: string;
+  hostOptions: SelectFieldOption<string>[];
+  selectedHost: SelectFieldOption<string> | null;
+  hostLoading: boolean;
   projectMode: PluginProjectMode;
   selectedOption: PluginProjectOption | null;
   projectOptions: PluginProjectOption[];
@@ -118,6 +148,7 @@ function PluginProjectEditor({
   canCreateNewProject: boolean;
   error: string | null;
   onProjectModeChange: (mode: PluginProjectMode) => void;
+  onHostChange: (serverId: string) => void;
   onProjectChange: (projectId: string) => void;
   onNewProjectNameChange: (name: string) => void;
   onDefaultAgentChange: (value: PluginAppDefaultAgent) => void;
@@ -155,6 +186,19 @@ function PluginProjectEditor({
           onValueChange={onProjectModeChange}
           options={modeOptions}
           style={styles.modeControl}
+        />
+      ) : null}
+      {view === "create" ? (
+        <SelectField
+          label="主机（必填）"
+          value={selectedHost?.value ?? null}
+          selectedDisplay={hostDisplay(selectedHost)}
+          options={hostOptions}
+          onChange={onHostChange}
+          placeholder="选择主机"
+          emptyText="当前工作区主机筛选中没有可用主机"
+          loading={hostLoading}
+          hint="插件项目将创建在所选主机，并仅使用该主机上的 Project、Provider 和模型。"
         />
       ) : null}
       {projectMode === "existing" ? (
@@ -215,7 +259,7 @@ function PluginProjectDetailHeader({
   onOpenSettings,
   extraActions,
 }: {
-  project: ManagedPluginProject;
+  project: HostedPluginProject;
   canCopy: boolean;
   onEdit: () => void;
   onCopy: () => void;
@@ -278,46 +322,73 @@ export function PluginProjectBoundary({
   const router = useRouter();
   const queryClient = useQueryClient();
   const compact = useIsCompactFormFactor();
-  const client = useHostRuntimeClient(serverId);
-  const projects = useHostProjects([serverId]);
+  const hosts = useHosts();
+  const hostFilters = useSidebarViewStore((state) => state.hostFilters);
+  const allHostIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
+  const candidateHostIds = useMemo(
+    () => resolvePluginProjectHostIds(hosts, hostFilters, allHostIds),
+    [allHostIds, hostFilters, hosts],
+  );
+  const candidateHosts = useMemo(() => {
+    const selected = new Set(candidateHostIds);
+    return hosts.filter((host) => selected.has(host.serverId));
+  }, [candidateHostIds, hosts]);
+  const connectionStatuses = useHostRuntimeConnectionStatuses(candidateHostIds);
+  const onlineHostIds = useMemo(
+    () => new Set(candidateHostIds.filter((hostId) => connectionStatuses.get(hostId) === "online")),
+    [candidateHostIds, connectionStatuses],
+  );
+  const projects = useHostProjects(candidateHostIds);
   const activeWorkspace = useActiveWorkspaceSelection();
   const closePluginPanel = usePluginAppPanelStore((state) => state.close);
   const openAddProjectFlow = useAddProjectFlowStore((state) => state.openRequest);
-  const supportsDirectorylessProjects = useHostFeature(serverId, "projectCreateDirectoryless");
-  const supportsProjectScopedApps = useHostFeature(serverId, "pluginProjectScopedApps");
-  const supportsProjectDefaultAgent = useHostFeature(serverId, "pluginProjectDefaultAgent");
-  const supportsProjectManagement = useHostFeature(serverId, "pluginProjectManagement");
-  const supportsProjectCopy = useHostFeature(serverId, "pluginProjectCopy");
-  const projectOptions = useMemo(
-    () => buildPluginProjectOptions(projects, serverId),
-    [projects, serverId],
+  const supportsDirectorylessProjects = useHostFeatureMap(
+    candidateHostIds,
+    "projectCreateDirectoryless",
+  );
+  const supportsProjectScopedApps = useHostFeatureMap(candidateHostIds, "pluginProjectScopedApps");
+  const supportsProjectDefaultAgent = useHostFeatureMap(
+    candidateHostIds,
+    "pluginProjectDefaultAgent",
+  );
+  const supportsProjectManagement = useHostFeatureMap(candidateHostIds, "pluginProjectManagement");
+  const supportsProjectCopy = useHostFeatureMap(candidateHostIds, "pluginProjectCopy");
+  const projectOptionsByHost = useMemo(
+    () =>
+      new Map(
+        candidateHostIds.map(
+          (hostId) => [hostId, buildPluginProjectOptions(projects, hostId)] as const,
+        ),
+      ),
+    [candidateHostIds, projects],
   );
   const activeProjectId = useSessionStore((state) => {
-    const workspaceId = activeWorkspace?.serverId === serverId ? activeWorkspace.workspaceId : null;
-    if (!workspaceId) return null;
-    return state.sessions[serverId]?.workspaces.get(workspaceId)?.projectId ?? null;
+    if (!activeWorkspace) return null;
+    return (
+      state.sessions[activeWorkspace.serverId]?.workspaces.get(activeWorkspace.workspaceId)
+        ?.projectId ?? null
+    );
   });
-  const query = usePluginProjects({
+  const query = usePluginProjectHosts({
     active,
-    supported: supportsProjectManagement,
-    serverId,
+    hosts: candidateHosts,
     pluginId,
     appId: appDefinition.id,
   });
+  const availableHostIds = query.data.availableHostIds;
   const managedProjects = useMemo(
-    () => buildManagedPluginProjects(query.data ?? [], projectOptions),
-    [projectOptions, query.data],
-  );
-  const managedProjectIds = useMemo(
-    () => new Set(managedProjects.map((project) => project.projectId)),
-    [managedProjects],
-  );
-  const availableProjectOptions = useMemo(
-    () => projectOptions.filter((option) => !managedProjectIds.has(option.value)),
-    [managedProjectIds, projectOptions],
+    () =>
+      buildHostedPluginProjects(
+        query.data.sources.map((source) => ({
+          ...source,
+          options: projectOptionsByHost.get(source.serverId) ?? [],
+        })),
+      ),
+    [projectOptionsByHost, query.data.sources],
   );
   const [view, setView] = useState<PluginProjectView>("detail");
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+  const [formHostId, setFormHostId] = useState<string | null>(null);
   const [projectMode, setProjectMode] = useState<PluginProjectMode>("existing");
   const [formProjectId, setFormProjectId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
@@ -327,33 +398,71 @@ export function PluginProjectBoundary({
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const selectedProject = useMemo(
-    () => managedProjects.find((project) => project.projectId === selectedProjectId) ?? null,
-    [managedProjects, selectedProjectId],
+    () => managedProjects.find((project) => project.key === selectedProjectKey) ?? null,
+    [managedProjects, selectedProjectKey],
+  );
+  const formProjectOptions = useMemo(
+    () => (formHostId ? (projectOptionsByHost.get(formHostId) ?? []) : []),
+    [formHostId, projectOptionsByHost],
+  );
+  const managedProjectIds = useMemo(
+    () =>
+      new Set(
+        managedProjects
+          .filter((project) => project.serverId === formHostId)
+          .map((project) => project.projectId),
+      ),
+    [formHostId, managedProjects],
+  );
+  const availableProjectOptions = useMemo(
+    () => formProjectOptions.filter((option) => !managedProjectIds.has(option.value)),
+    [formProjectOptions, managedProjectIds],
+  );
+  const hostOptions = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      candidateHosts.map((host) => ({
+        id: host.serverId,
+        value: host.serverId,
+        label: host.label?.trim() || host.serverId,
+        description: connectionStatuses.get(host.serverId) === "online" ? "已连接" : "当前离线",
+      })),
+    [candidateHosts, connectionStatuses],
+  );
+  const selectedHostOption = useMemo(
+    () => hostOptions.find((option) => option.value === formHostId) ?? null,
+    [formHostId, hostOptions],
   );
   const formProject = useMemo(
-    () => projectOptions.find((option) => option.value === formProjectId) ?? null,
-    [formProjectId, projectOptions],
+    () => formProjectOptions.find((option) => option.value === formProjectId) ?? null,
+    [formProjectId, formProjectOptions],
   );
-  const selectedHostProject = useMemo(
-    () =>
-      selectedProject
-        ? (projects.find(
-            (project) => getHostProjectId(project, serverId) === selectedProject.projectId,
-          ) ?? null)
-        : null,
-    [projects, selectedProject, serverId],
-  );
+  const formHostOnline = formHostId ? onlineHostIds.has(formHostId) : false;
+  const formHostAvailable = formHostId ? availableHostIds.includes(formHostId) : false;
+  const formSupportsDirectorylessProjects = formHostId
+    ? supportsDirectorylessProjects.get(formHostId) === true
+    : false;
+  const formSupportsProjectManagement = formHostId
+    ? supportsProjectManagement.get(formHostId) === true &&
+      supportsProjectScopedApps.get(formHostId) === true &&
+      supportsProjectDefaultAgent.get(formHostId) === true
+    : false;
+  const selectedSupportsProjectCopy = selectedProject
+    ? supportsProjectCopy.get(selectedProject.serverId) === true
+    : false;
   const deleteReadiness = useMemo(
-    () => (selectedHostProject ? getCurrentProjectRemoveReadiness(selectedHostProject) : null),
-    [selectedHostProject],
+    () =>
+      selectedProject?.option
+        ? getCurrentProjectRemoveReadiness(buildHostedPluginProjectRemoveTarget(selectedProject))
+        : null,
+    [selectedProject],
   );
   const projectDeleteUnavailableReason = useMemo(() => {
-    if (!selectedHostProject) return "关联 Project 当前未在 Host 中加载。";
+    if (!selectedProject?.option) return "关联 Project 当前未在 Host 中加载。";
     if (deleteReadiness?.kind === "needs_host_update") {
       return "关联 Project 所在 Host 不支持删除，请更新并重启 daemon。";
     }
     return null;
-  }, [deleteReadiness, selectedHostProject]);
+  }, [deleteReadiness, selectedProject]);
   const projectBinding = useMemo(
     () => resolvePluginProjectBinding(appDefinition.project),
     [appDefinition.project],
@@ -361,83 +470,140 @@ export function PluginProjectBoundary({
 
   useEffect(() => {
     if (!active || view !== "detail") return;
-    const next = resolveInitialManagedPluginProjectId({
-      requestedProjectId: selectedProjectId ? undefined : initialProjectId,
-      currentProjectId: selectedProjectId,
-      activeProjectId,
+    const next = resolvePluginProjectSelectionKey({
+      requestedProjectId: selectedProjectKey ? undefined : initialProjectId,
+      preferredServerId: serverId,
+      currentKey: selectedProjectKey,
+      activeProject:
+        activeWorkspace && activeProjectId
+          ? { serverId: activeWorkspace.serverId, projectId: activeProjectId }
+          : null,
       projects: managedProjects,
     });
-    if (next !== selectedProjectId) setSelectedProjectId(next);
-  }, [active, activeProjectId, initialProjectId, managedProjects, selectedProjectId, view]);
+    if (next !== selectedProjectKey) setSelectedProjectKey(next);
+  }, [
+    active,
+    activeProjectId,
+    activeWorkspace,
+    initialProjectId,
+    managedProjects,
+    selectedProjectKey,
+    serverId,
+    view,
+  ]);
 
   const startCreate = useCallback(() => {
+    const hostId = resolvePluginProjectInitialHostId({
+      visibleHostIds: availableHostIds.length > 0 ? availableHostIds : candidateHostIds,
+      currentServerId: serverId,
+      onlineHostIds,
+    });
+    const options = hostId ? (projectOptionsByHost.get(hostId) ?? []) : [];
     setView("create");
+    setFormHostId(hostId);
     setProjectMode("existing");
     setFormProjectId(
-      (activeProjectId && projectOptions.some((option) => option.value === activeProjectId)
+      (activeProjectId &&
+      activeWorkspace?.serverId === hostId &&
+      options.some((option) => option.value === activeProjectId)
         ? activeProjectId
         : null) ??
-        projectOptions[0]?.value ??
+        options[0]?.value ??
         null,
     );
     setNewProjectName("");
     setDefaultAgent(EMPTY_AGENT);
     setActionError(null);
-  }, [activeProjectId, projectOptions]);
+  }, [
+    activeProjectId,
+    activeWorkspace?.serverId,
+    availableHostIds,
+    candidateHostIds,
+    onlineHostIds,
+    projectOptionsByHost,
+    serverId,
+  ]);
   const startEdit = useCallback(() => {
     if (!selectedProject?.state.defaultAgent) return;
     setView("edit");
+    setFormHostId(selectedProject.serverId);
     setProjectMode("existing");
     setFormProjectId(selectedProject.projectId);
     setDefaultAgent(selectedProject.state.defaultAgent);
     setActionError(null);
   }, [selectedProject]);
   const startCopy = useCallback(() => {
-    if (!selectedProject?.state.defaultAgent || !supportsProjectCopy) return;
+    if (!selectedProject?.state.defaultAgent || !selectedSupportsProjectCopy) return;
     setView("copy");
+    setFormHostId(selectedProject.serverId);
     setProjectMode("existing");
-    setFormProjectId(availableProjectOptions[0]?.value ?? null);
+    const firstAvailableOption = (projectOptionsByHost.get(selectedProject.serverId) ?? []).find(
+      (option) =>
+        !managedProjects.some(
+          (project) =>
+            project.serverId === selectedProject.serverId && project.projectId === option.value,
+        ),
+    );
+    setFormProjectId(firstAvailableOption?.value ?? null);
     setNewProjectName(`${selectedProject.projectName} 副本`);
     setDefaultAgent(selectedProject.state.defaultAgent);
     setActionError(null);
-  }, [availableProjectOptions, selectedProject, supportsProjectCopy]);
+  }, [managedProjects, projectOptionsByHost, selectedProject, selectedSupportsProjectCopy]);
   const cancelEditor = useCallback(() => {
     setView("detail");
     setActionError(null);
   }, []);
-  const selectProject = useCallback((projectId: string) => {
-    setSelectedProjectId(projectId);
+  const selectProject = useCallback((projectKey: string) => {
+    setSelectedProjectKey(projectKey);
     setView("detail");
     setActionError(null);
   }, []);
+  const changeHost = useCallback(
+    (hostId: string) => {
+      const options = projectOptionsByHost.get(hostId) ?? [];
+      setFormHostId(hostId);
+      setFormProjectId(
+        activeProjectId &&
+          activeWorkspace?.serverId === hostId &&
+          options.some((option) => option.value === activeProjectId)
+          ? activeProjectId
+          : (options[0]?.value ?? null),
+      );
+      setActionError(null);
+      setDefaultAgent(EMPTY_AGENT);
+    },
+    [activeProjectId, activeWorkspace?.serverId, projectOptionsByHost],
+  );
   const changeProjectMode = useCallback((mode: PluginProjectMode) => {
     setProjectMode(mode);
     setActionError(null);
   }, []);
 
   const saveConfiguredProject = useCallback(
-    async (projectId: string, agent: PluginAppDefaultAgent) => {
-      if (!client || !pluginId) throw new Error("Host 未连接或插件不可用");
-      const response = await client.configurePluginApp({
+    async (targetServerId: string, projectId: string, agent: PluginAppDefaultAgent) => {
+      if (!pluginId) throw new Error("插件不可用");
+      const app = await configurePluginProjectOnHost({
+        serverId: targetServerId,
         pluginId,
         appId: appDefinition.id,
         projectId,
         defaultAgent: agent,
+        getClient: (hostId) => getHostRuntimeStore().getClient(hostId),
       });
-      if (response.error || !response.app) {
-        throw new Error(response.error ?? "保存插件项目失败");
-      }
       queryClient.setQueryData<PluginAppState[]>(
-        pluginProjectsQueryKey(serverId, pluginId, appDefinition.id),
-        (current) => upsertPluginProjectState(current, response.app!),
+        pluginProjectsQueryKey(targetServerId, pluginId, appDefinition.id),
+        (current) => upsertPluginProjectState(current, app),
       );
-      setSelectedProjectId(projectId);
+      await query.refetch();
+      setSelectedProjectKey(pluginProjectHostKey(targetServerId, projectId));
       setView("detail");
     },
-    [appDefinition.id, client, pluginId, queryClient, serverId],
+    [appDefinition.id, pluginId, query, queryClient],
   );
   const saveCopiedProject = useCallback(
     async (targetProjectId: string) => {
+      const targetServerId = selectedProject?.serverId ?? "";
+      const client = getHostRuntimeStore().getClient(targetServerId);
       if (!client || !pluginId || !selectedProject) {
         throw new Error("Host 未连接、插件不可用或源插件项目不存在");
       }
@@ -451,17 +617,34 @@ export function PluginProjectBoundary({
         throw new Error(copied.error ?? "复制插件项目失败");
       }
       queryClient.setQueryData<PluginAppState[]>(
-        pluginProjectsQueryKey(serverId, pluginId, appDefinition.id),
+        pluginProjectsQueryKey(targetServerId, pluginId, appDefinition.id),
         (current) => upsertPluginProjectState(current, copied.app!),
       );
-      setSelectedProjectId(targetProjectId);
+      await query.refetch();
+      setSelectedProjectKey(pluginProjectHostKey(targetServerId, targetProjectId));
       setView("detail");
     },
-    [appDefinition.id, client, pluginId, queryClient, selectedProject, serverId],
+    [appDefinition.id, pluginId, query, queryClient, selectedProject],
   );
 
   const saveEditor = useCallback(() => {
     if (saving) return;
+    if (!formHostId) {
+      setActionError("请选择主机");
+      return;
+    }
+    if (!formHostOnline) {
+      setActionError("所选主机当前离线，请连接后重试");
+      return;
+    }
+    if (!formHostAvailable) {
+      setActionError("所选主机未安装或未启用此插件");
+      return;
+    }
+    if (!formSupportsProjectManagement) {
+      setActionError("所选主机不支持插件项目，请更新并重启 daemon");
+      return;
+    }
     const provider = defaultAgent.provider.trim();
     const model = defaultAgent.model.trim();
     if (!provider || !model) {
@@ -475,20 +658,20 @@ export function PluginProjectBoundary({
         setActionError("请输入新 Project 名称");
         return;
       }
-      if (!supportsDirectorylessProjects) {
+      if (!formSupportsDirectorylessProjects) {
         setActionError("当前 Host 不支持创建多目录 Project，请更新并重启 daemon");
         return;
       }
       setActionError(null);
       openAddProjectFlow({
-        preferredHostId: serverId,
+        preferredHostId: formHostId,
         initialDirectorylessProjectName: name,
         onProjectCreated: ({ project }) => {
           setSaving(true);
           const save =
             view === "copy"
               ? saveCopiedProject(project.projectId)
-              : saveConfiguredProject(project.projectId, agent);
+              : saveConfiguredProject(formHostId, project.projectId, agent);
           void save
             .catch((error: unknown) => setActionError(errorText(error)))
             .finally(() => setSaving(false));
@@ -505,52 +688,56 @@ export function PluginProjectBoundary({
     const save =
       view === "copy"
         ? saveCopiedProject(formProjectId)
-        : saveConfiguredProject(formProjectId, agent);
+        : saveConfiguredProject(formHostId, formProjectId, agent);
     void save
       .catch((error: unknown) => setActionError(errorText(error)))
       .finally(() => setSaving(false));
   }, [
     defaultAgent,
+    formHostAvailable,
+    formHostId,
+    formHostOnline,
     formProjectId,
+    formSupportsDirectorylessProjects,
+    formSupportsProjectManagement,
     newProjectName,
     openAddProjectFlow,
     projectMode,
     saveConfiguredProject,
     saveCopiedProject,
     saving,
-    serverId,
-    supportsDirectorylessProjects,
     view,
   ]);
 
   const openConversation = useCallback(() => {
     if (!selectedProject) return;
-    const session = useSessionStore.getState().sessions[serverId];
+    const targetServerId = selectedProject.serverId;
+    const session = useSessionStore.getState().sessions[targetServerId];
     const workspace = resolvePluginProjectConversationWorkspace({
       projectId: selectedProject.projectId,
       activeWorkspaceId:
-        activeWorkspace?.serverId === serverId ? activeWorkspace.workspaceId : null,
+        activeWorkspace?.serverId === targetServerId ? activeWorkspace.workspaceId : null,
       workspaces: session?.workspaces.values() ?? [],
     });
     closePluginPanel();
     if (workspace) {
-      navigateToWorkspace({ serverId, workspaceId: workspace.id });
+      navigateToWorkspace({ serverId: targetServerId, workspaceId: workspace.id });
       return;
     }
     router.push(
       buildNewWorkspaceRoute({
-        serverId,
+        serverId: targetServerId,
         projectId: selectedProject.projectId,
         displayName: selectedProject.projectName,
         sourceDirectory: selectedProject.sourceDirectory ?? undefined,
       }),
     );
-  }, [activeWorkspace, closePluginPanel, router, selectedProject, serverId]);
+  }, [activeWorkspace, closePluginPanel, router, selectedProject]);
   const openProjectSettings = useCallback(() => {
     if (!selectedProject) return;
     closePluginPanel();
-    router.push(buildProjectSettingsRoute(serverId, selectedProject.projectId));
-  }, [closePluginPanel, router, selectedProject, serverId]);
+    router.push(buildProjectSettingsRoute(selectedProject.serverId, selectedProject.projectId));
+  }, [closePluginPanel, router, selectedProject]);
   const refreshProjects = useCallback(() => {
     void query.refetch();
   }, [query]);
@@ -559,6 +746,9 @@ export function PluginProjectBoundary({
 
   const confirmDelete = useCallback(
     (mode: PluginProjectDeleteMode) => {
+      const client = selectedProject
+        ? getHostRuntimeStore().getClient(selectedProject.serverId)
+        : null;
       if (!client || !pluginId || !selectedProject || deleting) return;
       if (mode === "plugin_and_project" && deleteReadiness?.kind !== "ready") {
         setActionError(projectDeleteUnavailableReason ?? "关联 Project 当前不可删除");
@@ -579,11 +769,12 @@ export function PluginProjectBoundary({
             throw new Error(response.error ?? "删除插件项目失败");
           }
           queryClient.setQueryData<PluginAppState[]>(
-            pluginProjectsQueryKey(serverId, pluginId, appDefinition.id),
+            pluginProjectsQueryKey(target.serverId, pluginId, appDefinition.id),
             (current) => removePluginProjectState(current, target.projectId),
           );
+          await query.refetch();
           setDeleteVisible(false);
-          setSelectedProjectId(null);
+          setSelectedProjectKey(null);
           if (mode === "plugin_and_project" && readiness?.kind === "ready") {
             const outcome = await removeProjectFromHosts({
               targets: readiness.targets,
@@ -602,14 +793,13 @@ export function PluginProjectBoundary({
     },
     [
       appDefinition.id,
-      client,
       deleteReadiness,
       deleting,
       pluginId,
       projectDeleteUnavailableReason,
+      query,
       queryClient,
       selectedProject,
-      serverId,
     ],
   );
 
@@ -625,6 +815,8 @@ export function PluginProjectBoundary({
         sourceDirectory: selectedProject.sourceDirectory,
       } as PluginProjectOption);
     return {
+      serverId: selectedProject.serverId,
+      hostLabel: selectedProject.hostLabel,
       projectId: selectedProject.projectId,
       projectName: selectedProject.projectName,
       sourceDirectory: selectedProject.sourceDirectory,
@@ -646,35 +838,35 @@ export function PluginProjectBoundary({
       ],
     };
   }, [projectBinding, selectedProject]);
-
-  if (!supportsProjectScopedApps || !supportsProjectDefaultAgent || !supportsProjectManagement) {
-    return (
-      <View style={styles.noticeCard}>
-        <Text style={styles.editorTitle}>需要更新 Host</Text>
-        <Text style={styles.description}>
-          当前 Host 不支持插件项目的创建、编辑和删除。请更新并重启 daemon 后再打开插件。
-        </Text>
-      </View>
-    );
-  }
+  const listError = useMemo(() => {
+    if (query.error instanceof Error) return query.error.message;
+    if (query.data.hostErrors.length === 0) return null;
+    return `部分主机加载失败：${query.data.hostErrors
+      .map((hostError) => `${hostError.hostLabel}（${hostError.message}）`)
+      .join("；")}`;
+  }, [query.data.hostErrors, query.error]);
 
   let mainContent: ReactNode;
   if (view === "create" || view === "edit" || view === "copy") {
-    const editorProjectOptions = view === "edit" ? projectOptions : availableProjectOptions;
+    const editorProjectOptions = view === "edit" ? formProjectOptions : availableProjectOptions;
     mainContent = (
       <PluginProjectEditor
         view={view}
         active={active}
-        serverId={serverId}
+        serverId={formHostId ?? serverId}
+        hostOptions={hostOptions}
+        selectedHost={selectedHostOption}
+        hostLoading={query.isLoading}
         projectMode={projectMode}
         selectedOption={formProject}
         projectOptions={editorProjectOptions}
         newProjectName={newProjectName}
         defaultAgent={defaultAgent}
         saving={saving}
-        canCreateNewProject={supportsDirectorylessProjects}
+        canCreateNewProject={formSupportsDirectorylessProjects}
         error={actionError}
         onProjectModeChange={changeProjectMode}
+        onHostChange={changeHost}
         onProjectChange={setFormProjectId}
         onNewProjectNameChange={setNewProjectName}
         onDefaultAgentChange={setDefaultAgent}
@@ -687,7 +879,7 @@ export function PluginProjectBoundary({
       <>
         <PluginProjectDetailHeader
           project={selectedProject}
-          canCopy={supportsProjectCopy}
+          canCopy={selectedSupportsProjectCopy}
           onEdit={startEdit}
           onCopy={startCopy}
           onDelete={openDeleteSheet}
@@ -717,9 +909,9 @@ export function PluginProjectBoundary({
       <View style={[styles.layout, compact && styles.layoutCompact]}>
         <PluginProjectList
           projects={managedProjects}
-          selectedProjectId={selectedProjectId}
+          selectedProjectKey={selectedProjectKey}
           loading={query.isLoading}
-          error={query.error instanceof Error ? query.error.message : null}
+          error={listError}
           onSelect={selectProject}
           onCreate={startCreate}
           onRefresh={refreshProjects}
@@ -757,14 +949,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     gap: theme.spacing[6],
-  },
-  noticeCard: {
-    gap: theme.spacing[2],
-    padding: theme.spacing[4],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
   },
   editorCard: {
     gap: theme.spacing[4],

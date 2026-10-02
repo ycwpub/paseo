@@ -4,7 +4,7 @@ import { Plus, RefreshCw } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { formatTimeAgo } from "@/utils/time";
-import type { ManagedPluginProject } from "./plugin-project-management-model";
+import type { HostedPluginProject } from "./plugin-project-host-model";
 import { shouldShowPluginListCreateAction } from "./plugin-project-list-presentation";
 
 function PluginProjectListItem({
@@ -12,11 +12,11 @@ function PluginProjectListItem({
   selected,
   onSelect,
 }: {
-  project: ManagedPluginProject;
+  project: HostedPluginProject;
   selected: boolean;
-  onSelect: (projectId: string) => void;
+  onSelect: (projectKey: string) => void;
 }) {
-  const handlePress = useCallback(() => onSelect(project.projectId), [onSelect, project.projectId]);
+  const handlePress = useCallback(() => onSelect(project.key), [onSelect, project.key]);
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const itemStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -32,10 +32,13 @@ function PluginProjectListItem({
       accessibilityState={accessibilityState}
       style={itemStyle}
       onPress={handlePress}
-      testID={`plugin-project-${project.projectId}`}
+      testID={`plugin-project-${project.serverId}-${project.projectId}`}
     >
       <Text numberOfLines={2} style={styles.itemTitle}>
         {project.projectName}
+      </Text>
+      <Text numberOfLines={1} style={styles.itemHost}>
+        {project.hostLabel}
       </Text>
       <Text numberOfLines={1} style={styles.itemModel}>
         {project.state.defaultAgent?.provider} · {project.state.defaultAgent?.model}
@@ -47,7 +50,7 @@ function PluginProjectListItem({
 
 export function PluginProjectList({
   projects,
-  selectedProjectId,
+  selectedProjectKey,
   loading,
   error,
   onSelect,
@@ -55,11 +58,11 @@ export function PluginProjectList({
   onRefresh,
   compact,
 }: {
-  projects: readonly ManagedPluginProject[];
-  selectedProjectId: string | null;
+  projects: readonly HostedPluginProject[];
+  selectedProjectKey: string | null;
   loading: boolean;
   error: string | null;
-  onSelect: (projectId: string) => void;
+  onSelect: (projectKey: string) => void;
   onCreate: () => void;
   onRefresh: () => void;
   compact: boolean;
@@ -95,9 +98,9 @@ export function PluginProjectList({
       <View style={styles.items}>
         {projects.map((project) => (
           <PluginProjectListItem
-            key={project.projectId}
+            key={project.key}
             project={project}
-            selected={project.projectId === selectedProjectId}
+            selected={project.key === selectedProjectKey}
             onSelect={onSelect}
           />
         ))}
@@ -167,6 +170,10 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
   itemModel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  itemHost: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },

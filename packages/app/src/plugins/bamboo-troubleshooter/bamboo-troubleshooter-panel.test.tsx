@@ -16,9 +16,13 @@ import {
 const testState = vi.hoisted(() => ({
   configurePluginApp: vi.fn(),
   enqueueAlertTroubleshooterRecord: vi.fn(),
+  runtimeServerIds: [] as string[],
+  channelServerIds: [] as string[],
   assistants: [{ id: "assistant-1", name: "结算助手", description: "处理结算问题" }],
   teams: [{ id: "team-1", name: "结算团队" }],
   project: {
+    serverId: "host-1",
+    hostLabel: "开发机",
     projectId: "project-1",
     projectName: "结算项目",
     sourceDirectory: "/tmp/settlement",
@@ -219,10 +223,13 @@ vi.mock("@/runtime/host-features", () => ({
 }));
 
 vi.mock("@/runtime/host-runtime", () => ({
-  useHostRuntimeClient: () => ({
-    configurePluginApp: testState.configurePluginApp,
-    enqueueAlertTroubleshooterRecord: testState.enqueueAlertTroubleshooterRecord,
-  }),
+  useHostRuntimeClient: (serverId: string) => {
+    testState.runtimeServerIds.push(serverId);
+    return {
+      configurePluginApp: testState.configurePluginApp,
+      enqueueAlertTroubleshooterRecord: testState.enqueueAlertTroubleshooterRecord,
+    };
+  },
 }));
 
 vi.mock("@/screens/settings/channels/lark-directory-fields", () => ({
@@ -234,21 +241,24 @@ vi.mock("@/screens/settings/channels/lark-bot-permission-error-action", () => ({
 }));
 
 vi.mock("@/screens/settings/channels/use-lark-channel", () => ({
-  useLarkChannel: () => ({
-    status: {
-      activeBotId: "bot-1",
-      bots: [
-        {
-          id: "bot-1",
-          appId: "cli_test",
-          name: "结算机器人",
-          connectionStatus: "connected",
-        },
-      ],
-      directory: { chats: [] },
-    },
-    resolveDirectoryChats: vi.fn(),
-  }),
+  useLarkChannel: (serverId: string) => {
+    testState.channelServerIds.push(serverId);
+    return {
+      status: {
+        activeBotId: "bot-1",
+        bots: [
+          {
+            id: "bot-1",
+            appId: "cli_test",
+            name: "结算机器人",
+            connectionStatus: "connected",
+          },
+        ],
+        directory: { chats: [] },
+      },
+      resolveDirectoryChats: vi.fn(),
+    };
+  },
 }));
 
 import { BambooTroubleshooterPanel } from "./bamboo-troubleshooter-panel";
@@ -274,10 +284,31 @@ describe("BambooTroubleshooterPanel", () => {
       resultId: "123",
       error: null,
     });
+    testState.runtimeServerIds.length = 0;
+    testState.channelServerIds.length = 0;
+    testState.project.serverId = "host-1";
+    testState.project.hostLabel = "开发机";
     testState.project.data = { bambooTroubleshooter: validConfig() };
   });
 
   afterEach(cleanup);
+
+  it("uses the selected plugin project's owning host for project-scoped operations", () => {
+    testState.project.serverId = "host-2";
+    testState.project.hostLabel = "测试机";
+
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    expect(testState.runtimeServerIds).toContain("host-2");
+    expect(testState.channelServerIds).toContain("host-2");
+  });
 
   it("shows multiple monitored chats and persists the remaining chats after deletion", async () => {
     render(

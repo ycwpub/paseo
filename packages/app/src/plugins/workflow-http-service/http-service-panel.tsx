@@ -449,7 +449,7 @@ export function HttpServicePanel({
       {(project) => (
         <HttpServiceProjectConsole
           active={active}
-          serverId={serverId}
+          serverId={project.serverId}
           plugin={plugin}
           project={project}
         />

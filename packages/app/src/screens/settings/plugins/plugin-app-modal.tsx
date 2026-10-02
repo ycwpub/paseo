@@ -850,7 +850,7 @@ export function ProjectScopedPluginAppSurface({
       {(context) => (
         <ProjectBoundPluginAppSurface
           active={active}
-          serverId={serverId}
+          serverId={context.serverId}
           plugin={plugin}
           appDefinition={appDefinition}
           context={context}
@@ -896,7 +896,7 @@ export function PluginAppModal({
           {(context) => (
             <ProjectBoundPluginAppSurface
               active={visible}
-              serverId={serverId}
+              serverId={context.serverId}
               plugin={plugin}
               appDefinition={appDefinition}
               context={context}

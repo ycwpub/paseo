@@ -25,6 +25,7 @@ import {
   type PluginProjectContext,
 } from "@/plugins/project/plugin-project-boundary";
 import { PluginProjectDefaultAgentField } from "@/plugins/project/plugin-project-default-agent-field";
+import { pluginProjectHostKey } from "@/plugins/project/plugin-project-host-model";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directory-fields";
@@ -69,6 +70,69 @@ export interface AlertTroubleshooterPanelSpec {
   showRunnerOptions?: boolean;
   configSchema: ZodType<AlertTroubleshooterConfig>;
   runtimeSchema: ZodType<AlertTroubleshooterRuntime>;
+}
+
+function AlertTroubleshooterProjectContent({
+  active,
+  spec,
+  project,
+  taskProjectKey,
+  onCloseTasks,
+}: {
+  active: boolean;
+  spec: AlertTroubleshooterPanelSpec;
+  project: PluginProjectContext;
+  taskProjectKey: string | null;
+  onCloseTasks: () => void;
+}) {
+  const serverId = project.serverId;
+  const supportsManualScan = useHostFeature(serverId, "alertTroubleshooterManualScan");
+  const channel = useLarkChannel(serverId, { enabled: active });
+  const botAppIds = useMemo(
+    () => new Map((channel.status?.bots ?? []).map((bot) => [bot.id, bot.appId])),
+    [channel.status?.bots],
+  );
+  const config = spec.configSchema.safeParse(project.data[spec.configDataKey]);
+  let larkAppId = "";
+  if (config.success) {
+    larkAppId =
+      config.data.bot.kind === "custom"
+        ? config.data.bot.appId
+        : (botAppIds.get(config.data.bot.botId)?.trim() ?? "");
+  }
+  return taskProjectKey === pluginProjectHostKey(serverId, project.projectId) ? (
+    <AlertTroubleshooterTaskListPage
+      key={`${serverId}:${project.projectId}:tasks`}
+      active={active}
+      serverId={serverId}
+      pluginId={spec.pluginId}
+      appId={spec.appId}
+      larkAppId={larkAppId}
+      larkBotId={config.success && config.data.bot.kind === "existing" ? config.data.bot.botId : ""}
+      projectId={project.projectId}
+      projectName={project.projectName}
+      manualScanLookbackMinutes={
+        config.success
+          ? config.data.schedule.lookbackMinutes
+          : DEFAULT_CONFIG.schedule.lookbackMinutes
+      }
+      manualScanExcludeRecentMinutes={
+        config.success
+          ? config.data.schedule.excludeRecentMinutes
+          : DEFAULT_CONFIG.schedule.excludeRecentMinutes
+      }
+      manualScanSupported={supportsManualScan}
+      onBack={onCloseTasks}
+    />
+  ) : (
+    <AlertTroubleshooterProject
+      key={`${serverId}:${project.projectId}`}
+      active={active}
+      serverId={serverId}
+      spec={spec}
+      project={project}
+    />
+  );
 }
 
 function errorMessage(error: unknown): string {
@@ -805,21 +869,15 @@ export function AlertTroubleshooterPanel({
   spec: AlertTroubleshooterPanelSpec;
   initialProjectId?: string;
 }) {
-  const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
-  const supportsManualScan = useHostFeature(serverId, "alertTroubleshooterManualScan");
-  const channel = useLarkChannel(serverId, { enabled: active });
-  const botAppIds = useMemo(
-    () => new Map((channel.status?.bots ?? []).map((bot) => [bot.id, bot.appId])),
-    [channel.status?.bots],
-  );
-  const closeTasks = useCallback(() => setTaskProjectId(null), []);
+  const [taskProjectKey, setTaskProjectKey] = useState<string | null>(null);
+  const closeTasks = useCallback(() => setTaskProjectKey(null), []);
   const renderTaskAction = useCallback(
     (project: PluginProjectContext) => (
       <Button
         size="sm"
         variant="outline"
         leftIcon={ClipboardList}
-        onPress={() => setTaskProjectId(project.projectId)}
+        onPress={() => setTaskProjectKey(pluginProjectHostKey(project.serverId, project.projectId))}
       >
         任务执行记录
       </Button>
@@ -836,53 +894,15 @@ export function AlertTroubleshooterPanel({
       initialProjectId={initialProjectId}
       renderDetailActions={renderTaskAction}
     >
-      {(project) =>
-        (() => {
-          const config = spec.configSchema.safeParse(project.data[spec.configDataKey]);
-          let larkAppId = "";
-          if (config.success) {
-            larkAppId =
-              config.data.bot.kind === "custom"
-                ? config.data.bot.appId
-                : (botAppIds.get(config.data.bot.botId)?.trim() ?? "");
-          }
-          return taskProjectId === project.projectId ? (
-            <AlertTroubleshooterTaskListPage
-              key={`${project.projectId}:tasks`}
-              active={active}
-              serverId={serverId}
-              pluginId={spec.pluginId}
-              appId={spec.appId}
-              larkAppId={larkAppId}
-              larkBotId={
-                config.success && config.data.bot.kind === "existing" ? config.data.bot.botId : ""
-              }
-              projectId={project.projectId}
-              projectName={project.projectName}
-              manualScanLookbackMinutes={
-                config.success
-                  ? config.data.schedule.lookbackMinutes
-                  : DEFAULT_CONFIG.schedule.lookbackMinutes
-              }
-              manualScanExcludeRecentMinutes={
-                config.success
-                  ? config.data.schedule.excludeRecentMinutes
-                  : DEFAULT_CONFIG.schedule.excludeRecentMinutes
-              }
-              manualScanSupported={supportsManualScan}
-              onBack={closeTasks}
-            />
-          ) : (
-            <AlertTroubleshooterProject
-              key={project.projectId}
-              active={active}
-              serverId={serverId}
-              spec={spec}
-              project={project}
-            />
-          );
-        })()
-      }
+      {(project) => (
+        <AlertTroubleshooterProjectContent
+          active={active}
+          spec={spec}
+          project={project}
+          taskProjectKey={taskProjectKey}
+          onCloseTasks={closeTasks}
+        />
+      )}
     </PluginProjectBoundary>
   );
 }

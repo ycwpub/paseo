@@ -16,7 +16,7 @@ const TRAE_REASONING_ARGS = [
   "-c",
   "hide_agent_reasoning=false",
   "-c",
-  'model_reasoning_summary="auto"',
+  "model_reasoning_summary=auto",
 ] as const;
 
 export class TraeACPAgentClient extends GenericACPAgentClient {

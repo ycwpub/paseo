@@ -17,7 +17,7 @@ class TestTraeACPModeFallbackAgentClient extends TraeACPModeFallbackAgentClient 
 }
 
 describe("TraeACPAgentClient", () => {
-  test("enables reasoning summaries in the TRAE ACP child process", async () => {
+  test("passes reasoning summary config without shell-only quotes", async () => {
     const client = new TestTraeACPAgentClient({
       logger: createTestLogger(),
       command: ["traecli", "acp", "serve"],
@@ -33,7 +33,7 @@ describe("TraeACPAgentClient", () => {
         "-c",
         "hide_agent_reasoning=false",
         "-c",
-        'model_reasoning_summary="auto"',
+        "model_reasoning_summary=auto",
       ],
     });
   });

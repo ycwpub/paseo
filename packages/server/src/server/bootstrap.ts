@@ -1796,6 +1796,14 @@ export async function createPaseoDaemon(
           }),
         );
       },
+      emitGroupMessageProcessorsChanged: (processors) => {
+        wsServer?.broadcast(
+          wrapSessionMessage({
+            type: "channel.lark.group_processor.changed",
+            payload: { processors },
+          }),
+        );
+      },
     },
   });
 

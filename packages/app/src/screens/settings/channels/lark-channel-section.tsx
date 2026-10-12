@@ -12,6 +12,7 @@ import type {
   LarkChannelStatus,
   LarkDirectory,
   LarkDirectoryUser,
+  LarkGroupMessageProcessor,
   LarkReminder,
   LarkSubstituteMode,
   Team,
@@ -63,6 +64,9 @@ import {
   LarkSubstituteModeSection,
 } from "./lark-substitute-mode-section";
 import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
+import { LarkGroupMessageProcessorSection } from "./lark-group-message-processor-section";
+import { LarkGroupMessageProcessorEditor } from "./lark-group-message-processor-editor";
+import { LarkGroupMessageProcessorTaskListPage } from "./lark-group-message-processor-task-list-page";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
@@ -162,6 +166,9 @@ type LarkChannelPage =
   | "substitute-create"
   | "substitute-edit"
   | "substitute-tasks"
+  | "group-processor-create"
+  | "group-processor-edit"
+  | "group-processor-tasks"
   | "reminder-create"
   | "reminder-edit";
 
@@ -177,6 +184,9 @@ const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, str
   "substitute-create": "创建替身模式",
   "substitute-edit": "编辑替身模式",
   "substitute-tasks": "替身任务",
+  "group-processor-create": "创建群消息处理器",
+  "group-processor-edit": "编辑群消息处理器",
+  "group-processor-tasks": "群消息处理任务",
   "reminder-create": "创建定时任务",
   "reminder-edit": "编辑定时任务",
 };
@@ -1257,6 +1267,171 @@ function LarkSubstituteTasksPage({
   );
 }
 
+function LarkGroupMessageProcessorTasksPage({
+  serverId,
+  processor,
+}: {
+  serverId: string;
+  processor: LarkGroupMessageProcessor | null;
+}) {
+  if (!processor) {
+    return (
+      <View testID="host-page-channels-group-processor-tasks">
+        <SecondaryPageIntro
+          title="群消息处理任务"
+          description="未选择群消息处理器，请返回后重试。"
+        />
+      </View>
+    );
+  }
+  return (
+    <View testID="host-page-channels-group-processor-tasks">
+      <SecondaryPageIntro
+        title={`${processor.name} · 任务列表`}
+        description="查看当前处理器的监听和扫描任务，并手动扫描、暂停、重试或删除。"
+      />
+      <LarkGroupMessageProcessorTaskListPage serverId={serverId} processor={processor} />
+    </View>
+  );
+}
+
+function useSelectedLarkBotId(input: {
+  status: LarkChannelStatus | null;
+  creatingBot: boolean;
+  botStatuses: readonly LarkChannelBotStatus[];
+  selectedBotId: string | null;
+  activeBotId: string | null;
+  setSelectedBotId: (botId: string | null) => void;
+}): void {
+  const { status, creatingBot, botStatuses, selectedBotId, activeBotId, setSelectedBotId } = input;
+  useEffect(() => {
+    if (!status || creatingBot) return;
+    let nextBotId = botStatuses[0]?.id ?? null;
+    if (selectedBotId && botStatuses.some((bot) => bot.id === selectedBotId)) {
+      nextBotId = selectedBotId;
+    } else if (activeBotId && botStatuses.some((bot) => bot.id === activeBotId)) {
+      nextBotId = activeBotId;
+    }
+    if (nextBotId !== selectedBotId) {
+      setSelectedBotId(nextBotId);
+    }
+  }, [activeBotId, botStatuses, creatingBot, selectedBotId, setSelectedBotId, status]);
+}
+
+function useLarkBotFormSynchronization(input: {
+  creatingBot: boolean;
+  selectedBotStatus: LarkChannelBotStatus | null;
+  setBotName: (value: string) => void;
+  setAppId: (value: string) => void;
+  setAppSecret: (value: string) => void;
+  setEncryptKey: (value: string) => void;
+  setVerificationToken: (value: string) => void;
+  setAssistantId: (value: string | null) => void;
+  setTeamId: (value: string | null) => void;
+  setProvider: (value: string | null) => void;
+  setModel: (value: string | null) => void;
+  setModeId: (value: string | null) => void;
+  setThinkingOptionId: (value: string | null) => void;
+  setCwd: (value: string) => void;
+  setProjectMode: (value: LarkProjectBindingMode) => void;
+  setNewProjectName: (value: string) => void;
+  setNewProjectNameEdited: (value: boolean) => void;
+  incrementNewProjectNameRevision: () => void;
+  incrementFormRevision: () => void;
+}): void {
+  const {
+    creatingBot,
+    selectedBotStatus,
+    setBotName,
+    setAppId,
+    setAppSecret,
+    setEncryptKey,
+    setVerificationToken,
+    setAssistantId,
+    setTeamId,
+    setProvider,
+    setModel,
+    setModeId,
+    setThinkingOptionId,
+    setCwd,
+    setProjectMode,
+    setNewProjectName,
+    setNewProjectNameEdited,
+    incrementNewProjectNameRevision,
+    incrementFormRevision,
+  } = input;
+  useEffect(() => {
+    if (creatingBot) return;
+    if (!selectedBotStatus) {
+      setBotName("");
+      setAppId("");
+      setAppSecret("");
+      setEncryptKey("");
+      setVerificationToken("");
+      setAssistantId(null);
+      setTeamId(null);
+      setProvider(null);
+      setModel(null);
+      setModeId(null);
+      setThinkingOptionId(null);
+      setCwd("");
+      setProjectMode("existing");
+      setNewProjectName("");
+      setNewProjectNameEdited(false);
+      incrementNewProjectNameRevision();
+      incrementFormRevision();
+      return;
+    }
+    setBotName(selectedBotStatus.name ?? "");
+    setAppId(selectedBotStatus.appId ?? "");
+    setAppSecret("");
+    setEncryptKey("");
+    setVerificationToken("");
+    setAssistantId(
+      selectedBotStatus.target.kind === "assistant" ? selectedBotStatus.target.assistantId : null,
+    );
+    setTeamId(selectedBotStatus.target.kind === "team" ? selectedBotStatus.target.teamId : null);
+    setProvider(
+      selectedBotStatus.target.kind !== "workspace"
+        ? (selectedBotStatus.target.provider ?? null)
+        : null,
+    );
+    setModel(
+      selectedBotStatus.target.kind !== "workspace"
+        ? (selectedBotStatus.target.model ?? null)
+        : null,
+    );
+    setModeId(selectedBotStatus.target.modeId ?? null);
+    setThinkingOptionId(selectedBotStatus.target.thinkingOptionId ?? null);
+    setCwd(selectedBotStatus.target.cwd ?? "");
+    setProjectMode("existing");
+    setNewProjectName(selectedBotStatus.name ?? "");
+    setNewProjectNameEdited(false);
+    incrementNewProjectNameRevision();
+    incrementFormRevision();
+  }, [
+    creatingBot,
+    incrementFormRevision,
+    incrementNewProjectNameRevision,
+    selectedBotStatus,
+    setAppId,
+    setAppSecret,
+    setAssistantId,
+    setBotName,
+    setCwd,
+    setEncryptKey,
+    setModeId,
+    setModel,
+    setNewProjectName,
+    setNewProjectNameEdited,
+    setProjectMode,
+    setProvider,
+    setTeamId,
+    setThinkingOptionId,
+    setVerificationToken,
+  ]);
+}
+
 function LarkChannelLoadedContent({
   serverId,
   channel,
@@ -1310,6 +1485,10 @@ function LarkChannelLoadedContent({
   const [taskListSubstituteMode, setTaskListSubstituteMode] = useState<LarkSubstituteMode | null>(
     null,
   );
+  const [editingGroupMessageProcessor, setEditingGroupMessageProcessor] =
+    useState<LarkGroupMessageProcessor | null>(null);
+  const [taskListGroupMessageProcessor, setTaskListGroupMessageProcessor] =
+    useState<LarkGroupMessageProcessor | null>(null);
   const upsertProject = useSessionStore((state) => state.upsertProject);
   const removeProject = useSessionStore((state) => state.removeProject);
   const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
@@ -1337,69 +1516,41 @@ function LarkChannelLoadedContent({
     resolveChats: channel.resolveDirectoryChats,
   });
 
-  useEffect(() => {
-    if (!status || creatingBot) return;
-    let nextBotId = botStatuses[0]?.id ?? null;
-    if (selectedBotId && botStatuses.some((bot) => bot.id === selectedBotId)) {
-      nextBotId = selectedBotId;
-    } else if (activeBotId && botStatuses.some((bot) => bot.id === activeBotId)) {
-      nextBotId = activeBotId;
-    }
-    if (nextBotId !== selectedBotId) {
-      setSelectedBotId(nextBotId);
-    }
-  }, [activeBotId, botStatuses, creatingBot, selectedBotId, status]);
+  useSelectedLarkBotId({
+    status,
+    creatingBot,
+    botStatuses,
+    selectedBotId,
+    activeBotId,
+    setSelectedBotId,
+  });
 
-  useEffect(() => {
-    if (creatingBot) return;
-    if (!selectedBotStatus) {
-      setBotName("");
-      setAppId("");
-      setAppSecret("");
-      setEncryptKey("");
-      setVerificationToken("");
-      setAssistantId(null);
-      setTeamId(null);
-      setProvider(null);
-      setModel(null);
-      setModeId(null);
-      setThinkingOptionId(null);
-      setCwd("");
-      setProjectMode("existing");
-      setNewProjectName("");
-      setNewProjectNameEdited(false);
-      setNewProjectNameRevision((value) => value + 1);
-      setFormRevision((value) => value + 1);
-      return;
-    }
-    setBotName(selectedBotStatus.name ?? "");
-    setAppId(selectedBotStatus.appId ?? "");
-    setAppSecret("");
-    setEncryptKey("");
-    setVerificationToken("");
-    setAssistantId(
-      selectedBotStatus.target.kind === "assistant" ? selectedBotStatus.target.assistantId : null,
-    );
-    setTeamId(selectedBotStatus.target.kind === "team" ? selectedBotStatus.target.teamId : null);
-    setProvider(
-      selectedBotStatus.target.kind !== "workspace"
-        ? (selectedBotStatus.target.provider ?? null)
-        : null,
-    );
-    setModel(
-      selectedBotStatus.target.kind !== "workspace"
-        ? (selectedBotStatus.target.model ?? null)
-        : null,
-    );
-    setModeId(selectedBotStatus.target.modeId ?? null);
-    setThinkingOptionId(selectedBotStatus.target.thinkingOptionId ?? null);
-    setCwd(selectedBotStatus.target.cwd ?? "");
-    setProjectMode("existing");
-    setNewProjectName(selectedBotStatus.name ?? "");
-    setNewProjectNameEdited(false);
-    setNewProjectNameRevision((value) => value + 1);
-    setFormRevision((value) => value + 1);
-  }, [creatingBot, selectedBotStatus]);
+  const incrementNewProjectNameRevision = useCallback(
+    () => setNewProjectNameRevision((value) => value + 1),
+    [],
+  );
+  const incrementFormRevision = useCallback(() => setFormRevision((value) => value + 1), []);
+  useLarkBotFormSynchronization({
+    creatingBot,
+    selectedBotStatus,
+    setBotName,
+    setAppId,
+    setAppSecret,
+    setEncryptKey,
+    setVerificationToken,
+    setAssistantId,
+    setTeamId,
+    setProvider,
+    setModel,
+    setModeId,
+    setThinkingOptionId,
+    setCwd,
+    setProjectMode,
+    setNewProjectName,
+    setNewProjectNameEdited,
+    incrementNewProjectNameRevision,
+    incrementFormRevision,
+  });
 
   const { targetOptions, targetValue, selectedTargetDisplay } = useLarkTargetControls({
     assistants: assistants.assistants,
@@ -1512,6 +1663,25 @@ function LarkChannelLoadedContent({
     setEditingSubstituteMode(null);
     setPage("overview");
   }, []);
+  const handleCreateGroupMessageProcessor = useCallback(() => {
+    setEditingGroupMessageProcessor(null);
+    setPage("group-processor-create");
+  }, []);
+  const handleEditGroupMessageProcessor = useCallback((processor: LarkGroupMessageProcessor) => {
+    setEditingGroupMessageProcessor(processor);
+    setPage("group-processor-edit");
+  }, []);
+  const handleOpenGroupMessageProcessorTasks = useCallback(
+    (processor: LarkGroupMessageProcessor) => {
+      setTaskListGroupMessageProcessor(processor);
+      setPage("group-processor-tasks");
+    },
+    [],
+  );
+  const handleGroupMessageProcessorSaved = useCallback(() => {
+    setEditingGroupMessageProcessor(null);
+    setPage("overview");
+  }, []);
   const handleEditReminder = useCallback((reminder: LarkReminder) => {
     setEditingReminder(reminder);
     setPage("reminder-edit");
@@ -1525,6 +1695,8 @@ function LarkChannelLoadedContent({
     setEditingReminder(null);
     setEditingContact(null);
     setTaskListSubstituteMode(null);
+    setEditingGroupMessageProcessor(null);
+    setTaskListGroupMessageProcessor(null);
     setSaveError(null);
     setPage(getLarkChannelBackPage(page));
   }, [page]);
@@ -1851,6 +2023,12 @@ function LarkChannelLoadedContent({
           onEdit={handleEditSubstituteMode}
           onOpenTasks={handleOpenSubstituteTasks}
         />
+        <LarkGroupMessageProcessorSection
+          serverId={serverId}
+          onCreate={handleCreateGroupMessageProcessor}
+          onEdit={handleEditGroupMessageProcessor}
+          onOpenTasks={handleOpenGroupMessageProcessorTasks}
+        />
         <View testID="host-page-lark-reminders-section">
           <LarkReminderSection
             serverId={serverId}
@@ -1971,6 +2149,40 @@ function LarkChannelLoadedContent({
         serverId={serverId}
         mode={taskListSubstituteMode}
         bots={botStatuses}
+      />
+    ),
+    "group-processor-create": (
+      <View testID="host-page-channels-group-processor-create">
+        <SecondaryPageIntro
+          title="创建群消息处理器"
+          description="配置机器人、消息过滤、上下文、提示词和 Agent 目标。"
+        />
+        <LarkGroupMessageProcessorEditor
+          key="create-group-processor"
+          serverId={serverId}
+          bots={botStatuses}
+          onSaved={handleGroupMessageProcessorSaved}
+        />
+      </View>
+    ),
+    "group-processor-edit": (
+      <View testID="host-page-channels-group-processor-edit">
+        <SecondaryPageIntro
+          title="编辑群消息处理器"
+          description="修改群消息监听、扫描、过滤和回复策略。"
+        />
+        <LarkGroupMessageProcessorEditor
+          serverId={serverId}
+          bots={botStatuses}
+          processor={editingGroupMessageProcessor}
+          onSaved={handleGroupMessageProcessorSaved}
+        />
+      </View>
+    ),
+    "group-processor-tasks": (
+      <LarkGroupMessageProcessorTasksPage
+        serverId={serverId}
+        processor={taskListGroupMessageProcessor}
       />
     ),
     "reminder-create": (

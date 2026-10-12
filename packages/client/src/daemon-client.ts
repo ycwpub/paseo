@@ -43,6 +43,9 @@ import {
   type LarkSubstituteModeCreateInput,
   type LarkSubstituteModeUpdateInput,
   type LarkSubstituteTaskScanRange,
+  type LarkGroupMessageProcessorCreateInput,
+  type LarkGroupMessageProcessorTaskScanRange,
+  type LarkGroupMessageProcessorUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
@@ -795,6 +798,46 @@ type LarkSubstituteTaskDeletePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.substitute_task.delete.response" }
 >["payload"];
+type LarkGroupMessageProcessorListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor.list.response" }
+>["payload"];
+type LarkGroupMessageProcessorCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor.create.response" }
+>["payload"];
+type LarkGroupMessageProcessorUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor.update.response" }
+>["payload"];
+type LarkGroupMessageProcessorSetEnabledPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor.set_enabled.response" }
+>["payload"];
+type LarkGroupMessageProcessorDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor.delete.response" }
+>["payload"];
+type LarkGroupMessageProcessorTaskListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor_task.list.response" }
+>["payload"];
+type LarkGroupMessageProcessorTaskScanPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor_task.scan.response" }
+>["payload"];
+type LarkGroupMessageProcessorTaskPausePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor_task.pause.response" }
+>["payload"];
+type LarkGroupMessageProcessorTaskRetryPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor_task.retry.response" }
+>["payload"];
+type LarkGroupMessageProcessorTaskDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.group_processor_task.delete.response" }
+>["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
 type LoopInspectPayload = Extract<
@@ -1259,6 +1302,47 @@ export interface RetryLarkSubstituteTasksOptions {
 }
 export interface DeleteLarkSubstituteTasksOptions {
   modeId?: string;
+  taskIds: string[];
+  requestId?: string;
+}
+export interface CreateLarkGroupMessageProcessorOptions extends LarkGroupMessageProcessorCreateInput {
+  requestId?: string;
+}
+export interface UpdateLarkGroupMessageProcessorOptions {
+  processorId: string;
+  processor: LarkGroupMessageProcessorUpdateInput;
+  requestId?: string;
+}
+export interface SetLarkGroupMessageProcessorEnabledOptions {
+  processorId: string;
+  enabled: boolean;
+  requestId?: string;
+}
+export interface DeleteLarkGroupMessageProcessorOptions {
+  processorId: string;
+  requestId?: string;
+}
+export interface ListLarkGroupMessageProcessorTasksOptions {
+  processorId: string;
+  requestId?: string;
+}
+export interface ScanLarkGroupMessageProcessorTasksOptions {
+  processorId: string;
+  scanRange?: LarkGroupMessageProcessorTaskScanRange;
+  requestId?: string;
+}
+export interface PauseLarkGroupMessageProcessorTasksOptions {
+  processorId: string;
+  taskIds: string[];
+  requestId?: string;
+}
+export interface RetryLarkGroupMessageProcessorTasksOptions {
+  processorId: string;
+  taskIds: string[];
+  requestId?: string;
+}
+export interface DeleteLarkGroupMessageProcessorTasksOptions {
+  processorId: string;
   taskIds: string[];
   requestId?: string;
 }
@@ -7069,6 +7153,66 @@ export class DaemonClient {
     options: DeleteLarkSubstituteTasksOptions,
   ): Promise<LarkSubstituteTaskDeletePayload> {
     return this.resourceRpc.deleteLarkSubstituteTasks(options);
+  }
+
+  async listLarkGroupMessageProcessors(
+    requestId?: string,
+  ): Promise<LarkGroupMessageProcessorListPayload> {
+    return this.resourceRpc.listLarkGroupMessageProcessors(requestId);
+  }
+
+  async createLarkGroupMessageProcessor(
+    options: CreateLarkGroupMessageProcessorOptions,
+  ): Promise<LarkGroupMessageProcessorCreatePayload> {
+    return this.resourceRpc.createLarkGroupMessageProcessor(options);
+  }
+
+  async updateLarkGroupMessageProcessor(
+    options: UpdateLarkGroupMessageProcessorOptions,
+  ): Promise<LarkGroupMessageProcessorUpdatePayload> {
+    return this.resourceRpc.updateLarkGroupMessageProcessor(options);
+  }
+
+  async setLarkGroupMessageProcessorEnabled(
+    options: SetLarkGroupMessageProcessorEnabledOptions,
+  ): Promise<LarkGroupMessageProcessorSetEnabledPayload> {
+    return this.resourceRpc.setLarkGroupMessageProcessorEnabled(options);
+  }
+
+  async deleteLarkGroupMessageProcessor(
+    options: DeleteLarkGroupMessageProcessorOptions,
+  ): Promise<LarkGroupMessageProcessorDeletePayload> {
+    return this.resourceRpc.deleteLarkGroupMessageProcessor(options);
+  }
+
+  async listLarkGroupMessageProcessorTasks(
+    options: ListLarkGroupMessageProcessorTasksOptions,
+  ): Promise<LarkGroupMessageProcessorTaskListPayload> {
+    return this.resourceRpc.listLarkGroupMessageProcessorTasks(options);
+  }
+
+  async scanLarkGroupMessageProcessorTasks(
+    options: ScanLarkGroupMessageProcessorTasksOptions,
+  ): Promise<LarkGroupMessageProcessorTaskScanPayload> {
+    return this.resourceRpc.scanLarkGroupMessageProcessorTasks(options);
+  }
+
+  async pauseLarkGroupMessageProcessorTasks(
+    options: PauseLarkGroupMessageProcessorTasksOptions,
+  ): Promise<LarkGroupMessageProcessorTaskPausePayload> {
+    return this.resourceRpc.pauseLarkGroupMessageProcessorTasks(options);
+  }
+
+  async retryLarkGroupMessageProcessorTasks(
+    options: RetryLarkGroupMessageProcessorTasksOptions,
+  ): Promise<LarkGroupMessageProcessorTaskRetryPayload> {
+    return this.resourceRpc.retryLarkGroupMessageProcessorTasks(options);
+  }
+
+  async deleteLarkGroupMessageProcessorTasks(
+    options: DeleteLarkGroupMessageProcessorTasksOptions,
+  ): Promise<LarkGroupMessageProcessorTaskDeletePayload> {
+    return this.resourceRpc.deleteLarkGroupMessageProcessorTasks(options);
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {

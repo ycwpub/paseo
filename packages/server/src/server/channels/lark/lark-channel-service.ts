@@ -15,6 +15,11 @@ import {
   type LarkSubstituteTask,
   type LarkSubstituteTaskFailureStage,
   type LarkSubstituteTaskScanRange,
+  type LarkGroupMessageProcessor,
+  type LarkGroupMessageProcessorCreateInput,
+  type LarkGroupMessageProcessorTask,
+  type LarkGroupMessageProcessorTaskScanRange,
+  type LarkGroupMessageProcessorUpdateInput,
   type SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent, ManagedAgent } from "../../agent/agent-manager.js";
@@ -130,6 +135,10 @@ import {
   resolveLarkMergedForwardMessage,
 } from "./lark-merged-forward-message.js";
 import { readLarkChatHistoryWithIdentityFallback } from "./lark-chat-history-reader.js";
+import { archiveAgentCommand } from "../../agent/lifecycle-command.js";
+import { LarkGroupMessageProcessorStore } from "./lark-group-message-processor-store.js";
+import { LarkGroupMessageProcessorTaskStore } from "./lark-group-message-processor-task-store.js";
+import { matchLarkGroupMessageProcessor } from "./lark-group-message-processor-matcher.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -202,6 +211,7 @@ export type LarkChannelRequest = Extract<
 export interface LarkChannelServiceHost {
   emitStatusChanged: (status: LarkChannelStatus) => void;
   emitSubstituteModesChanged?: (modes: LarkSubstituteMode[]) => void;
+  emitGroupMessageProcessorsChanged?: (processors: LarkGroupMessageProcessor[]) => void;
 }
 
 interface PendingRelay {
@@ -222,6 +232,17 @@ interface PendingRelay {
   rootMessageId: string;
   userId: string;
   title: string;
+}
+
+interface PendingGroupMessageProcessorRelay {
+  taskId: string;
+  processorId: string;
+  botId: string;
+  chatId: string;
+  replyMessageId: string;
+  createThreadOnReply: boolean;
+  lastAssistantMessage: string | null;
+  hasSeenRunning: boolean;
 }
 
 interface ResolvedLarkThread {
@@ -518,6 +539,8 @@ export class LarkChannelService {
   private readonly userOAuthService: LarkUserOAuthService | null;
   private readonly substituteModeStore: LarkSubstituteModeStore;
   private readonly substituteTaskStore: LarkSubstituteTaskStore;
+  private readonly groupMessageProcessorStore: LarkGroupMessageProcessorStore;
+  private readonly groupMessageProcessorTaskStore: LarkGroupMessageProcessorTaskStore;
   private readonly substituteProjectSkillSync: LarkSubstituteProjectSkillSync;
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
@@ -534,6 +557,18 @@ export class LarkChannelService {
   private readonly botIdentities = new Map<string, LarkChannelBotInfo>();
   private readonly botIdentityProbes = new Map<string, Promise<LarkChannelBotInfo>>();
   private readonly pendingRelays = new Map<string, PendingRelay>();
+  private readonly pendingGroupMessageProcessorRelays = new Map<
+    string,
+    PendingGroupMessageProcessorRelay
+  >();
+  private readonly groupMessageProcessorTimers = new Map<
+    string,
+    { timer: ReturnType<typeof setInterval>; fingerprint: string }
+  >();
+  private readonly scheduledGroupMessageProcessorTasks = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly unsubscribeAgentEvents: () => void;
   private reconnectEventCutoff: number | null = null;
 
@@ -573,6 +608,8 @@ export class LarkChannelService {
     this.substituteTaskStore = new LarkSubstituteTaskStore(
       options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
     );
+    this.groupMessageProcessorStore = new LarkGroupMessageProcessorStore(this.paseoHome);
+    this.groupMessageProcessorTaskStore = new LarkGroupMessageProcessorTaskStore(this.paseoHome);
     this.substituteProjectSkillSync = new LarkSubstituteProjectSkillSync({
       paseoHome: this.paseoHome,
       logger: this.logger,
@@ -879,6 +916,7 @@ export class LarkChannelService {
     this.syncSubstituteProjectSkills();
     this.substitutePrivatePoller?.sync(this.substituteModeStore.list());
     this.substituteGroupPoller.sync(this.substituteModeStore.list());
+    this.syncGroupMessageProcessorPolling();
     if (bots.length === 0) {
       this.emitStatusChanged();
       return;
@@ -898,6 +936,7 @@ export class LarkChannelService {
     this.substituteDebouncer.clear();
     this.substitutePrivatePoller?.stop();
     this.substituteGroupPoller.stop();
+    this.stopGroupMessageProcessorPolling();
     for (const subscription of this.subscriptions.values()) {
       subscription.close();
     }
@@ -936,7 +975,16 @@ export class LarkChannelService {
     }
     this.reminderService?.handleBotDeleted(botId);
     this.substituteModeStore.deleteByBotId(botId);
+    for (const processor of this.listGroupMessageProcessors()) {
+      if (processor.botId !== botId) continue;
+      this.groupMessageProcessorStore.delete(processor.id);
+      this.groupMessageProcessorTaskStore.pausePendingForProcessor(
+        processor.id,
+        new Date().toISOString(),
+      );
+    }
     this.emitSubstituteModesChanged();
+    this.emitGroupMessageProcessorsChanged();
     this.emitStatusChanged();
     return this.getStatus();
   }
@@ -1041,6 +1089,138 @@ export class LarkChannelService {
   listSubstituteModes(): LarkSubstituteMode[] {
     this.substituteModeStore.migrateLegacyBots(this.store.getBots(), new Date().toISOString());
     return this.substituteModeStore.list();
+  }
+
+  listGroupMessageProcessors(): LarkGroupMessageProcessor[] {
+    return this.groupMessageProcessorStore.list();
+  }
+
+  listGroupMessageProcessorTasks(processorId: string): LarkGroupMessageProcessorTask[] {
+    return this.groupMessageProcessorTaskStore.list(processorId);
+  }
+
+  createGroupMessageProcessor(
+    input: LarkGroupMessageProcessorCreateInput,
+  ): LarkGroupMessageProcessor {
+    if (!this.store.getBot(input.botId)) throw new Error("飞书机器人不存在");
+    const processor = this.groupMessageProcessorStore.create(input, new Date().toISOString());
+    this.emitGroupMessageProcessorsChanged();
+    return processor;
+  }
+
+  updateGroupMessageProcessor(
+    processorId: string,
+    input: LarkGroupMessageProcessorUpdateInput,
+  ): LarkGroupMessageProcessor {
+    if (!this.store.getBot(input.botId)) throw new Error("飞书机器人不存在");
+    const previous = this.groupMessageProcessorStore.get(processorId);
+    if (!previous) throw new Error("群消息处理器不存在");
+    this.groupMessageProcessorTaskStore.pausePendingForProcessor(
+      processorId,
+      new Date().toISOString(),
+    );
+    this.clearScheduledGroupMessageProcessorTasks(processorId);
+    const processor = this.groupMessageProcessorStore.update(
+      processorId,
+      input,
+      new Date().toISOString(),
+    );
+    if (!processor) throw new Error("群消息处理器不存在");
+    this.emitGroupMessageProcessorsChanged();
+    return processor;
+  }
+
+  setGroupMessageProcessorEnabled(
+    processorId: string,
+    enabled: boolean,
+  ): LarkGroupMessageProcessor {
+    if (!enabled) {
+      this.groupMessageProcessorTaskStore.pausePendingForProcessor(
+        processorId,
+        new Date().toISOString(),
+      );
+      this.clearScheduledGroupMessageProcessorTasks(processorId);
+    }
+    const processor = this.groupMessageProcessorStore.setEnabled(
+      processorId,
+      enabled,
+      new Date().toISOString(),
+    );
+    if (!processor) throw new Error("群消息处理器不存在");
+    this.emitGroupMessageProcessorsChanged();
+    return processor;
+  }
+
+  deleteGroupMessageProcessor(processorId: string): boolean {
+    this.clearScheduledGroupMessageProcessorTasks(processorId);
+    this.groupMessageProcessorTaskStore.pausePendingForProcessor(
+      processorId,
+      new Date().toISOString(),
+    );
+    const deleted = this.groupMessageProcessorStore.delete(processorId);
+    if (deleted) this.emitGroupMessageProcessorsChanged();
+    return deleted;
+  }
+
+  async scanGroupMessageProcessorTasksNow(
+    processorId: string,
+    scanRange?: LarkGroupMessageProcessorTaskScanRange,
+  ): Promise<{ scannedProcessorCount: number }> {
+    const processor = this.groupMessageProcessorStore.get(processorId);
+    if (!processor || !processor.enabled || !processor.scan.enabled) {
+      return { scannedProcessorCount: 0 };
+    }
+    await this.scanGroupMessageProcessor(processor, scanRange);
+    return { scannedProcessorCount: 1 };
+  }
+
+  pauseGroupMessageProcessorTasks(processorId: string, taskIds: readonly string[]): string[] {
+    const allowed = new Set(
+      this.listGroupMessageProcessorTasks(processorId).map((task) => task.id),
+    );
+    const scoped = taskIds.filter((taskId) => allowed.has(taskId));
+    for (const taskId of scoped) this.cancelScheduledGroupMessageProcessorTask(taskId);
+    return this.groupMessageProcessorTaskStore.pause(scoped, new Date().toISOString());
+  }
+
+  retryGroupMessageProcessorTasks(processorId: string, taskIds: readonly string[]): string[] {
+    const allowed = new Set(
+      this.listGroupMessageProcessorTasks(processorId).map((task) => task.id),
+    );
+    const scoped = taskIds.filter((taskId) => allowed.has(taskId));
+    const original = new Map(
+      scoped
+        .map((taskId) => this.groupMessageProcessorTaskStore.get(taskId))
+        .filter((task): task is LarkGroupMessageProcessorTask => Boolean(task))
+        .map((task) => [task.id, task]),
+    );
+    const retried = this.groupMessageProcessorTaskStore.resetFailedForRetry(
+      scoped,
+      new Date().toISOString(),
+    );
+    for (const taskId of retried) {
+      const task = original.get(taskId);
+      if (!task) continue;
+      void this.retryGroupMessageProcessorTask(task).catch((error) => {
+        this.groupMessageProcessorTaskStore.markCompleted(
+          taskId,
+          "failed",
+          new Date().toISOString(),
+          formatLarkProcessingError(error),
+          "processing",
+        );
+      });
+    }
+    return retried;
+  }
+
+  deleteGroupMessageProcessorTasks(processorId: string, taskIds: readonly string[]): string[] {
+    const allowed = new Set(
+      this.listGroupMessageProcessorTasks(processorId).map((task) => task.id),
+    );
+    const scoped = taskIds.filter((taskId) => allowed.has(taskId));
+    for (const taskId of scoped) this.cancelScheduledGroupMessageProcessorTask(taskId);
+    return this.groupMessageProcessorTaskStore.deleteMany(scoped);
   }
 
   buildSubstituteProjectAgentContext(projectId: string): string | null {
@@ -1298,6 +1478,9 @@ export class LarkChannelService {
       botMentioned,
       substituteTrigger,
     } = prepared;
+    if (await this.enqueueGroupMessageProcessorEvents(botId, enrichedEvent, "listener")) {
+      return;
+    }
     if (
       this.shouldIgnoreLarkRouting({
         botId,
@@ -1662,6 +1845,296 @@ export class LarkChannelService {
     );
     this.completeSubstituteTask(input.prepared.taskId, "completed");
     await this.autoArchiveSubstituteAgent(input.prepared.taskId, input.prepared.agentId);
+  }
+
+  private async enqueueGroupMessageProcessorEvents(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    source: "listener" | "scan",
+  ): Promise<boolean> {
+    const bot = this.store.getBot(botId);
+    if (!bot) return false;
+    const chatName = this.findGroupMessageProcessorChatName(bot.config.appId, event.chatId);
+    const processors = this.listGroupMessageProcessors().filter(
+      (processor) =>
+        processor.botId === botId &&
+        processor.enabled &&
+        (source === "listener" ? processor.realtime.enabled : processor.scan.enabled) &&
+        matchLarkGroupMessageProcessor({ processor, event, chatName }),
+    );
+    for (const processor of processors) {
+      if (this.groupMessageProcessorTaskStore.hasMessage(processor.id, event.messageId)) continue;
+      const delayMs = source === "listener" ? processor.realtime.delaySeconds * 1_000 : 0;
+      const now = new Date();
+      const task = this.groupMessageProcessorTaskStore.enqueue(
+        {
+          processorId: processor.id,
+          processorName: processor.name,
+          botId,
+          source,
+          chatId: event.chatId,
+          chatName,
+          messageId: event.messageId,
+          senderOpenId: event.openId,
+          senderName: event.displayName || null,
+          content: event.text,
+          scheduledAt: delayMs > 0 ? new Date(now.getTime() + delayMs).toISOString() : null,
+        },
+        now.toISOString(),
+      );
+      if (delayMs > 0) {
+        this.scheduleGroupMessageProcessorTask(task, processor, event, delayMs);
+      } else {
+        void this.executeGroupMessageProcessorTask(task, processor, event).catch((error) => {
+          this.groupMessageProcessorTaskStore.markCompleted(
+            task.id,
+            "failed",
+            new Date().toISOString(),
+            formatLarkProcessingError(error),
+            "processing",
+          );
+        });
+      }
+    }
+    return processors.length > 0;
+  }
+
+  private scheduleGroupMessageProcessorTask(
+    task: LarkGroupMessageProcessorTask,
+    processor: LarkGroupMessageProcessor,
+    event: NormalizedLarkMessageEvent,
+    delayMs: number,
+  ): void {
+    const timer = setTimeout(() => {
+      this.scheduledGroupMessageProcessorTasks.delete(task.id);
+      void this.executeGroupMessageProcessorTask(task, processor, event).catch((error) => {
+        this.groupMessageProcessorTaskStore.markCompleted(
+          task.id,
+          "failed",
+          new Date().toISOString(),
+          formatLarkProcessingError(error),
+          "processing",
+        );
+      });
+    }, delayMs);
+    this.scheduledGroupMessageProcessorTasks.set(task.id, timer);
+  }
+
+  private async executeGroupMessageProcessorTask(
+    task: LarkGroupMessageProcessorTask,
+    processor: LarkGroupMessageProcessor,
+    event: NormalizedLarkMessageEvent,
+  ): Promise<void> {
+    const current = this.groupMessageProcessorTaskStore.get(task.id);
+    if (!current || current.status !== "pending" || !processor.enabled) return;
+    const bot = this.store.getBot(processor.botId);
+    if (!bot) throw new Error("群消息处理器绑定的飞书机器人不存在");
+    this.groupMessageProcessorTaskStore.markRunning(task.id, new Date().toISOString());
+    let supplementalEvents: NormalizedLarkMessageEvent[] = [];
+    try {
+      supplementalEvents = await collectLarkSubstituteMessageContext({
+        latestEvent: event,
+        bufferedEvents: [],
+        limits: {
+          privatePreviousMessageCount: 0,
+          groupPreviousMessageCount: processor.context.previousMessageCount,
+          groupFollowingMessageCount: processor.context.followingMessageCount,
+        },
+        listChatMessages: (window) => this.listChatMessages(processor.botId, event.chatId, window),
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, processorId: processor.id, messageId: event.messageId },
+        "Failed to collect group message processor context",
+      );
+    }
+    const prompt = this.formatGroupMessageProcessorPrompt(processor, event, supplementalEvents);
+    const targetConfig: StoredLarkChannelConfig = { ...bot.config, target: processor.target };
+    const target = this.resolveTarget(targetConfig, event, prompt, {
+      channel: "lark",
+      "lark.botId": processor.botId,
+      "lark.chatId": event.chatId,
+      "lark.groupProcessorId": processor.id,
+      "lark.groupProcessorTaskId": task.id,
+    });
+    if (!target) {
+      this.groupMessageProcessorTaskStore.markCompleted(
+        task.id,
+        "failed",
+        new Date().toISOString(),
+        "群消息处理器未配置可用的 Agent 目标",
+        "processing",
+      );
+      return;
+    }
+    const { snapshot } = await this.createAgent({
+      kind: "mcp",
+      provider: target.provider,
+      title: event.topicName,
+      workspaceTitle: event.topicName,
+      config: {
+        title: event.topicName,
+        ...(target.model ? { model: target.model } : {}),
+        ...(target.modeId ? { modeId: target.modeId } : {}),
+        ...(target.thinkingOptionId ? { thinkingOptionId: target.thinkingOptionId } : {}),
+        systemPrompt: LARK_CHANNEL_SYSTEM_PROMPT,
+      },
+      cwd: target.cwd,
+      workspaceId: target.workspaceId ?? undefined,
+      projectId: target.projectId ?? undefined,
+      labels: target.labels,
+      background: true,
+      notifyOnFinish: false,
+      promptFailure: "throw",
+    });
+    const lastAssistantMessage = await this.agentManager.getLastAssistantMessage(snapshot.id);
+    this.groupMessageProcessorTaskStore.attachAgent(task.id, snapshot.id, new Date().toISOString());
+    this.pendingGroupMessageProcessorRelays.set(snapshot.id, {
+      taskId: task.id,
+      processorId: processor.id,
+      botId: processor.botId,
+      chatId: event.chatId,
+      replyMessageId: event.rootMessageId ?? event.messageId,
+      createThreadOnReply: !event.threadId,
+      lastAssistantMessage,
+      hasSeenRunning: false,
+    });
+    await sendPromptToAgent({
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      agentId: snapshot.id,
+      prompt: target.initialPrompt,
+      unarchive: true,
+      logger: this.logger,
+    });
+  }
+
+  private formatGroupMessageProcessorPrompt(
+    processor: LarkGroupMessageProcessor,
+    event: NormalizedLarkMessageEvent,
+    supplementalEvents: readonly NormalizedLarkMessageEvent[],
+  ): string {
+    const prompt = appendLarkSubstituteMessageContext({
+      prompt: formatLarkUserPrompt(event),
+      latestEvent: event,
+      supplementalEvents,
+    });
+    const aiFilter = processor.aiFilterPrompt.trim();
+    return [
+      prompt,
+      "",
+      "<lark_group_message_processor>",
+      aiFilter
+        ? `先判断是否需要处理当前消息。判断规则：${aiFilter}。若无需处理，只输出 ${LARK_SUBSTITUTE_SKIP_ANSWER}。`
+        : "请处理当前群消息。",
+      `回答要求：${processor.replyPrompt.trim()}`,
+      "如需回答，直接输出最终面向群成员的回答，不要描述处理过程。",
+      "</lark_group_message_processor>",
+    ].join("\n");
+  }
+
+  private async retryGroupMessageProcessorTask(task: LarkGroupMessageProcessorTask): Promise<void> {
+    const processor = this.groupMessageProcessorStore.get(task.processorId);
+    if (!processor?.enabled) throw new Error("群消息处理器不存在或已停用");
+    const bot = this.store.getBot(task.botId);
+    if (!bot) throw new Error("群消息处理器绑定的飞书机器人不存在");
+    const rawMessage = await this.adapter.getMessage(bot.config, task.messageId);
+    const event = normalizeLarkApiMessage(rawMessage, `group-processor-retry:${task.id}`);
+    if (!event) throw new Error("无法读取原始飞书群消息");
+    await this.executeGroupMessageProcessorTask(task, processor, event);
+  }
+
+  private async scanGroupMessageProcessor(
+    processor: LarkGroupMessageProcessor,
+    scanRange?: LarkGroupMessageProcessorTaskScanRange,
+  ): Promise<void> {
+    const bot = this.store.getBot(processor.botId);
+    if (!bot || !this.adapter.listBotChats) return;
+    const chats = await this.adapter.listBotChats(bot.config);
+    if (bot.config.appId) this.directoryService?.observeChats(bot.config.appId, chats);
+    const now = Date.now();
+    const scan = processor.scan;
+    const lookbackMinutes = scanRange?.lookbackMinutes ?? scan.lookbackMinutes;
+    const excludeRecentMinutes = scanRange?.excludeRecentMinutes ?? scan.excludeRecentMinutes;
+    const window = {
+      start: new Date(now - lookbackMinutes * 60 * 1_000),
+      end: new Date(now - excludeRecentMinutes * 60 * 1_000),
+    };
+    for (const chat of chats) {
+      try {
+        const events = await this.listChatMessages(processor.botId, chat.chatId, window);
+        for (const event of events) {
+          await this.enqueueGroupMessageProcessorEvents(
+            processor.botId,
+            { ...event, eventId: `group-processor-scan:${event.messageId}`, chatType: "group" },
+            "scan",
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          { err: error, processorId: processor.id, chatId: chat.chatId },
+          "Failed to scan Lark group messages for processor",
+        );
+      }
+    }
+  }
+
+  private syncGroupMessageProcessorPolling(): void {
+    const active = new Map(
+      this.listGroupMessageProcessors()
+        .filter((processor) => processor.enabled && processor.scan.enabled)
+        .map((processor) => [processor.id, processor] as const),
+    );
+    for (const [processorId, scheduled] of this.groupMessageProcessorTimers) {
+      const processor = active.get(processorId);
+      const fingerprint = processor ? JSON.stringify(processor.scan) : null;
+      if (fingerprint === scheduled.fingerprint) continue;
+      clearInterval(scheduled.timer);
+      this.groupMessageProcessorTimers.delete(processorId);
+    }
+    for (const processor of active.values()) {
+      if (this.groupMessageProcessorTimers.has(processor.id)) continue;
+      const timer = setInterval(
+        () => void this.scanGroupMessageProcessor(processor),
+        processor.scan.intervalMinutes * 60 * 1_000,
+      );
+      this.groupMessageProcessorTimers.set(processor.id, {
+        timer,
+        fingerprint: JSON.stringify(processor.scan),
+      });
+      void this.scanGroupMessageProcessor(processor);
+    }
+  }
+
+  private stopGroupMessageProcessorPolling(): void {
+    for (const scheduled of this.groupMessageProcessorTimers.values())
+      clearInterval(scheduled.timer);
+    this.groupMessageProcessorTimers.clear();
+    for (const timer of this.scheduledGroupMessageProcessorTasks.values()) clearTimeout(timer);
+    this.scheduledGroupMessageProcessorTasks.clear();
+  }
+
+  private clearScheduledGroupMessageProcessorTasks(processorId: string): void {
+    const taskIds = new Set(
+      this.listGroupMessageProcessorTasks(processorId).map((task) => task.id),
+    );
+    for (const taskId of taskIds) this.cancelScheduledGroupMessageProcessorTask(taskId);
+  }
+
+  private cancelScheduledGroupMessageProcessorTask(taskId: string): void {
+    const timer = this.scheduledGroupMessageProcessorTasks.get(taskId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.scheduledGroupMessageProcessorTasks.delete(taskId);
+  }
+
+  private findGroupMessageProcessorChatName(appId: string | null, chatId: string): string | null {
+    return (
+      this.directoryService
+        ?.getState()
+        .chats.find((chat) => chat.appId === appId && chat.chatId === chatId)
+        ?.name.trim() || null
+    );
   }
 
   private async prepareIncomingEvent(
@@ -2910,6 +3383,11 @@ export class LarkChannelService {
     if (await this.privateSubstituteAnswerWaiter.handle(event, this.agentManager)) return;
     await this.substituteAgentRedelivery.handle(event);
     if (event.type !== "agent_state") return;
+    const groupProcessorRelay = this.pendingGroupMessageProcessorRelays.get(event.agent.id);
+    if (groupProcessorRelay) {
+      await this.handleGroupMessageProcessorAgentEvent(event.agent, groupProcessorRelay);
+      return;
+    }
     const relay = this.pendingRelays.get(event.agent.id);
     if (!relay) return;
     if (event.agent.lifecycle === "running") {
@@ -2922,6 +3400,93 @@ export class LarkChannelService {
     }
     if (event.agent.lifecycle !== "idle" || !relay.hasSeenRunning) return;
     await this.handleCompletedAgentRelay(event.agent, relay);
+  }
+
+  private async handleGroupMessageProcessorAgentEvent(
+    agent: ManagedAgent,
+    relay: PendingGroupMessageProcessorRelay,
+  ): Promise<void> {
+    if (agent.lifecycle === "running") {
+      relay.hasSeenRunning = true;
+      return;
+    }
+    if (agent.lifecycle === "error") {
+      this.pendingGroupMessageProcessorRelays.delete(agent.id);
+      this.groupMessageProcessorTaskStore.markCompleted(
+        relay.taskId,
+        "failed",
+        new Date().toISOString(),
+        agent.lastError ?? "Paseo agent failed.",
+        "processing",
+      );
+      return;
+    }
+    if (agent.lifecycle !== "idle" || !relay.hasSeenRunning) return;
+    this.pendingGroupMessageProcessorRelays.delete(agent.id);
+    const processor = this.groupMessageProcessorStore.get(relay.processorId);
+    const text = getCompletedAgentText(
+      await this.agentManager.getLastAssistantMessage(agent.id),
+      relay.lastAssistantMessage,
+    );
+    if (text.trim() === LARK_SUBSTITUTE_SKIP_ANSWER) {
+      this.groupMessageProcessorTaskStore.markCompleted(
+        relay.taskId,
+        "skipped",
+        new Date().toISOString(),
+      );
+      await this.autoArchiveGroupMessageProcessorAgent(processor, agent.id);
+      return;
+    }
+    const bot = this.store.getBot(relay.botId);
+    if (!bot) {
+      this.groupMessageProcessorTaskStore.markCompleted(
+        relay.taskId,
+        "failed",
+        new Date().toISOString(),
+        "飞书机器人不存在",
+        "reply",
+      );
+      return;
+    }
+    const sent = await this.sendThreadTextSafe(
+      relay.botId,
+      bot.config,
+      relay.replyMessageId,
+      text,
+      {
+        createThreadOnFirstReply: relay.createThreadOnReply,
+      },
+    );
+    this.groupMessageProcessorTaskStore.markCompleted(
+      relay.taskId,
+      sent ? "completed" : "failed",
+      new Date().toISOString(),
+      sent ? null : "发送飞书回复失败",
+      sent ? null : "reply",
+    );
+    if (sent) await this.autoArchiveGroupMessageProcessorAgent(processor, agent.id);
+  }
+
+  private async autoArchiveGroupMessageProcessorAgent(
+    processor: LarkGroupMessageProcessor | null,
+    agentId: string,
+  ): Promise<void> {
+    if (processor?.autoArchiveAgent !== true) return;
+    try {
+      await archiveAgentCommand(
+        {
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          logger: this.logger,
+        },
+        agentId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        { err: error, processorId: processor?.id, agentId },
+        "Failed to auto-archive Lark group message processor agent",
+      );
+    }
   }
 
   private async handleFailedAgentRelay(agent: ManagedAgent, relay: PendingRelay): Promise<void> {
@@ -3599,5 +4164,10 @@ export class LarkChannelService {
     this.substitutePrivatePoller?.sync(modes);
     this.substituteGroupPoller.sync(modes);
     this.host.emitSubstituteModesChanged?.(modes);
+  }
+
+  private emitGroupMessageProcessorsChanged(): void {
+    this.syncGroupMessageProcessorPolling();
+    this.host.emitGroupMessageProcessorsChanged?.(this.listGroupMessageProcessors());
   }
 }

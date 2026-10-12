@@ -38,14 +38,18 @@ import type {
   ConfigureLarkChannelOptions,
   CreateLarkReminderOptions,
   CreateLarkSubstituteModeOptions,
+  CreateLarkGroupMessageProcessorOptions,
   CreateAssistantOptions,
   DeleteAssistantOptions,
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,
   DeleteLarkSubstituteModeOptions,
   DeleteLarkSubstituteTasksOptions,
+  DeleteLarkGroupMessageProcessorOptions,
+  DeleteLarkGroupMessageProcessorTasksOptions,
   GetLarkBotApplicationOptions,
   ListLarkSubstituteTasksOptions,
+  ListLarkGroupMessageProcessorTasksOptions,
   LarkChannelRequestOptions,
   LarkUserOAuthCompleteOptions,
   LarkUserOAuthDisconnectOptions,
@@ -66,9 +70,14 @@ import type {
   PauseLarkSubstituteTasksOptions,
   RetryLarkSubstituteTasksOptions,
   ScanLarkSubstituteTasksOptions,
+  ScanLarkGroupMessageProcessorTasksOptions,
   UpdateAssistantOptions,
   UpdateLarkReminderOptions,
   UpdateLarkSubstituteModeOptions,
+  UpdateLarkGroupMessageProcessorOptions,
+  SetLarkGroupMessageProcessorEnabledOptions,
+  PauseLarkGroupMessageProcessorTasksOptions,
+  RetryLarkGroupMessageProcessorTasksOptions,
 } from "./daemon-client.js";
 import type { CloudKnowledgeScope } from "@getpaseo/protocol/knowledge/cloud-cache-rpc-schemas";
 
@@ -1208,6 +1217,117 @@ export class DaemonResourceRpcClient {
         taskIds: options.taskIds,
       },
       responseType: "channel.lark.substitute_task.delete.response",
+    });
+  }
+
+  listLarkGroupMessageProcessors(requestId?: string) {
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.group_processor.list.request" },
+      responseType: "channel.lark.group_processor.list.response",
+    });
+  }
+
+  createLarkGroupMessageProcessor(options: CreateLarkGroupMessageProcessorOptions) {
+    const { requestId, ...processor } = options;
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.group_processor.create.request", processor },
+      responseType: "channel.lark.group_processor.create.response",
+    });
+  }
+
+  updateLarkGroupMessageProcessor(options: UpdateLarkGroupMessageProcessorOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor.update.request",
+        processorId: options.processorId,
+        processor: options.processor,
+      },
+      responseType: "channel.lark.group_processor.update.response",
+    });
+  }
+
+  setLarkGroupMessageProcessorEnabled(options: SetLarkGroupMessageProcessorEnabledOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor.set_enabled.request",
+        processorId: options.processorId,
+        enabled: options.enabled,
+      },
+      responseType: "channel.lark.group_processor.set_enabled.response",
+    });
+  }
+
+  deleteLarkGroupMessageProcessor(options: DeleteLarkGroupMessageProcessorOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor.delete.request",
+        processorId: options.processorId,
+      },
+      responseType: "channel.lark.group_processor.delete.response",
+    });
+  }
+
+  listLarkGroupMessageProcessorTasks(options: ListLarkGroupMessageProcessorTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor_task.list.request",
+        processorId: options.processorId,
+      },
+      responseType: "channel.lark.group_processor_task.list.response",
+    });
+  }
+
+  scanLarkGroupMessageProcessorTasks(options: ScanLarkGroupMessageProcessorTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor_task.scan.request",
+        processorId: options.processorId,
+        ...(options.scanRange ? { scanRange: options.scanRange } : {}),
+      },
+      responseType: "channel.lark.group_processor_task.scan.response",
+    });
+  }
+
+  pauseLarkGroupMessageProcessorTasks(options: PauseLarkGroupMessageProcessorTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor_task.pause.request",
+        processorId: options.processorId,
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.group_processor_task.pause.response",
+    });
+  }
+
+  retryLarkGroupMessageProcessorTasks(options: RetryLarkGroupMessageProcessorTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor_task.retry.request",
+        processorId: options.processorId,
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.group_processor_task.retry.response",
+    });
+  }
+
+  deleteLarkGroupMessageProcessorTasks(options: DeleteLarkGroupMessageProcessorTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.group_processor_task.delete.request",
+        processorId: options.processorId,
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.group_processor_task.delete.response",
     });
   }
 }

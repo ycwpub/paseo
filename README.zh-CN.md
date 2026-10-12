@@ -11,6 +11,8 @@
   <a href="README.ko.md">한국어</a>
 </p>
 
+> **想了解 Paseo 字节版？** 从写代码、管理开发机，到飞书问答和报警排查，[这份介绍](docs/product-extensions/byte-edition.md)讲清楚能帮你省哪些事，以及如何开始。下文保留上游开源版说明；使用字节扩展请按该指南准备字节版环境，不要直接套用下文的官方下载安装方式。
+
 <p align="center">
   <a href="https://github.com/getpaseo/paseo/stargazers">
     <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">

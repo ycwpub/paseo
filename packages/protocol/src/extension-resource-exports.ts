@@ -240,6 +240,38 @@ export {
 } from "./channel/lark/substitute-task-types.js";
 export * from "./channel/lark/substitute-task-rpc-schemas.js";
 export {
+  DEFAULT_LARK_GROUP_PROCESSOR_CONTEXT_COUNT,
+  DEFAULT_LARK_GROUP_PROCESSOR_DELAY_SECONDS,
+  DEFAULT_LARK_GROUP_PROCESSOR_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_GROUP_PROCESSOR_SCAN_INTERVAL_MINUTES,
+  DEFAULT_LARK_GROUP_PROCESSOR_SCAN_LOOKBACK_MINUTES,
+  LarkGroupMessageProcessorContextSchema,
+  LarkGroupMessageProcessorCreateInputSchema,
+  LarkGroupMessageProcessorFilterSchema,
+  LarkGroupMessageProcessorRealtimeSchema,
+  LarkGroupMessageProcessorScanSchema,
+  LarkGroupMessageProcessorSchema,
+  LarkGroupMessageProcessorTaskFailureStageSchema,
+  LarkGroupMessageProcessorTaskScanRangeSchema,
+  LarkGroupMessageProcessorTaskSchema,
+  LarkGroupMessageProcessorTaskSourceSchema,
+  LarkGroupMessageProcessorTaskStatusSchema,
+  LarkGroupMessageProcessorUpdateInputSchema,
+  type LarkGroupMessageProcessor,
+  type LarkGroupMessageProcessorContext,
+  type LarkGroupMessageProcessorCreateInput,
+  type LarkGroupMessageProcessorFilter,
+  type LarkGroupMessageProcessorRealtime,
+  type LarkGroupMessageProcessorScan,
+  type LarkGroupMessageProcessorTask,
+  type LarkGroupMessageProcessorTaskFailureStage,
+  type LarkGroupMessageProcessorTaskScanRange,
+  type LarkGroupMessageProcessorTaskSource,
+  type LarkGroupMessageProcessorTaskStatus,
+  type LarkGroupMessageProcessorUpdateInput,
+} from "./channel/lark/group-processor-types.js";
+export * from "./channel/lark/group-processor-rpc-schemas.js";
+export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,
   AssistantMemoryFilesSchema,

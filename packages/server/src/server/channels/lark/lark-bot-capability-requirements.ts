@@ -154,6 +154,12 @@ export const PASEO_LARK_BOT_CAPABILITIES = {
     events: PASEO_LARK_EVENT_SUBSCRIPTIONS,
     callbacks: [],
   },
+  groupMessageProcessor: {
+    tenantScopes: PASEO_LARK_CHANNEL_TENANT_SCOPES,
+    userScopes: [],
+    events: PASEO_LARK_EVENT_SUBSCRIPTIONS,
+    callbacks: [],
+  },
   directory: {
     tenantScopes: PASEO_LARK_DIRECTORY_TENANT_SCOPES,
     userScopes: PASEO_LARK_DIRECTORY_USER_SCOPES,

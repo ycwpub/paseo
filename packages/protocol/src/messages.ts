@@ -3674,6 +3674,10 @@ export const ServerInfoStatusPayloadSchema = z
         larkSubstituteModes: z.boolean().optional(),
         // COMPAT(larkSubstituteTasks): added in v0.7.0, remove gate after 2027-09-07.
         larkSubstituteTasks: z.boolean().optional(),
+        // COMPAT(larkGroupMessageProcessors): added in v0.7.0, remove gate after 2027-10-13.
+        larkGroupMessageProcessors: z.boolean().optional(),
+        // COMPAT(larkGroupMessageProcessorTasks): added in v0.7.0, remove gate after 2027-10-13.
+        larkGroupMessageProcessorTasks: z.boolean().optional(),
         // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
         larkDirectory: z.boolean().optional(),
         // COMPAT(larkDirectoryOpenIdLookup): added in v0.7.0, remove gate after 2027-09-07.

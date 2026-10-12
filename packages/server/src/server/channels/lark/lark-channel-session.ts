@@ -6,6 +6,11 @@ import {
   dispatchLarkSubstituteSessionRequest,
   emitLarkSubstituteSessionRequestError,
 } from "./lark-substitute-session-router.js";
+import {
+  emitLarkGroupMessageProcessorSessionError,
+  handleLarkGroupMessageProcessorSessionRequest,
+  isLarkGroupMessageProcessorSessionRequest,
+} from "./lark-group-message-processor-session-handler.js";
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
@@ -60,7 +65,8 @@ type LarkChannelResponse = Extract<
       | "channel.lark.substitute_task.scan.response"
       | "channel.lark.substitute_task.pause.response"
       | "channel.lark.substitute_task.retry.response"
-      | "channel.lark.substitute_task.delete.response";
+      | "channel.lark.substitute_task.delete.response"
+      | `channel.lark.group_processor${string}.response`;
   }
 >;
 
@@ -162,6 +168,12 @@ export class LarkChannelSession {
           this.emitResponse(response),
         )
       ) {
+        return;
+      }
+      if (isLarkGroupMessageProcessorSessionRequest(message)) {
+        await handleLarkGroupMessageProcessorSessionRequest(message, this.service, (response) =>
+          this.emitResponse(response),
+        );
         return;
       }
       switch (message.type) {
@@ -573,6 +585,15 @@ export class LarkChannelSession {
         error,
       )
     ) {
+      return;
+    }
+    if (isLarkGroupMessageProcessorSessionRequest(message)) {
+      emitLarkGroupMessageProcessorSessionError(
+        message,
+        this.service,
+        (response) => this.emitResponse(response),
+        error,
+      );
       return;
     }
     const payload = {

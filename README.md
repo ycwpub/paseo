@@ -11,6 +11,8 @@
   <a href="README.ko.md">한국어</a>
 </p>
 
+> **Paseo 字节版：** 将 TRAE CLI、Aiden、飞书协作和 Bamboo / Argos 自动排查放进同一个 AI 工作台。[查看使用场景与上手指南](docs/product-extensions/byte-edition.md)。以下为上游开源版介绍，官方发行包不保证包含字节扩展。
+
 <p align="center">
   <a href="https://github.com/getpaseo/paseo/stargazers">
     <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">

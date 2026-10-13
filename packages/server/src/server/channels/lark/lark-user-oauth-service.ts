@@ -6,7 +6,11 @@ import {
   PASEO_LARK_SUBSTITUTE_USER_SCOPES,
   PASEO_LARK_USER_SCOPES,
 } from "./lark-bot-capability-requirements.js";
-import { LarkUserOAuthStore, type StoredLarkUserOAuthCredential } from "./lark-user-oauth-store.js";
+import {
+  LarkUserOAuthStore,
+  type StoredLarkPendingAuthorization,
+  type StoredLarkUserOAuthCredential,
+} from "./lark-user-oauth-store.js";
 
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const AUTHORIZATION_STATE_TTL_MS = 15 * 60 * 1000;
@@ -135,7 +139,15 @@ export class LarkUserOAuthService {
     private readonly channelStore: Pick<LarkChannelStore, "getBots">,
     private readonly store: LarkUserOAuthStore,
     private readonly gateway: LarkUserOAuthGateway = officialGateway,
-  ) {}
+  ) {
+    for (const authorization of this.store.listPendingAuthorizations()) {
+      if (authorization.expiresAt <= Date.now()) {
+        this.store.deletePendingAuthorization(authorization.state);
+        continue;
+      }
+      this.pending.set(authorization.state, authorization);
+    }
+  }
 
   getStatus(appId: string): LarkUserOAuthStatus {
     const normalizedAppId = appId.trim();
@@ -171,7 +183,7 @@ export class LarkUserOAuthService {
     }
     const normalizedRedirectUri = parsedRedirectUri.toString();
     const state = randomUUID();
-    this.pending.set(state, {
+    this.setPendingAuthorization(state, {
       appId: appId.trim(),
       redirectUri: normalizedRedirectUri,
       expiresAt: Date.now() + AUTHORIZATION_STATE_TTL_MS,
@@ -197,7 +209,7 @@ export class LarkUserOAuthService {
     const normalizedAppId = appId.trim();
     const pending = this.pending.get(state);
     if (!pending || pending.appId !== normalizedAppId || pending.expiresAt <= Date.now()) {
-      this.pending.delete(state);
+      this.deletePendingAuthorization(state);
       throw new Error("飞书 OAuth 授权状态无效或已过期，请重新发起授权");
     }
     const { code, callbackState } = parseCodeAndState(codeOrCallbackUrl);
@@ -205,7 +217,7 @@ export class LarkUserOAuthService {
     if (callbackState && callbackState !== state) {
       throw new Error("飞书 OAuth 回调 state 不匹配");
     }
-    this.pending.delete(state);
+    this.deletePendingAuthorization(state);
 
     const config = this.requireConfig(normalizedAppId);
     const token = await this.gateway.exchangeAuthorizationCode({
@@ -245,14 +257,27 @@ export class LarkUserOAuthService {
   ): Promise<LarkUserOAuthStatus> {
     const pending = this.pending.get(state);
     if (!pending || pending.expiresAt <= Date.now()) {
-      this.pending.delete(state);
+      this.deletePendingAuthorization(state);
       throw new Error("飞书 OAuth 授权状态无效或已过期，请重新发起授权");
     }
     return this.completeAuthorization(pending.appId, codeOrCallbackUrl, state);
   }
 
   discardAuthorization(state: string): void {
+    this.deletePendingAuthorization(state);
+  }
+
+  private setPendingAuthorization(state: string, authorization: PendingAuthorization): void {
+    this.pending.set(state, authorization);
+    this.store.setPendingAuthorization({
+      state,
+      ...authorization,
+    } satisfies StoredLarkPendingAuthorization);
+  }
+
+  private deletePendingAuthorization(state: string): void {
     this.pending.delete(state);
+    this.store.deletePendingAuthorization(state);
   }
 
   disconnect(appId: string): LarkUserOAuthStatus {

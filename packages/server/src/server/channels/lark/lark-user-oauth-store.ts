@@ -19,16 +19,26 @@ const StoredLarkUserOAuthCredentialSchema = z.object({
   updatedAt: z.string(),
 });
 
+const StoredLarkPendingAuthorizationSchema = z.object({
+  state: z.string().min(1),
+  appId: z.string().min(1),
+  redirectUri: z.string().url(),
+  expiresAt: z.number().int().positive(),
+});
+
 const LarkUserOAuthStorePayloadSchema = z.object({
   version: z.literal(LARK_USER_OAUTH_STORE_VERSION),
   credentials: z.array(StoredLarkUserOAuthCredentialSchema),
+  pendingAuthorizations: z.array(StoredLarkPendingAuthorizationSchema).default([]),
 });
 
 export type StoredLarkUserOAuthCredential = z.infer<typeof StoredLarkUserOAuthCredentialSchema>;
+export type StoredLarkPendingAuthorization = z.infer<typeof StoredLarkPendingAuthorizationSchema>;
 
 export class LarkUserOAuthStore {
   private readonly filePath: string;
   private credentials = new Map<string, StoredLarkUserOAuthCredential>();
+  private pendingAuthorizations = new Map<string, StoredLarkPendingAuthorization>();
 
   constructor(options: { paseoHome: string }) {
     this.filePath = path.join(options.paseoHome, "channels", "lark-user-oauth.json");
@@ -50,6 +60,21 @@ export class LarkUserOAuthStore {
     this.persist();
   }
 
+  listPendingAuthorizations(): StoredLarkPendingAuthorization[] {
+    return [...this.pendingAuthorizations.values()];
+  }
+
+  setPendingAuthorization(authorization: StoredLarkPendingAuthorization): void {
+    const parsed = StoredLarkPendingAuthorizationSchema.parse(authorization);
+    this.pendingAuthorizations.set(parsed.state, parsed);
+    this.persist();
+  }
+
+  deletePendingAuthorization(state: string): void {
+    if (!this.pendingAuthorizations.delete(state.trim())) return;
+    this.persist();
+  }
+
   private load(): void {
     if (!existsSync(this.filePath)) return;
     ensurePrivateFile(this.filePath);
@@ -58,8 +83,12 @@ export class LarkUserOAuthStore {
         JSON.parse(readFileSync(this.filePath, "utf8")) as unknown,
       );
       this.credentials = new Map(parsed.credentials.map((entry) => [entry.appId, entry]));
+      this.pendingAuthorizations = new Map(
+        parsed.pendingAuthorizations.map((entry) => [entry.state, entry]),
+      );
     } catch {
       this.credentials.clear();
+      this.pendingAuthorizations.clear();
     }
   }
 
@@ -67,6 +96,7 @@ export class LarkUserOAuthStore {
     const payload = LarkUserOAuthStorePayloadSchema.parse({
       version: LARK_USER_OAUTH_STORE_VERSION,
       credentials: [...this.credentials.values()],
+      pendingAuthorizations: [...this.pendingAuthorizations.values()],
     });
     writePrivateFileAtomicSync(this.filePath, `${JSON.stringify(payload, null, 2)}\n`);
   }

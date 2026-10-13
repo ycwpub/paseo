@@ -449,4 +449,55 @@ describe("LarkUserOAuthService", () => {
       email: "test@example.com",
     });
   });
+
+  it("restores an in-progress authorization after the daemon restarts", async () => {
+    const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-lark-oauth-restart-"));
+    roots.push(paseoHome);
+    const channelStore = {
+      getBots: () => [
+        {
+          config: {
+            enabled: true,
+            appId: "cli_test",
+            appSecret: "secret",
+            domain: "feishu",
+          },
+        },
+      ],
+    } as unknown as Pick<LarkChannelStore, "getBots">;
+    const gateway: LarkUserOAuthGateway = {
+      exchangeAuthorizationCode: vi.fn(async () => ({
+        accessToken: "u-token",
+        refreshToken: "r-token",
+        scope: completeScopeGrant,
+      })),
+      refreshAccessToken: vi.fn(),
+      getUserInfo: vi.fn(async () => ({
+        openId: "ou_test",
+        email: "test@example.com",
+        displayName: "张三",
+      })),
+    };
+    const initialService = new LarkUserOAuthService(
+      channelStore,
+      new LarkUserOAuthStore({ paseoHome }),
+      gateway,
+    );
+    const authorization = initialService.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
+    const restartedService = new LarkUserOAuthService(
+      channelStore,
+      new LarkUserOAuthStore({ paseoHome }),
+      gateway,
+    );
+
+    await expect(
+      restartedService.completeAuthorizationCallback("oauth-code", authorization.state),
+    ).resolves.toMatchObject({
+      authorized: true,
+      email: "test@example.com",
+    });
+  });
 });

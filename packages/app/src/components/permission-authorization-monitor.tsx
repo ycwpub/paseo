@@ -24,7 +24,6 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
   const client = useHostRuntimeClient(serverId);
   const connected = useHostRuntimeIsConnected(serverId);
   const [notice, setNotice] = useState<AuthorizationNotice | null>(null);
-  const [authorizationOpened, setAuthorizationOpened] = useState(false);
 
   const check = useCallback(async () => {
     if (!client || !connected) return;
@@ -43,8 +42,8 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
       setNotice({
         key: `lark-user-oauth:${serverId}:${appId}`,
         title: "飞书用户授权已失效",
-        message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。\n\n请先在飞书开发者后台打开应用“${appId}”，在“开发配置 → 安全设置 → 重定向 URL”中添加并保存以下地址；完成发布后，再点击“立即授权”。`,
-        actionLabel: authorizationOpened ? "生成新的授权链接" : "立即授权",
+        message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。\n\n请先在飞书开发者后台打开应用“${appId}”，在“开发配置 → 安全设置 → 重定向 URL”中添加并保存以下地址；完成发布后，再点击“生成新的授权链接”。`,
+        actionLabel: "生成新的授权链接",
         setupLabel: "打开开发者后台",
         setupRedirectUri: DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
         setupAuthorization: async () => await openExternalUrl("https://open.feishu.cn/app"),
@@ -57,22 +56,19 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
             throw new Error(started.error ?? "无法生成飞书授权链接");
           }
           await openExternalUrl(started.authorizationUrl);
-          setAuthorizationOpened(true);
         },
         verifyAuthorization: async () => {
           const verified = await client.verifyLarkUserOAuth({ appId });
           if (verified.error || !verified.status?.authorized) {
             throw new Error(verified.error ?? "飞书授权校验未通过，请重新授权");
           }
-          setAuthorizationOpened(false);
           setNotice(null);
         },
       });
       return;
     }
-    setAuthorizationOpened(false);
     setNotice(null);
-  }, [authorizationOpened, client, connected, serverId]);
+  }, [client, connected, serverId]);
 
   useEffect(() => {
     void check().catch(() => undefined);
@@ -84,7 +80,6 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
   }, [check]);
 
   const dismiss = useCallback(() => {
-    setAuthorizationOpened(false);
     setNotice(null);
   }, []);
   return <AuthorizationNoticeDialog notice={notice} onDismiss={dismiss} />;

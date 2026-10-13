@@ -76,7 +76,8 @@ describe("PermissionAuthorizationMonitor", () => {
     render(<PermissionAuthorizationMonitor />);
 
     expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "立即授权" }));
+    expect(screen.getByRole("button", { name: "生成新的授权链接" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "生成新的授权链接" }));
 
     await waitFor(() => {
       expect(runtime.startLarkUserOAuth).toHaveBeenCalledWith({
@@ -147,7 +148,7 @@ describe("PermissionAuthorizationMonitor", () => {
       error: null,
       status: { authorized: true },
     });
-    fireEvent.click(screen.getByRole("button", { name: "立即授权" }));
+    fireEvent.click(screen.getByRole("button", { name: "已授权，校验" }));
 
     await waitFor(() => {
       expect(screen.queryByText("飞书用户授权已失效")).toBeNull();

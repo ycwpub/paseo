@@ -35,6 +35,7 @@ import { DesktopWindowNameDialog } from "@/components/desktop-window-name-dialog
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
+import { PermissionAuthorizationMonitor } from "@/components/permission-authorization-monitor";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { WindowSidebarMenuToggle } from "@/components/headers/menu-header";
 import { DesktopWindowControls } from "@/components/desktop/window-controls";
@@ -631,6 +632,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <AppDiagnosticHost />
       <DesktopWindowNameDialog />
       <QuittingOverlay />
+      <PermissionAuthorizationMonitor />
     </View>
   );
 

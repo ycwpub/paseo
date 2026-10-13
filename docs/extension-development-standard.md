@@ -227,9 +227,9 @@ the new state, so only the newest browser URL can complete authorization and sta
 cannot be mistaken for the current flow.
 The installed `Paseo-Feishu-Test` build intentionally shares the configured daemon home with the
 regular desktop build. While a test build owns that shared desktop-managed daemon, a concurrently
-running regular Paseo App must attach rather than restarting it with an older bundled Server; test
-builds retain priority so their channel RPCs and OAuth state implementation cannot be replaced
-during verification.
+running regular Paseo App must attach rather than restarting or stopping it with an older bundled
+Server; test builds retain priority so their channel RPCs and OAuth state implementation cannot be
+replaced during verification.
 
 For Project settings, the managed `projectRootPath` is the **项目产物路径** used for Paseo-owned
 configuration, workspace records, and process artifacts. It is distinct from

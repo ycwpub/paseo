@@ -299,6 +299,11 @@ function isTestDesktopBuildId(buildId: string): boolean {
   return buildId.toLowerCase().includes("test");
 }
 
+function isRegularDesktopAppAttachedToTestDaemon(): boolean {
+  const daemonBuildId = readDesktopBuildIdFromPidLock();
+  return Boolean(!isTestDesktopBuild() && daemonBuildId && isTestDesktopBuildId(daemonBuildId));
+}
+
 // ---------------------------------------------------------------------------
 // Daemon lifecycle
 // ---------------------------------------------------------------------------
@@ -435,6 +440,12 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     desktopManaged: current.desktopManaged,
   });
   if (current.status === "running") {
+    if (isRegularDesktopAppAttachedToTestDaemon()) {
+      logDesktopDaemonLifecycle("regular desktop attached to test-build daemon", {
+        daemonBuildId: readDesktopBuildIdFromPidLock(),
+      });
+      return current;
+    }
     if (shouldRestartForVersion(current)) {
       logDesktopDaemonLifecycle("daemon version mismatch, restarting", {
         appVersion: normalizeVersion(resolveDesktopAppVersion()),
@@ -567,6 +578,13 @@ export async function stopDesktopDaemon(
   reason: DesktopDaemonStopReason = DEFAULT_DESKTOP_DAEMON_STOP_REASON,
 ): Promise<DesktopDaemonStatus> {
   const status = await resolveDesktopDaemonStatus();
+  if (isRegularDesktopAppAttachedToTestDaemon()) {
+    logDesktopDaemonLifecycle("regular desktop leaving test-build daemon running", {
+      reason,
+      daemonBuildId: readDesktopBuildIdFromPidLock(),
+    });
+    return status;
+  }
   if (status.status !== "running") {
     logDesktopDaemonLifecycle("desktop daemon stop skipped", {
       reason,

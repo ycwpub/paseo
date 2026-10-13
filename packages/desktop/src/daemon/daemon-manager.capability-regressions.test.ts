@@ -255,6 +255,25 @@ describe("daemon-manager capability regressions", () => {
     expect(mocks.spawnProcess).not.toHaveBeenCalled();
   });
 
+  it("does not stop a test-build daemon when a regular desktop app quits", async () => {
+    setProcessRuntime({
+      execPath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+      resourcesPath: "/Applications/Paseo.app/Contents/Resources",
+    });
+    writeDesktopBuildMarker(
+      "1.2.3|/Applications/Paseo-Feishu-Test.app/Contents/MacOS/Paseo-Feishu-Test",
+    );
+    mocks.runExternalCliJsonCommand.mockResolvedValueOnce(runningStatus({}));
+
+    await expect(
+      createDaemonCommandHandlers().stop_desktop_daemon({ reason: "quit" }),
+    ).resolves.toMatchObject({
+      serverId: "server-1",
+      status: "running",
+    });
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenCalledTimes(1);
+  });
+
   it("does not replace an unmarked daemon for regular packaged builds", async () => {
     setProcessRuntime({
       execPath: "/tmp/Paseo.app/Contents/MacOS/Paseo",

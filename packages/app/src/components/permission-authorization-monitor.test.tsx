@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { PermissionAuthorizationMonitor } from "./permission-authorization-monitor";
@@ -13,6 +13,7 @@ const runtime = vi.hoisted(() => ({
   getLarkChannelStatus: vi.fn(),
   getLarkUserOAuthStatus: vi.fn(),
   startLarkUserOAuth: vi.fn(),
+  verifyLarkUserOAuth: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
 const theme = vi.hoisted(() => ({
@@ -54,6 +55,7 @@ vi.mock("@/utils/open-external-url", () => ({ openExternalUrl }));
 
 describe("PermissionAuthorizationMonitor", () => {
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
   });
 
@@ -85,5 +87,53 @@ describe("PermissionAuthorizationMonitor", () => {
         "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test",
       );
     });
+  });
+
+  test("verifies authorization with the daemon after the user returns from OAuth", async () => {
+    runtime.getLarkChannelStatus.mockResolvedValue({
+      error: null,
+      status: { bots: [{ id: "bot-1", name: "结算机器人", appId: "cli_test" }] },
+    });
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { needsAuthorization: true },
+    });
+    runtime.startLarkUserOAuth.mockResolvedValue({
+      error: null,
+      authorizationUrl: "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test",
+    });
+    runtime.verifyLarkUserOAuth.mockResolvedValue({
+      error: null,
+      status: { authorized: true },
+    });
+
+    render(<PermissionAuthorizationMonitor />);
+
+    expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "已授权，校验" }));
+
+    await waitFor(() => {
+      expect(runtime.verifyLarkUserOAuth).toHaveBeenCalledWith({ appId: "cli_test" });
+    });
+  });
+
+  test("detects a remotely revoked grant during the scheduled health check", async () => {
+    runtime.getLarkChannelStatus.mockResolvedValue({
+      error: null,
+      status: { bots: [{ id: "bot-1", name: "结算机器人", appId: "cli_test" }] },
+    });
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { needsAuthorization: false },
+    });
+    runtime.verifyLarkUserOAuth.mockResolvedValue({
+      error: "飞书用户身份未授权或已失效",
+      status: { authorized: false },
+    });
+
+    render(<PermissionAuthorizationMonitor />);
+
+    expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
+    expect(runtime.verifyLarkUserOAuth).toHaveBeenCalledWith({ appId: "cli_test" });
   });
 });

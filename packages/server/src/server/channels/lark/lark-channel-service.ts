@@ -875,6 +875,12 @@ export class LarkChannelService {
     return this.hydrateUserOAuthStatus(appId);
   }
 
+  async verifyUserOAuth(appId: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    await this.userOAuthService.verifyAuthorization(appId);
+    return this.hydrateUserOAuthStatus(appId);
+  }
+
   startUserOAuth(appId: string, redirectUri: string) {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
     return this.userOAuthService.startAuthorization(appId, redirectUri);

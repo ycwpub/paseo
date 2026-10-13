@@ -722,6 +722,10 @@ type LarkUserOAuthGetStatusPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.user_oauth.get_status.response" }
 >["payload"];
+type LarkUserOAuthVerifyPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.user_oauth.verify.response" }
+>["payload"];
 type LarkUserOAuthStartPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.user_oauth.start.response" }
@@ -1207,6 +1211,10 @@ export interface AddLarkDirectoryPrivateUserOptions {
   requestId?: string;
 }
 export interface LarkUserOAuthGetStatusOptions {
+  appId: string;
+  requestId?: string;
+}
+export interface LarkUserOAuthVerifyOptions {
   appId: string;
   requestId?: string;
 }
@@ -7051,6 +7059,12 @@ export class DaemonClient {
     options: LarkUserOAuthGetStatusOptions,
   ): Promise<LarkUserOAuthGetStatusPayload> {
     return this.resourceRpc.getLarkUserOAuthStatus(options);
+  }
+
+  async verifyLarkUserOAuth(
+    options: LarkUserOAuthVerifyOptions,
+  ): Promise<LarkUserOAuthVerifyPayload> {
+    return this.resourceRpc.verifyLarkUserOAuth(options);
   }
 
   async startLarkUserOAuth(options: LarkUserOAuthStartOptions): Promise<LarkUserOAuthStartPayload> {

@@ -14,12 +14,14 @@ interface AuthorizationNotice {
   message: string;
   actionLabel: string;
   openAuthorization: () => Promise<void>;
+  verifyAuthorization?: () => Promise<void>;
 }
 
 function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
   const client = useHostRuntimeClient(serverId);
   const connected = useHostRuntimeIsConnected(serverId);
   const [notice, setNotice] = useState<AuthorizationNotice | null>(null);
+  const [authorizationOpened, setAuthorizationOpened] = useState(false);
 
   const check = useCallback(async () => {
     if (!client || !connected) return;
@@ -29,12 +31,17 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
       const appId = bot.appId?.trim();
       if (!appId) continue;
       const oauth = await client.getLarkUserOAuthStatus({ appId });
-      if (oauth.error || !oauth.status?.needsAuthorization) continue;
+      const requiresAuthorization =
+        Boolean(oauth.error) ||
+        !oauth.status ||
+        oauth.status.needsAuthorization ||
+        !(await client.verifyLarkUserOAuth({ appId })).status?.authorized;
+      if (!requiresAuthorization) continue;
       setNotice({
         key: `lark-user-oauth:${serverId}:${appId}`,
         title: "飞书用户授权已失效",
         message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。`,
-        actionLabel: "立即授权",
+        actionLabel: authorizationOpened ? "重新打开授权链接" : "立即授权",
         openAuthorization: async () => {
           const started = await client.startLarkUserOAuth({
             appId,
@@ -44,11 +51,20 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
             throw new Error(started.error ?? "无法生成飞书授权链接");
           }
           await openExternalUrl(started.authorizationUrl);
+          setAuthorizationOpened(true);
+        },
+        verifyAuthorization: async () => {
+          const verified = await client.verifyLarkUserOAuth({ appId });
+          if (verified.error || !verified.status?.authorized) {
+            throw new Error(verified.error ?? "飞书授权校验未通过，请重新授权");
+          }
+          setAuthorizationOpened(false);
+          setNotice(null);
         },
       });
       return;
     }
-  }, [client, connected, serverId]);
+  }, [authorizationOpened, client, connected, serverId]);
 
   useEffect(() => {
     void check().catch(() => undefined);
@@ -59,7 +75,10 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
     return () => clearInterval(timer);
   }, [check]);
 
-  const dismiss = useCallback(() => setNotice(null), []);
+  const dismiss = useCallback(() => {
+    setAuthorizationOpened(false);
+    setNotice(null);
+  }, []);
   return <AuthorizationNoticeDialog notice={notice} onDismiss={dismiss} />;
 }
 
@@ -98,6 +117,7 @@ function AuthorizationNoticeDialog({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const authorize = useCallback(async () => {
     if (!notice) return;
     setError(null);
@@ -111,6 +131,19 @@ function AuthorizationNoticeDialog({
     }
   }, [notice]);
   const authorizePressed = useCallback(() => void authorize(), [authorize]);
+  const verify = useCallback(async () => {
+    if (!notice?.verifyAuthorization) return;
+    setError(null);
+    setVerifying(true);
+    try {
+      await notice.verifyAuthorization();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setVerifying(false);
+    }
+  }, [notice]);
+  const verifyPressed = useCallback(() => void verify(), [verify]);
   if (!notice) return null;
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onDismiss}>
@@ -133,6 +166,16 @@ function AuthorizationNoticeDialog({
             >
               <Text style={styles.primaryText}>{opening ? "正在打开…" : notice.actionLabel}</Text>
             </Pressable>
+            {notice.verifyAuthorization ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={verifying}
+                onPress={verifyPressed}
+                style={styles.primary}
+              >
+                <Text style={styles.primaryText}>{verifying ? "正在校验…" : "已授权，校验"}</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </View>

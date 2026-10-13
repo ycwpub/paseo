@@ -332,6 +332,68 @@ describe("LarkUserOAuthService", () => {
     });
   });
 
+  it("verifies an apparently valid grant with the Lark user API", async () => {
+    const getUserInfo = vi.fn(async () => ({
+      openId: "ou_verified",
+      email: "verified@example.com",
+      displayName: "已授权用户",
+    }));
+    const { gateway, service, store } = createHarness({ getUserInfo });
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-current",
+      refreshToken: "r-token-current",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: completeScopeGrant,
+      openId: "ou_test",
+      email: "test@example.com",
+      displayName: "张三",
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await expect(service.verifyAuthorization("cli_test")).resolves.toMatchObject({
+      authorized: true,
+      openId: "ou_verified",
+      email: "verified@example.com",
+    });
+    expect(gateway.getUserInfo).toHaveBeenCalledWith({
+      config: expect.objectContaining({ appId: "cli_test" }),
+      accessToken: "u-token-current",
+    });
+  });
+
+  it("clears a rejected grant so a real verification failure requests new authorization", async () => {
+    const { service, store } = createHarness({
+      getUserInfo: vi.fn(async () => {
+        throw new Error("user token rejected");
+      }),
+    });
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-current",
+      refreshToken: "r-token-current",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: completeScopeGrant,
+      openId: "ou_test",
+      email: "test@example.com",
+      displayName: "张三",
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await expect(service.verifyAuthorization("cli_test")).rejects.toBeInstanceOf(
+      LarkUserAuthorizationRequiredError,
+    );
+    expect(store.get("cli_test")).toBeNull();
+    expect(service.getStatus("cli_test")).toMatchObject({
+      authorized: false,
+      needsAuthorization: true,
+    });
+  });
+
   it("removes invalid credentials and requires a new authorization when refresh fails", async () => {
     const { service, store } = createHarness({
       refreshAccessToken: vi.fn(async () => {

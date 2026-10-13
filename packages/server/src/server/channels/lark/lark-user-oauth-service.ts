@@ -283,6 +283,35 @@ export class LarkUserOAuthService {
     return refresh;
   }
 
+  async verifyAuthorization(appId: string): Promise<LarkUserOAuthStatus> {
+    const normalizedAppId = appId.trim();
+    const accessToken = await this.getValidUserAccessToken(normalizedAppId);
+    try {
+      const user = await this.gateway.getUserInfo({
+        config: this.requireConfig(normalizedAppId),
+        accessToken,
+      });
+      const credential = this.store.get(normalizedAppId);
+      if (!credential) {
+        throw new LarkUserAuthorizationRequiredError(normalizedAppId);
+      }
+      this.store.set({
+        ...credential,
+        openId: user.openId?.trim() || credential.openId,
+        email: user.email?.trim() || credential.email,
+        displayName: user.displayName?.trim() || credential.displayName,
+        updatedAt: new Date().toISOString(),
+      });
+      return this.getStatus(normalizedAppId);
+    } catch (error) {
+      if (error instanceof LarkUserAuthorizationRequiredError) {
+        throw error;
+      }
+      this.store.delete(normalizedAppId);
+      throw new LarkUserAuthorizationRequiredError(normalizedAppId, { cause: error });
+    }
+  }
+
   private async refreshCredential(
     credential: StoredLarkUserOAuthCredential,
     requiredScopes: readonly string[],

@@ -55,6 +55,17 @@ export function useLarkUserOAuth(serverId: string, appId: string) {
     },
   });
 
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!client) throw new Error("主机未连接");
+      const result = await client.verifyLarkUserOAuth({ appId: normalizedAppId });
+      if (result.error) throw new Error(result.error);
+      if (!result.status) throw new Error("飞书用户授权状态缺失");
+      return result.status;
+    },
+    onSuccess: applyStatus,
+  });
+
   const completeMutation = useMutation({
     mutationFn: async (input: { codeOrCallbackUrl: string; state: string }) => {
       if (!client) throw new Error("主机未连接");
@@ -86,12 +97,20 @@ export function useLarkUserOAuth(serverId: string, appId: string) {
     isLoading: query.isLoading,
     error: query.error,
     start: startMutation.mutateAsync,
+    verify: verifyMutation.mutateAsync,
     complete: completeMutation.mutateAsync,
     disconnect: disconnectMutation.mutateAsync,
     refreshStatus: query.refetch,
     isMutating:
-      startMutation.isPending || completeMutation.isPending || disconnectMutation.isPending,
+      startMutation.isPending ||
+      verifyMutation.isPending ||
+      completeMutation.isPending ||
+      disconnectMutation.isPending,
     mutationError:
-      startMutation.error ?? completeMutation.error ?? disconnectMutation.error ?? null,
+      startMutation.error ??
+      verifyMutation.error ??
+      completeMutation.error ??
+      disconnectMutation.error ??
+      null,
   };
 }

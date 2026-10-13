@@ -54,6 +54,7 @@ import type {
   LarkUserOAuthCompleteOptions,
   LarkUserOAuthDisconnectOptions,
   LarkUserOAuthGetStatusOptions,
+  LarkUserOAuthVerifyOptions,
   LarkUserOAuthStartOptions,
   RejectLarkPairingOptions,
   ReplyLarkSubstituteOptions,
@@ -1004,6 +1005,17 @@ export class DaemonResourceRpcClient {
         appId: options.appId,
       },
       responseType: "channel.lark.user_oauth.get_status.response",
+    });
+  }
+
+  verifyLarkUserOAuth(options: LarkUserOAuthVerifyOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.user_oauth.verify.request",
+        appId: options.appId,
+      },
+      responseType: "channel.lark.user_oauth.verify.response",
     });
   }
 

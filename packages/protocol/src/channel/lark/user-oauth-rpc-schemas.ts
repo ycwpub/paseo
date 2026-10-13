@@ -39,6 +39,21 @@ export const LarkUserOAuthGetStatusResponseSchema = z.object({
   }),
 });
 
+export const LarkUserOAuthVerifyRequestSchema = z.object({
+  type: z.literal("channel.lark.user_oauth.verify.request"),
+  requestId: z.string(),
+  appId: z.string().trim().min(1),
+});
+
+export const LarkUserOAuthVerifyResponseSchema = z.object({
+  type: z.literal("channel.lark.user_oauth.verify.response"),
+  payload: z.object({
+    requestId: z.string(),
+    status: LarkUserOAuthStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const LarkUserOAuthStartRequestSchema = z.object({
   type: z.literal("channel.lark.user_oauth.start.request"),
   requestId: z.string(),

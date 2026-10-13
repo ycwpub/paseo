@@ -47,6 +47,7 @@ type LarkChannelResponse = Extract<
       | "channel.lark.directory.scan_private_users.response"
       | "channel.lark.directory.add_private_user.response"
       | "channel.lark.user_oauth.get_status.response"
+      | "channel.lark.user_oauth.verify.response"
       | "channel.lark.user_oauth.start.response"
       | "channel.lark.user_oauth.complete.response"
       | "channel.lark.user_oauth.disconnect.response"
@@ -84,6 +85,7 @@ type LarkDirectoryOrOAuthRequest = Extract<
       | "channel.lark.directory.scan_private_users.request"
       | "channel.lark.directory.add_private_user.request"
       | "channel.lark.user_oauth.get_status.request"
+      | "channel.lark.user_oauth.verify.request"
       | "channel.lark.user_oauth.start.request"
       | "channel.lark.user_oauth.complete.request"
       | "channel.lark.user_oauth.disconnect.request";
@@ -524,6 +526,16 @@ export class LarkChannelSession {
           },
         });
         return;
+      case "channel.lark.user_oauth.verify.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.verify.response",
+          payload: {
+            requestId: message.requestId,
+            status: await this.service.verifyUserOAuth(message.appId),
+            error: null,
+          },
+        });
+        return;
       case "channel.lark.user_oauth.start.request": {
         const authorization = this.service.startUserOAuth(message.appId, message.redirectUri);
         this.emitResponse({
@@ -757,6 +769,12 @@ export class LarkChannelSession {
       case "channel.lark.user_oauth.get_status.request":
         this.emitResponse({
           type: "channel.lark.user_oauth.get_status.response",
+          payload: { requestId: message.requestId, status: null, error },
+        });
+        return;
+      case "channel.lark.user_oauth.verify.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.verify.response",
           payload: { requestId: message.requestId, status: null, error },
         });
         return;

@@ -4,6 +4,7 @@ import {
   LarkUserOAuthCompleteRequestSchema,
   LarkUserOAuthGetStatusResponseSchema,
   LarkUserOAuthStartRequestSchema,
+  LarkUserOAuthVerifyRequestSchema,
 } from "./user-oauth-rpc-schemas.js";
 
 describe("Lark user OAuth RPC schemas", () => {
@@ -42,6 +43,19 @@ describe("Lark user OAuth RPC schemas", () => {
         state: "",
       }),
     ).toThrow();
+  });
+
+  it("accepts an explicit server-side authorization verification request", () => {
+    expect(
+      LarkUserOAuthVerifyRequestSchema.parse({
+        type: "channel.lark.user_oauth.verify.request",
+        requestId: "request-verify",
+        appId: "cli_test",
+      }),
+    ).toMatchObject({
+      type: "channel.lark.user_oauth.verify.request",
+      appId: "cli_test",
+    });
   });
 
   it("never includes access or refresh tokens in the public status response", () => {

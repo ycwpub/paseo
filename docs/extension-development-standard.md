@@ -201,8 +201,9 @@ credential mode. Do not substitute the separate `bytedcli feishu login` credenti
 Permission failures must not remain visible only inside a task or settings form. The App raises
 cloud-knowledge authorization requests and invalid Lark user OAuth status as a global actionable
 authorization dialog. Every connected Host checks its configured Lark bots on connection and once
-per day; the dialog opens a freshly generated OAuth URL and leaves the original task error intact
-for diagnosis.
+per day using a real user-token API validation. After opening a new OAuth URL, the dialog exposes
+“已授权，校验”, which refreshes the token and verifies it against Lark before closing. The original
+task error remains intact for diagnosis.
 
 Project-scoped plugin management reuses the Workspace sidebar Host filter. An empty filter includes
 all Hosts; a non-empty filter includes the selected Hosts. The project list keeps Host identity in

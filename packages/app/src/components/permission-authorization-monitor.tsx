@@ -14,6 +14,9 @@ interface AuthorizationNotice {
   message: string;
   actionLabel: string;
   openAuthorization: () => Promise<void>;
+  setupAuthorization?: () => Promise<void>;
+  setupLabel?: string;
+  setupRedirectUri?: string;
   verifyAuthorization?: () => Promise<void>;
 }
 
@@ -40,8 +43,11 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
       setNotice({
         key: `lark-user-oauth:${serverId}:${appId}`,
         title: "飞书用户授权已失效",
-        message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。`,
+        message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。\n\n请先在飞书开发者后台打开应用“${appId}”，在“开发配置 → 安全设置 → 重定向 URL”中添加并保存以下地址；完成发布后，再点击“立即授权”。`,
         actionLabel: authorizationOpened ? "重新打开授权链接" : "立即授权",
+        setupLabel: "打开开发者后台",
+        setupRedirectUri: DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+        setupAuthorization: async () => await openExternalUrl("https://open.feishu.cn/app"),
         openAuthorization: async () => {
           const started = await client.startLarkUserOAuth({
             appId,
@@ -117,7 +123,21 @@ function AuthorizationNoticeDialog({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const setup = useCallback(async () => {
+    if (!notice?.setupAuthorization) return;
+    setError(null);
+    setSettingUp(true);
+    try {
+      await notice.setupAuthorization();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSettingUp(false);
+    }
+  }, [notice]);
+  const setupPressed = useCallback(() => void setup(), [setup]);
   const authorize = useCallback(async () => {
     if (!notice) return;
     setError(null);
@@ -153,11 +173,28 @@ function AuthorizationNoticeDialog({
           <Text selectable style={styles.message}>
             {notice.message}
           </Text>
+          {notice.setupRedirectUri ? (
+            <Text selectable style={styles.redirectUri}>
+              {notice.setupRedirectUri}
+            </Text>
+          ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.actions}>
             <Pressable accessibilityRole="button" onPress={onDismiss} style={styles.secondary}>
               <Text style={styles.secondaryText}>稍后处理</Text>
             </Pressable>
+            {notice.setupAuthorization ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={settingUp}
+                onPress={setupPressed}
+                style={styles.secondary}
+              >
+                <Text style={styles.secondaryText}>
+                  {settingUp ? "正在打开…" : (notice.setupLabel ?? "打开设置")}
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               disabled={opening}
@@ -219,6 +256,7 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
   message: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  redirectUri: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   error: { color: theme.colors.destructive, fontSize: theme.fontSize.sm },
   actions: { flexDirection: "row", gap: theme.spacing[2], justifyContent: "flex-end" },
   primary: {

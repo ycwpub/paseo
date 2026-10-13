@@ -136,4 +136,21 @@ describe("PermissionAuthorizationMonitor", () => {
     expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
     expect(runtime.verifyLarkUserOAuth).toHaveBeenCalledWith({ appId: "cli_test" });
   });
+
+  test("guides the user to configure the required redirect URL before authorizing", async () => {
+    runtime.getLarkChannelStatus.mockResolvedValue({
+      error: null,
+      status: { bots: [{ id: "bot-1", name: "结算机器人", appId: "cli_test" }] },
+    });
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { needsAuthorization: true },
+    });
+
+    render(<PermissionAuthorizationMonitor />);
+
+    expect(await screen.findByText("http://127.0.0.1:6767/oauth/lark")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开开发者后台" }));
+    expect(openExternalUrl).toHaveBeenCalledWith("https://open.feishu.cn/app");
+  });
 });

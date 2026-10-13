@@ -203,7 +203,12 @@ cloud-knowledge authorization requests and invalid Lark user OAuth status as a g
 authorization dialog. Every connected Host checks its configured Lark bots on connection and once
 per day using a real user-token API validation. After opening a new OAuth URL, the dialog exposes
 “已授权，校验”, which refreshes the token and verifies it against Lark before closing. The original
-task error remains intact for diagnosis.
+task error remains intact for diagnosis. Lark user OAuth additionally requires the callback URL
+`http://127.0.0.1:6767/oauth/lark` to be registered for the selected application under “开发配置 →
+安全设置 → 重定向 URL”. The Lark SDK does not provide an API to register this URL; the authorization
+dialog must therefore show the selectable URL, explain the required console path, and provide an
+“打开开发者后台” action before opening an OAuth link. It must not misleadingly imply that merely
+reopening the OAuth URL can fix Lark error `20029` (invalid redirect URL).
 
 Project-scoped plugin management reuses the Workspace sidebar Host filter. An empty filter includes
 all Hosts; a non-empty filter includes the selected Hosts. The project list keeps Host identity in

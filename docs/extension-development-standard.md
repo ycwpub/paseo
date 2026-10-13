@@ -213,6 +213,9 @@ Every saved bot's configuration page also provides a one-click live user-permiss
 call the real user-token validation endpoint rather than relying on stored expiry timestamps, show
 success feedback when valid, and raise the same actionable authorization dialog when the grant is
 expired, revoked, or missing required scopes.
+The global authorization dialog must clear itself after any subsequent live check reports that all
+configured bot grants are valid; it must never leave a stale “已失效” dialog that leads users to
+reuse an old browser authorization URL.
 OAuth authorization state is a one-time capability with a 15-minute TTL. It must be stored in the
 same private Lark OAuth store as the credentials so a desktop-managed daemon restart, including a
 test/production desktop build handoff, does not invalidate an in-progress browser authorization.

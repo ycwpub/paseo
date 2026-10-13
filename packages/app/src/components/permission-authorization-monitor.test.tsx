@@ -117,6 +117,42 @@ describe("PermissionAuthorizationMonitor", () => {
     });
   });
 
+  test("dismisses a stale authorization dialog after a newly opened flow becomes valid", async () => {
+    runtime.getLarkChannelStatus.mockResolvedValue({
+      error: null,
+      status: { bots: [{ id: "bot-1", name: "结算机器人", appId: "cli_test" }] },
+    });
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { needsAuthorization: true },
+    });
+    runtime.verifyLarkUserOAuth.mockResolvedValue({
+      error: null,
+      status: { authorized: false },
+    });
+    runtime.startLarkUserOAuth.mockResolvedValue({
+      error: null,
+      authorizationUrl: "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=fresh",
+    });
+
+    render(<PermissionAuthorizationMonitor />);
+    expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
+
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { needsAuthorization: false },
+    });
+    runtime.verifyLarkUserOAuth.mockResolvedValue({
+      error: null,
+      status: { authorized: true },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "立即授权" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("飞书用户授权已失效")).toBeNull();
+    });
+  });
+
   test("detects a remotely revoked grant during the scheduled health check", async () => {
     runtime.getLarkChannelStatus.mockResolvedValue({
       error: null,

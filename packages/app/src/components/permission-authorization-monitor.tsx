@@ -70,6 +70,8 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
       });
       return;
     }
+    setAuthorizationOpened(false);
+    setNotice(null);
   }, [authorizationOpened, client, connected, serverId]);
 
   useEffect(() => {

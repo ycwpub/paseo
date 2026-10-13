@@ -450,6 +450,25 @@ describe("LarkUserOAuthService", () => {
     });
   });
 
+  it("invalidates an older authorization link when generating a new link for the same app", async () => {
+    const { service } = createHarness();
+    const olderAuthorization = service.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
+    const newerAuthorization = service.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
+
+    await expect(
+      service.completeAuthorizationCallback("oauth-code", olderAuthorization.state),
+    ).rejects.toThrow("授权状态无效或已过期");
+    await expect(
+      service.completeAuthorizationCallback("oauth-code", newerAuthorization.state),
+    ).resolves.toMatchObject({ authorized: true });
+  });
+
   it("restores an in-progress authorization after the daemon restarts", async () => {
     const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-lark-oauth-restart-"));
     roots.push(paseoHome);

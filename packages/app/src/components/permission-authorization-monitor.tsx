@@ -44,7 +44,7 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
         key: `lark-user-oauth:${serverId}:${appId}`,
         title: "飞书用户授权已失效",
         message: `机器人“${bot.name ?? appId}”需要重新授权，群消息扫描、替身和相关任务将在授权前无法继续。\n\n请先在飞书开发者后台打开应用“${appId}”，在“开发配置 → 安全设置 → 重定向 URL”中添加并保存以下地址；完成发布后，再点击“立即授权”。`,
-        actionLabel: authorizationOpened ? "重新打开授权链接" : "立即授权",
+        actionLabel: authorizationOpened ? "生成新的授权链接" : "立即授权",
         setupLabel: "打开开发者后台",
         setupRedirectUri: DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
         setupAuthorization: async () => await openExternalUrl("https://open.feishu.cn/app"),

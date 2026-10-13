@@ -181,10 +181,12 @@ export class LarkUserOAuthService {
     if (!["http:", "https:"].includes(parsedRedirectUri.protocol)) {
       throw new Error("飞书 OAuth 回调地址必须使用 HTTP 或 HTTPS");
     }
+    const normalizedAppId = appId.trim();
     const normalizedRedirectUri = parsedRedirectUri.toString();
     const state = randomUUID();
+    this.deletePendingAuthorizationsForApp(normalizedAppId);
     this.setPendingAuthorization(state, {
-      appId: appId.trim(),
+      appId: normalizedAppId,
       redirectUri: normalizedRedirectUri,
       expiresAt: Date.now() + AUTHORIZATION_STATE_TTL_MS,
     });
@@ -278,6 +280,15 @@ export class LarkUserOAuthService {
   private deletePendingAuthorization(state: string): void {
     this.pending.delete(state);
     this.store.deletePendingAuthorization(state);
+  }
+
+  private deletePendingAuthorizationsForApp(appId: string): void {
+    for (const [state, authorization] of this.pending) {
+      if (authorization.appId === appId) {
+        this.pending.delete(state);
+      }
+    }
+    this.store.deletePendingAuthorizationsForApp(appId);
   }
 
   disconnect(appId: string): LarkUserOAuthStatus {

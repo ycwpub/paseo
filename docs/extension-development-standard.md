@@ -221,6 +221,10 @@ same private Lark OAuth store as the credentials so a desktop-managed daemon res
 test/production desktop build handoff, does not invalidate an in-progress browser authorization.
 The state is removed atomically before exchanging the returned authorization code and expired
 states are removed during service startup.
+When a user needs to replace an expired authorization link, the dialog must explicitly offer
+“生成新的授权链接”. Generating one invalidates every older pending link for that App before storing
+the new state, so only the newest browser URL can complete authorization and stale callback URLs
+cannot be mistaken for the current flow.
 
 For Project settings, the managed `projectRootPath` is the **项目产物路径** used for Paseo-owned
 configuration, workspace records, and process artifacts. It is distinct from

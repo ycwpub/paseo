@@ -87,6 +87,7 @@ describe("PermissionAuthorizationMonitor", () => {
         "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=test",
       );
     });
+    expect(screen.getByRole("button", { name: "生成新的授权链接" })).toBeTruthy();
   });
 
   test("verifies authorization with the daemon after the user returns from OAuth", async () => {

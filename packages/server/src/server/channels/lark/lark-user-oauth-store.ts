@@ -75,6 +75,17 @@ export class LarkUserOAuthStore {
     this.persist();
   }
 
+  deletePendingAuthorizationsForApp(appId: string): void {
+    const normalizedAppId = appId.trim();
+    let changed = false;
+    for (const [state, authorization] of this.pendingAuthorizations) {
+      if (authorization.appId !== normalizedAppId) continue;
+      this.pendingAuthorizations.delete(state);
+      changed = true;
+    }
+    if (changed) this.persist();
+  }
+
   private load(): void {
     if (!existsSync(this.filePath)) return;
     ensurePrivateFile(this.filePath);

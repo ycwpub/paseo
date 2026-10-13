@@ -222,6 +222,12 @@ test/production desktop build handoff, does not invalidate an in-progress browse
 The state is removed atomically before exchanging the returned authorization code and expired
 states are removed during service startup.
 
+For Project settings, the managed `projectRootPath` is the **项目产物路径** used for Paseo-owned
+configuration, workspace records, and process artifacts. It is distinct from
+`projectSourceDirectory`: for a single-directory Project, the selected source directory must be
+the editable project-directory value and the base for relative project resources, while the managed
+artifact path remains visible only as the project artifact path.
+
 Project-scoped plugin management reuses the Workspace sidebar Host filter. An empty filter includes
 all Hosts; a non-empty filter includes the selected Hosts. The project list keeps Host identity in
 each row, and create, edit, delete, navigation, Provider loading, and plugin RPCs run against the

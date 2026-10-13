@@ -66,7 +66,7 @@ describe("translation resources", () => {
     );
     expect(zhCN.settings.project.backToProjects).toBe("返回项目列表");
     expect(zhCN.settings.project.projectId).toBe("项目 ID");
-    expect(zhCN.settings.project.projectPath).toBe("项目路径");
+    expect(zhCN.settings.project.projectPath).toBe("项目产物路径");
     expect(zhCN.settings.project.memory.title).toBe("项目记忆");
     expect(zhCN.settings.project.memory.policyTitle).toBe("记忆规范");
     expect(zhCN.settings.project.memory.enabledTitle).toBe("为当前项目开启记忆");

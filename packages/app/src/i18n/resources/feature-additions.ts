@@ -353,7 +353,7 @@ export const featureTranslationAdditions = {
         switchHost: "Switch host",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "No Project directory",
           description:
@@ -804,7 +804,7 @@ export const featureTranslationAdditions = {
         switchHost: "تبديل المضيف",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "لا يوجد مجلد للمشروع",
           description:
@@ -1257,7 +1257,7 @@ export const featureTranslationAdditions = {
         switchHost: "Cambiar de anfitrión",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "El proyecto no tiene directorio",
           description:
@@ -1710,7 +1710,7 @@ export const featureTranslationAdditions = {
         switchHost: "Changer d'hôte",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "Aucun dossier de projet",
           description:
@@ -2161,7 +2161,7 @@ export const featureTranslationAdditions = {
         switchHost: "ホストを切り替え",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "プロジェクトディレクトリがありません",
           description:
@@ -2613,7 +2613,7 @@ export const featureTranslationAdditions = {
         switchHost: "Switch host",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "프로젝트 디렉터리가 없습니다",
           description:
@@ -3064,7 +3064,7 @@ export const featureTranslationAdditions = {
         switchHost: "Trocar host",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "O projeto não tem diretório",
           description:
@@ -3518,7 +3518,7 @@ export const featureTranslationAdditions = {
         switchHost: "Switch host",
         projectId: "Project ID",
         parentProjectId: "Parent Project ID",
-        projectPath: "Project path",
+        projectPath: "Project artifact path",
         directoryless: {
           title: "No Project directory",
           description:
@@ -3975,7 +3975,7 @@ export const featureTranslationAdditions = {
         switchHost: "切换主机",
         projectId: "项目 ID",
         parentProjectId: "父项目 ID",
-        projectPath: "项目路径",
+        projectPath: "项目产物路径",
         directoryless: {
           title: "项目尚未关联目录",
           description:

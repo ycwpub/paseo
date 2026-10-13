@@ -8,6 +8,7 @@ function descriptor(
   key: string,
   root: string,
   iconRevision?: string,
+  sourceDirectory?: string,
 ): ProjectDescriptor {
   return {
     projectId: id,
@@ -16,6 +17,7 @@ function descriptor(
     projectCustomName: null,
     projectIconRevision: iconRevision,
     projectRootPath: root,
+    ...(sourceDirectory ? { projectSourceDirectory: sourceDirectory } : {}),
     projectKind: "git",
   };
 }
@@ -116,6 +118,33 @@ describe("buildProjects", () => {
     });
 
     expect(result.projects[0]?.hosts[0]?.repoRoot).toBe("/a/new-project");
+  });
+
+  test("uses a single-directory Project's selected source directory instead of its artifact path", () => {
+    const result = buildProjects({
+      hosts: [
+        {
+          serverId: "host-a",
+          serverName: "Host A",
+          isOnline: true,
+          projects: [
+            descriptor(
+              "prj_a",
+              "local-a",
+              "/home/user/.paseo/projects/prj_a",
+              undefined,
+              "/workspace/selected-project",
+            ),
+          ],
+          workspaces: [workspace("ws-a", "prj_a", "/home/user/.paseo/projects/prj_a")],
+        },
+      ],
+    });
+
+    expect(result.projects[0]?.hosts[0]).toMatchObject({
+      projectPath: "/home/user/.paseo/projects/prj_a",
+      repoRoot: "/workspace/selected-project",
+    });
   });
 
   test("looks up a grouped project by host-local identity", () => {

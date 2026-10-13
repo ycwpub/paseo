@@ -26,6 +26,8 @@ export interface ProjectHostEntry {
   isOnline: boolean;
   /** Missing on legacy summaries; callers fall back to repoRoot. */
   projectPath?: string;
+  /** Selected source directory for a single-directory Project. */
+  projectSourceDirectory?: string;
   repoRoot: string;
   /** Missing on legacy summaries; equivalent to a directory-backed Project. */
   isDirectoryless?: boolean;
@@ -100,6 +102,7 @@ interface HostGroup {
   customIconRevision?: string | null;
   iconRevision?: string;
   projectPath: string;
+  projectSourceDirectory: string;
   fallbackRepoRoot: string;
   isDirectoryless: boolean;
 }
@@ -138,7 +141,16 @@ function buildHostProjectEntries(hosts: ProjectHost[]): HostProjectListItem[] {
 }
 
 function resolveHostRepoRoot(group: HostGroup): string {
-  return group.projectPath || group.workspaces[0]?.projectRootPath || group.fallbackRepoRoot;
+  return (
+    group.projectSourceDirectory || group.workspaces[0]?.projectRootPath || group.fallbackRepoRoot
+  );
+}
+
+function resolveProjectSourceDirectory(
+  projects: readonly ProjectHost["projects"][number][],
+  projectId: string,
+): string {
+  return projects.find((project) => project.projectId === projectId)?.projectSourceDirectory ?? "";
 }
 
 /**
@@ -183,6 +195,9 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     serverName: group.serverName,
     isOnline: group.isOnline,
     projectPath: group.projectPath,
+    ...(group.projectSourceDirectory
+      ? { projectSourceDirectory: group.projectSourceDirectory }
+      : {}),
     repoRoot,
     isDirectoryless: group.isDirectoryless,
     workspaceCount: group.workspaces.length,
@@ -263,6 +278,7 @@ function addHostProjects(
         customIconRevision: placement.customIconRevision,
         iconRevision: placement.iconRevision,
         projectPath: repoRootByProjectId.get(projectId) ?? "",
+        projectSourceDirectory: resolveProjectSourceDirectory(host.projects, projectId),
         fallbackRepoRoot: repoRootByProjectId.get(projectId) ?? "",
         isDirectoryless: directorylessProjectIds.has(projectId),
       });

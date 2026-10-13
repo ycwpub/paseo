@@ -67,6 +67,7 @@ import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
 import { LarkGroupMessageProcessorSection } from "./lark-group-message-processor-section";
 import { LarkGroupMessageProcessorEditor } from "./lark-group-message-processor-editor";
 import { LarkGroupMessageProcessorTaskListPage } from "./lark-group-message-processor-task-list-page";
+import { LarkUserOAuthCard } from "@/projects/lark/lark-user-oauth-card";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
@@ -704,6 +705,11 @@ function BotListCard({ bots, creating, onEdit, onAdd }: BotListCardProps) {
       </View>
     </SettingsSection>
   );
+}
+
+function SelectedBotUserOAuthCard({ serverId, appId }: { serverId: string; appId: string | null }) {
+  if (!appId) return null;
+  return <LarkUserOAuthCard serverId={serverId} appId={appId} />;
 }
 
 function CredentialsCard(props: CredentialsCardProps) {
@@ -2055,6 +2061,7 @@ function LarkChannelLoadedContent({
           onEnabledChange={handleEnabledChange}
         />
         {credentialsCard}
+        <SelectedBotUserOAuthCard serverId={serverId} appId={selectedBotAppId} />
         <PairingRequestsCard
           pairings={selectedBotStatus?.pendingPairings ?? EMPTY_PAIRINGS}
           appId={selectedBotAppId}

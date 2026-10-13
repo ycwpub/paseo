@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Modal, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
@@ -11,6 +11,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { formatLarkUserIdentity } from "@/screens/settings/channels/lark-directory-format";
+import { isLarkUserOAuthRequiredError } from "@/screens/settings/channels/lark-permission-error";
 import { useLarkUserOAuth } from "@/screens/settings/channels/use-lark-user-oauth";
 
 function formatAuthorizedIdentity(status: LarkUserOAuthStatus | null): string {
@@ -82,11 +83,59 @@ function OAuthErrorMessages({
   );
 }
 
+function ExpiredAuthorizationDialog({
+  appId,
+  error,
+  onAuthorize,
+  onDismiss,
+  onOpenDeveloperConsole,
+}: {
+  appId: string;
+  error: string | null;
+  onAuthorize: () => void;
+  onDismiss: () => void;
+  onOpenDeveloperConsole: () => void;
+}) {
+  if (!error) return null;
+  return (
+    <Modal transparent visible animationType="fade" onRequestClose={onDismiss}>
+      <View style={styles.backdrop}>
+        <View style={styles.dialog}>
+          <Text style={styles.dialogTitle}>飞书用户授权已失效</Text>
+          <Text selectable style={styles.dialogMessage}>
+            App ID “{appId}”的用户授权已过期、被撤销或缺少所需权限。请先在飞书开发者后台的 “开发配置
+            → 安全设置 → 重定向 URL”中登记以下地址，保存并发布后再重新授权。
+          </Text>
+          <Text selectable style={styles.redirectUri}>
+            {DEFAULT_LARK_USER_OAUTH_REDIRECT_URI}
+          </Text>
+          <Text selectable style={styles.dialogError}>
+            {error}
+          </Text>
+          <View style={styles.dialogActions}>
+            <Button variant="outline" size="sm" onPress={onDismiss}>
+              稍后处理
+            </Button>
+            <Button variant="outline" size="sm" onPress={onOpenDeveloperConsole}>
+              打开开发者后台
+            </Button>
+            <Button variant="default" size="sm" onPress={onAuthorize}>
+              立即授权
+            </Button>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId: string }) {
   const oauth = useLarkUserOAuth(serverId, appId);
   const refreshOAuthStatus = oauth.refreshStatus;
   const [authorizationState, setAuthorizationState] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [expiredAuthorizationError, setExpiredAuthorizationError] = useState<string | null>(null);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
 
   const startAuthorization = useCallback(async () => {
     setLocalError(null);
@@ -101,6 +150,7 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
 
   const disconnect = useCallback(async () => {
     setLocalError(null);
+    setVerificationMessage(null);
     try {
       await oauth.disconnect();
       setAuthorizationState("");
@@ -108,6 +158,42 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
       setLocalError(error instanceof Error ? error.message : String(error));
     }
   }, [oauth]);
+
+  const verifyAuthorization = useCallback(async () => {
+    setLocalError(null);
+    setVerificationMessage(null);
+    setExpiredAuthorizationError(null);
+    try {
+      const status = await oauth.verify();
+      if (!status.authorized || status.needsAuthorization) {
+        setExpiredAuthorizationError("飞书用户授权已失效，请重新完成授权。");
+        return;
+      }
+      setVerificationMessage("权限校验通过，当前用户授权有效。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isLarkUserOAuthRequiredError(message)) {
+        setExpiredAuthorizationError(message);
+        return;
+      }
+      setLocalError(message);
+    }
+  }, [oauth]);
+  const handleVerifyAuthorization = useCallback(() => {
+    void verifyAuthorization();
+  }, [verifyAuthorization]);
+
+  const openDeveloperConsole = useCallback(() => {
+    void openExternalUrl("https://open.feishu.cn/app");
+  }, []);
+
+  const dismissExpiredAuthorization = useCallback(() => {
+    setExpiredAuthorizationError(null);
+  }, []);
+
+  const authorizeFromExpiredDialog = useCallback(() => {
+    void startAuthorization().then(() => setExpiredAuthorizationError(null));
+  }, [startAuthorization]);
 
   const isAuthorized = oauth.status?.authorized === true;
 
@@ -148,9 +234,24 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
           onStart={startAuthorization}
         />
         {isAuthorized ? (
-          <Button variant="outline" size="sm" onPress={disconnect} loading={oauth.isMutating}>
-            解除授权
-          </Button>
+          <>
+            <View style={styles.actions}>
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={handleVerifyAuthorization}
+                loading={oauth.isMutating}
+              >
+                一键校验权限
+              </Button>
+              <Button variant="outline" size="sm" onPress={disconnect} loading={oauth.isMutating}>
+                解除授权
+              </Button>
+            </View>
+            {verificationMessage ? (
+              <Text style={settingsStyles.rowHint}>{verificationMessage}</Text>
+            ) : null}
+          </>
         ) : null}
         <OAuthErrorMessages
           queryError={oauth.error}
@@ -158,6 +259,13 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
           localError={localError}
         />
       </View>
+      <ExpiredAuthorizationDialog
+        appId={appId}
+        error={expiredAuthorizationError}
+        onAuthorize={authorizeFromExpiredDialog}
+        onDismiss={dismissExpiredAuthorization}
+        onOpenDeveloperConsole={openDeveloperConsole}
+      />
     </SettingsSection>
   );
 }
@@ -166,4 +274,35 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     gap: theme.spacing[3],
   },
+  actions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    padding: theme.spacing[6],
+  },
+  dialog: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: theme.borderWidth[1],
+    gap: theme.spacing[3],
+    maxWidth: 560,
+    padding: theme.spacing[4],
+    width: "100%",
+  },
+  dialogTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+  },
+  dialogMessage: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  redirectUri: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
+  dialogError: { color: theme.colors.destructive, fontSize: theme.fontSize.sm },
+  dialogActions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[2] },
 }));

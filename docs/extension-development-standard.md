@@ -209,6 +209,10 @@ task error remains intact for diagnosis. Lark user OAuth additionally requires t
 dialog must therefore show the selectable URL, explain the required console path, and provide an
 “打开开发者后台” action before opening an OAuth link. It must not misleadingly imply that merely
 reopening the OAuth URL can fix Lark error `20029` (invalid redirect URL).
+Every saved bot's configuration page also provides a one-click live user-permission check. It must
+call the real user-token validation endpoint rather than relying on stored expiry timestamps, show
+success feedback when valid, and raise the same actionable authorization dialog when the grant is
+expired, revoked, or missing required scopes.
 
 Project-scoped plugin management reuses the Workspace sidebar Host filter. An empty filter includes
 all Hosts; a non-empty filter includes the selected Hosts. The project list keeps Host identity in

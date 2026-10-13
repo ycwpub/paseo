@@ -103,6 +103,12 @@ vi.mock("react-native-svg", () => ({
   SvgXml: () => <span data-testid="qr-code" />,
 }));
 
+vi.mock("@/projects/lark/lark-user-oauth-card", () => ({
+  LarkUserOAuthCard: ({ appId }: { appId: string }) => (
+    <span data-testid="lark-user-oauth-card">{appId}</span>
+  ),
+}));
+
 vi.mock("./use-lark-channel", () => ({
   useLarkChannel: () => ({
     status: channelState.current.status,

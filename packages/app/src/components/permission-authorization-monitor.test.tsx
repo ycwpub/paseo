@@ -13,6 +13,7 @@ const runtime = vi.hoisted(() => ({
   getLarkChannelStatus: vi.fn(),
   getLarkUserOAuthStatus: vi.fn(),
   startLarkUserOAuth: vi.fn(),
+  completeLarkUserOAuth: vi.fn(),
   verifyLarkUserOAuth: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
@@ -57,6 +58,7 @@ describe("PermissionAuthorizationMonitor", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("opens a fresh Lark OAuth link when a configured bot needs authorization", async () => {
@@ -190,5 +192,51 @@ describe("PermissionAuthorizationMonitor", () => {
     expect(await screen.findByText("http://127.0.0.1:6767/oauth/lark")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "打开开发者后台" }));
     expect(openExternalUrl).toHaveBeenCalledWith("https://open.feishu.cn/app");
+  });
+
+  test("forwards a loopback callback to the Host that created the authorization", async () => {
+    runtime.getLarkChannelStatus.mockResolvedValue({
+      error: null,
+      status: { bots: [{ id: "bot-1", name: "远端机器人", appId: "cli_remote" }] },
+    });
+    runtime.getLarkUserOAuthStatus.mockResolvedValue({
+      error: null,
+      status: { authorized: false, needsAuthorization: true },
+    });
+    runtime.startLarkUserOAuth.mockResolvedValue({
+      error: null,
+      authorizationUrl: "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=remote",
+      state: "remote-state",
+    });
+    runtime.completeLarkUserOAuth.mockResolvedValue({
+      error: null,
+      status: { authorized: true },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          callback: { code: "remote-code", error: null },
+          error: null,
+        }),
+      })),
+    );
+
+    render(<PermissionAuthorizationMonitor />);
+    expect(await screen.findByText("飞书用户授权已失效")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "生成新的授权链接" }));
+
+    await waitFor(
+      () => {
+        expect(runtime.completeLarkUserOAuth).toHaveBeenCalledWith({
+          appId: "cli_remote",
+          codeOrCallbackUrl: "remote-code",
+          state: "remote-state",
+        });
+        expect(screen.queryByText("飞书用户授权已失效")).toBeNull();
+      },
+      { timeout: 3_000 },
+    );
   });
 });

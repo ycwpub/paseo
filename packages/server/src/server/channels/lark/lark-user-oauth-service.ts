@@ -14,6 +14,7 @@ import {
 
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const AUTHORIZATION_STATE_TTL_MS = 15 * 60 * 1000;
+const AUTHORIZATION_CALLBACK_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
 const USER_OAUTH_SCOPE_LIST = PASEO_LARK_USER_SCOPES;
 const USER_OAUTH_REQUIRED_SCOPE_LIST = PASEO_LARK_SUBSTITUTE_USER_SCOPES;
@@ -267,6 +268,33 @@ export class LarkUserOAuthService {
 
   discardAuthorization(state: string): void {
     this.deletePendingAuthorization(state);
+  }
+
+  hasPendingAuthorization(state: string): boolean {
+    const pending = this.pending.get(state.trim());
+    return Boolean(pending && pending.expiresAt > Date.now());
+  }
+
+  storeAuthorizationCallback(input: {
+    state: string;
+    code?: string | null;
+    error?: string | null;
+  }): void {
+    this.store.setAuthorizationCallback({
+      state: input.state.trim(),
+      code: input.code?.trim() || null,
+      error: input.error?.trim() || null,
+      expiresAt: Date.now() + AUTHORIZATION_CALLBACK_TTL_MS,
+    });
+  }
+
+  consumeAuthorizationCallback(state: string): {
+    code: string | null;
+    error: string | null;
+  } | null {
+    const callback = this.store.consumeAuthorizationCallback(state);
+    if (!callback || callback.expiresAt <= Date.now()) return null;
+    return { code: callback.code, error: callback.error };
   }
 
   private setPendingAuthorization(state: string, authorization: PendingAuthorization): void {

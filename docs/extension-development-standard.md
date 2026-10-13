@@ -225,6 +225,11 @@ When a user needs to replace an expired authorization link, the dialog must expl
 “生成新的授权链接”. Generating one invalidates every older pending link for that App before storing
 the new state, so only the newest browser URL can complete authorization and stale callback URLs
 cannot be mistaken for the current flow.
+The fixed loopback redirect may receive a callback for an OAuth flow created by another connected
+Host. The local daemon must persist that callback as a one-time state-keyed relay result; the App
+polls the local result endpoint and forwards the code to the originating Host through its existing
+OAuth completion RPC. This keeps App secrets and user credentials on the configured Host while
+allowing remote-Host authorization from the desktop browser.
 The installed `Paseo-Feishu-Test` build intentionally shares the configured daemon home with the
 regular desktop build. While a test build owns that shared desktop-managed daemon, a concurrently
 running regular Paseo App must attach rather than restarting or stopping it with an older bundled

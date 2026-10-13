@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { DEFAULT_LARK_USER_OAUTH_REDIRECT_URI } from "@getpaseo/protocol/messages";
@@ -7,6 +7,9 @@ import { useSessionStore } from "@/stores/session-store";
 import { openExternalUrl } from "@/utils/open-external-url";
 
 const DAILY_PERMISSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000;
+const OAUTH_CALLBACK_POLL_INTERVAL_MS = 1_000;
+const OAUTH_CALLBACK_POLL_ATTEMPTS = 15 * 60;
+const OAUTH_CALLBACK_RESULT_URL = "http://127.0.0.1:6767/oauth/lark/result";
 
 interface AuthorizationNotice {
   key: string;
@@ -24,6 +27,48 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
   const client = useHostRuntimeClient(serverId);
   const connected = useHostRuntimeIsConnected(serverId);
   const [notice, setNotice] = useState<AuthorizationNotice | null>(null);
+  const authorizationFlow = useRef(0);
+
+  const finishAuthorization = useCallback(
+    async (appId: string, state: string, flow: number) => {
+      for (let attempt = 0; attempt < OAUTH_CALLBACK_POLL_ATTEMPTS; attempt += 1) {
+        if (authorizationFlow.current !== flow) return;
+        await new Promise((resolve) => setTimeout(resolve, OAUTH_CALLBACK_POLL_INTERVAL_MS));
+        if (authorizationFlow.current !== flow) return;
+        try {
+          const status = await client?.getLarkUserOAuthStatus({ appId });
+          if (status?.status?.authorized && !status.status.needsAuthorization) {
+            setNotice(null);
+            return;
+          }
+          const response = await fetch(
+            `${OAUTH_CALLBACK_RESULT_URL}?state=${encodeURIComponent(state)}`,
+            { cache: "no-store" },
+          );
+          if (!response.ok) continue;
+          const payload = (await response.json()) as {
+            callback?: { code?: string | null; error?: string | null } | null;
+          };
+          if (!payload.callback) continue;
+          if (payload.callback.error) throw new Error(payload.callback.error);
+          if (!payload.callback.code || !client) continue;
+          const completed = await client.completeLarkUserOAuth({
+            appId,
+            codeOrCallbackUrl: payload.callback.code,
+            state,
+          });
+          if (completed.error || !completed.status?.authorized) {
+            throw new Error(completed.error ?? "飞书授权未完成");
+          }
+          setNotice(null);
+          return;
+        } catch {
+          // Keep polling so a transient local callback or Host reconnect can recover.
+        }
+      }
+    },
+    [client],
+  );
 
   const check = useCallback(async () => {
     if (!client || !connected) return;
@@ -56,6 +101,11 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
             throw new Error(started.error ?? "无法生成飞书授权链接");
           }
           await openExternalUrl(started.authorizationUrl);
+          if (started.state) {
+            const flow = authorizationFlow.current + 1;
+            authorizationFlow.current = flow;
+            void finishAuthorization(appId, started.state, flow);
+          }
         },
         verifyAuthorization: async () => {
           const verified = await client.verifyLarkUserOAuth({ appId });
@@ -68,7 +118,7 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
       return;
     }
     setNotice(null);
-  }, [client, connected, serverId]);
+  }, [client, connected, finishAuthorization, serverId]);
 
   useEffect(() => {
     void check().catch(() => undefined);
@@ -80,6 +130,7 @@ function LarkUserOAuthMonitor({ serverId }: { serverId: string }) {
   }, [check]);
 
   const dismiss = useCallback(() => {
+    authorizationFlow.current += 1;
     setNotice(null);
   }, []);
   return <AuthorizationNoticeDialog notice={notice} onDismiss={dismiss} />;

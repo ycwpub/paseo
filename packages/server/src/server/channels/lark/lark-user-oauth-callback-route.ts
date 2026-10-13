@@ -4,10 +4,15 @@ import { DEFAULT_LARK_USER_OAUTH_REDIRECT_URI } from "@getpaseo/protocol/message
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 export const LARK_USER_OAUTH_CALLBACK_PATH = new URL(DEFAULT_LARK_USER_OAUTH_REDIRECT_URI).pathname;
+export const LARK_USER_OAUTH_CALLBACK_RESULT_PATH = `${LARK_USER_OAUTH_CALLBACK_PATH}/result`;
 
 type CallbackService = Pick<
   LarkUserOAuthService,
-  "completeAuthorizationCallback" | "discardAuthorization"
+  | "completeAuthorizationCallback"
+  | "consumeAuthorizationCallback"
+  | "discardAuthorization"
+  | "hasPendingAuthorization"
+  | "storeAuthorizationCallback"
 >;
 
 function queryValue(value: unknown): string {
@@ -106,8 +111,19 @@ export function createLarkUserOAuthCallbackRoute(input: {
       }
 
       if (providerError) {
-        service.discardAuthorization(state);
         const reason = providerErrorDescription || providerError;
+        if (!service.hasPendingAuthorization(state)) {
+          service.storeAuthorizationCallback({ state, error: reason });
+          response.send(
+            renderResultPage({
+              title: "飞书授权结果已返回 Paseo",
+              message: "请返回 Paseo，授权流程将继续完成。",
+              success: true,
+            }),
+          );
+          return;
+        }
+        service.discardAuthorization(state);
         response.status(400).send(
           renderResultPage({
             title: "飞书授权未完成",
@@ -124,6 +140,18 @@ export function createLarkUserOAuthCallbackRoute(input: {
             title: "飞书授权失败",
             message: "授权回调缺少 code，请返回 Paseo 后重新发起授权。",
             success: false,
+          }),
+        );
+        return;
+      }
+
+      if (!service.hasPendingAuthorization(state)) {
+        service.storeAuthorizationCallback({ state, code });
+        response.send(
+          renderResultPage({
+            title: "飞书授权结果已返回 Paseo",
+            message: "请返回 Paseo，授权流程将继续完成。",
+            success: true,
           }),
         );
         return;
@@ -152,5 +180,32 @@ export function createLarkUserOAuthCallbackRoute(input: {
         );
       }
     })();
+  };
+}
+
+export function createLarkUserOAuthCallbackResultRoute(input: {
+  getService: () => CallbackService | null;
+}): RequestHandler {
+  return (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    if (!isLoopbackAddress(request.socket.remoteAddress)) {
+      response.status(403).json({ callback: null, error: "OAuth 回调结果只允许从本机访问" });
+      return;
+    }
+    const state = queryValue(request.query.state);
+    if (!state) {
+      response.status(400).json({ callback: null, error: "缺少 OAuth state" });
+      return;
+    }
+    const service = input.getService();
+    if (!service) {
+      response.status(503).json({ callback: null, error: "Paseo 服务仍在启动" });
+      return;
+    }
+    response.json({
+      callback: service.consumeAuthorizationCallback(state),
+      error: null,
+    });
   };
 }

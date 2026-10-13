@@ -249,7 +249,9 @@ import { LarkUserOAuthService } from "./channels/lark/lark-user-oauth-service.js
 import { LarkUserOAuthStore } from "./channels/lark/lark-user-oauth-store.js";
 import {
   createLarkUserOAuthCallbackRoute,
+  createLarkUserOAuthCallbackResultRoute,
   LARK_USER_OAUTH_CALLBACK_PATH,
+  LARK_USER_OAUTH_CALLBACK_RESULT_PATH,
 } from "./channels/lark/lark-user-oauth-callback-route.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
 import { PaseoMemoryStore } from "./memory/memory-store.js";
@@ -1125,6 +1127,12 @@ export async function createPaseoDaemon(
     createLarkUserOAuthCallbackRoute({
       getService: () => larkUserOAuthService,
       logger,
+    }),
+  );
+  app.get(
+    LARK_USER_OAUTH_CALLBACK_RESULT_PATH,
+    createLarkUserOAuthCallbackResultRoute({
+      getService: () => larkUserOAuthService,
     }),
   );
 

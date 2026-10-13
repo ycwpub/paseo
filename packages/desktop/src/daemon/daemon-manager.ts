@@ -295,6 +295,10 @@ function isTestDesktopBuild(): boolean {
   return path.basename(process.execPath).toLowerCase().includes("test");
 }
 
+function isTestDesktopBuildId(buildId: string): boolean {
+  return buildId.toLowerCase().includes("test");
+}
+
 // ---------------------------------------------------------------------------
 // Daemon lifecycle
 // ---------------------------------------------------------------------------
@@ -371,6 +375,9 @@ function shouldRestartForDesktopBuild(current: DesktopDaemonStatus): boolean {
   const daemonBuildId = readDesktopBuildIdFromPidLock();
   if (!daemonBuildId) {
     return isTestDesktopBuild();
+  }
+  if (!isTestDesktopBuild() && isTestDesktopBuildId(daemonBuildId)) {
+    return false;
   }
   return daemonBuildId !== appBuildId;
 }

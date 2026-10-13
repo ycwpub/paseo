@@ -1,0 +1,94 @@
+<h1>四、架构设计</h1>
+<h2>一句话理解</h2>
+<p>Paseo 字节版采用“<b>多客户端连接 Host daemon，daemon 统一管理 Project、Agent 和自动化流程，再调用主机上的 Provider 与业务工具</b>”的架构。</p>
+<p>Mac、Android、Web、CLI 和飞书只是不同入口；真正执行代码、保存项目状态、运行 Workflow 和处理插件任务的是所选主机上的 daemon。这样既能在不同设备继续同一项工作，又不会把“界面在哪里”和“代码在哪里执行”混在一起。</p>
+<whiteboard type="mermaid">
+flowchart TB
+  subgraph clients["客户端与协作入口"]
+    Mac["Mac Desktop"]
+    Mobile["Android / Web"]
+    CLI["CLI / TypeScript / Go SDK"]
+    Lark["飞书机器人与群聊"]
+  end
+
+  subgraph transport["连接层"]
+    Connection["WebSocket / SSH / Relay（E2EE）"]
+  end
+
+  subgraph host["所选 Host 上的 Paseo daemon"]
+    Protocol["Protocol / Session / Capability"]
+    Core["Project / Workspace / Agent / Timeline"]
+    Context["Knowledge / Memory / Skill / MCP"]
+    Automation["Workflow / Schedule / Plugin Runtime"]
+    Channel["Lark Channel / Task Queue"]
+
+    Protocol --> Core
+    Core --> Context
+    Core --> Automation
+    Automation --> Channel
+  end
+
+  subgraph execution["主机执行资源与外部系统"]
+    Providers["TRAE CLI / Aiden / Codex / Claude Code / 其他 Provider"]
+    HostTools["Git / 文件 / Terminal / Desktop Browser"]
+    LarkAPI["飞书消息 / 文档 / Base / OAuth"]
+    ByteSystems["Meego / BITS / Bamboo / Argos / 其他内部工具"]
+  end
+
+  Mac --> Connection
+  Mobile --> Connection
+  CLI --> Connection
+  Lark --> Channel
+  Connection --> Protocol
+  Core --> Providers
+  Providers --> HostTools
+  Context --> LarkAPI
+  Channel --> LarkAPI
+  Automation --> ByteSystems
+
+</whiteboard>
+<h2>核心模块</h2>
+<table><thead><tr><th background-color="light-gray" vertical-align="top"><p>模块</p></th><th background-color="light-gray" vertical-align="top"><p>主要职责</p></th><th background-color="light-gray" vertical-align="top"><p>对使用者的价值</p></th></tr></thead><tbody><tr><td vertical-align="top"><p>客户端与协作入口</p></td><td vertical-align="top"><p>Mac、Android、Web、CLI、SDK 和飞书提供不同操作入口</p></td><td vertical-align="top"><p>在桌面深度开发、手机查看进度、终端自动化或群聊协作时，继续使用同一个 Host 上的任务</p></td></tr><tr><td vertical-align="top"><p>连接层</p></td><td vertical-align="top"><p>使用本地连接、SSH、直连或 Relay 把客户端连接到 daemon</p></td><td vertical-align="top"><p>远程开发机不需要直接暴露公网端口；Relay 传输使用端到端加密</p></td></tr><tr><td vertical-align="top"><p>daemon 控制层</p></td><td vertical-align="top"><p>负责身份握手、能力协商、Project / Workspace / Agent 生命周期、权限请求和时间线</p></td><td vertical-align="top"><p>daemon 是主机上的唯一事实源，多个客户端看到的是同一份任务状态，不依赖某个界面一直打开</p></td></tr><tr><td vertical-align="top"><p>Project 与上下文层</p></td><td vertical-align="top"><p>管理项目目录、知识、记忆、助手、Skill、MCP 和飞书文档缓存</p></td><td vertical-align="top"><p>代码、业务资料、角色与长期经验围绕 Project 组织，不用在每个会话重新准备</p></td></tr><tr><td vertical-align="top"><p>Provider 执行层</p></td><td vertical-align="top"><p>通过统一适配器启动 TRAE CLI、Aiden、Codex 等执行工具，并规范化消息、工具调用和权限</p></td><td vertical-align="top"><p>上层流程不用绑定单一模型工具，可以按任务更换 Provider</p></td></tr><tr><td vertical-align="top"><p>自动化与插件层</p></td><td vertical-align="top"><p>运行 Workflow、Schedule、插件进程、HTTP 服务、飞书任务队列和报警排查</p></td><td vertical-align="top"><p>把脚本、AI 判断、定时触发、记录和业务系统连接成可回看、可重试的流程</p></td></tr><tr><td vertical-align="top"><p>持久化层</p></td><td vertical-align="top"><p>将配置、Project、Agent 时间线、Workflow、插件记录和任务状态保存到 $PASEO_HOME</p></td><td vertical-align="top"><p>客户端断开后任务仍可由 daemon 管理，重连后继续查看；不同 Host 的状态彼此隔离</p></td></tr></tbody></table>
+<h2>一条任务怎样流转</h2>
+<ol><li><p><b>选择执行位置。</b> 客户端先选择 Host、Project、Workspace、Provider、模型和权限模式。</p>
+</li>
+<li><p><b>组装上下文。</b> daemon 根据 Project 读取项目目录、知识、记忆、助手、Skill 和 MCP 配置，只加入当前任务允许访问的内容。</p>
+</li>
+<li><p><b>创建 Agent Session。</b> Provider 适配器在所选 Host 启动或恢复真实执行工具；代码和终端命令都在该 Host 上运行。</p>
+</li>
+<li><p><b>持续回传过程。</b> Provider 的回答、思考摘要、工具调用、权限请求和命令状态被转换成统一事件，写入时间线并广播给已连接客户端。</p>
+</li>
+<li><p><b>人工继续控制。</b> 用户可以在 Mac、Android、Web 或 CLI 查看同一进度，处理权限、追加指令、排队、停止或归档。</p>
+</li>
+<li><p><b>自动化继续处理。</b> 如果任务来自 Workflow、飞书替身或报警插件，daemon 还会更新本地队列、飞书消息、多维表格和执行记录，并按规则重试或等待人工处理。</p>
+</li>
+</ol>
+<h2>三种常见部署方式</h2>
+<table><thead><tr><th background-color="light-gray" vertical-align="top"><p>部署方式</p></th><th background-color="light-gray" vertical-align="top"><p>连接关系</p></th><th background-color="light-gray" vertical-align="top"><p>适合场景</p></th></tr></thead><tbody><tr><td vertical-align="top"><p>Mac 单机</p></td><td vertical-align="top"><p>Mac Desktop → 内置 daemon → Mac 上的代码和 Provider</p></td><td vertical-align="top"><p>个人开发、前端浏览器验证、无需长期在线的任务</p></td></tr><tr><td vertical-align="top"><p>Linux 远程执行</p></td><td vertical-align="top"><p>Mac / Android → SSH、Relay 或 Tailscale → Linux CLI daemon</p></td><td vertical-align="top"><p>使用开发机代码、公司网络和长期运行环境；关闭客户端后 daemon 继续工作</p></td></tr><tr><td vertical-align="top"><p>多 Host 协作</p></td><td vertical-align="top"><p>一个客户端同时连接 Mac 与多台 Linux daemon</p></td><td vertical-align="top"><p>不同项目分布在不同机器，或需要分别使用本地浏览器、开发机算力和不同 Provider 配置</p></td></tr></tbody></table>
+<p>每个 Host 都有独立的 $PASEO_HOME、Provider 环境、Project 和插件数据。客户端可以统一展示多个 Host，但不会悄悄把一个 Host 的文件路径、凭据或运行任务搬到另一个 Host。</p>
+<h2>安全与权限边界</h2>
+<ul><li><p><b>代码执行边界：</b> Agent、Terminal、Workflow 和插件都在所选 Host 上执行。Android 只是客户端，不在手机上运行代码。</p>
+</li>
+<li><p><b>模型数据边界：</b> 代码文件默认留在 Host，但任务提示词、选中的上下文和工具结果可能发送给所选 Provider。使用内部资料前仍要遵守对应模型和数据规范。</p>
+</li>
+<li><p><b>传输边界：</b> 本地和 SSH 连接不经过 Relay；启用 Relay 时，客户端与 daemon 使用端到端加密，配对链接是访问凭据。</p>
+</li>
+<li><p><b>权限边界：</b> Provider 权限、Paseo 操作权限、飞书机器人应用权限和飞书用户 OAuth 是不同层级，任一层缺失都不能由其他层自动绕过。</p>
+</li>
+<li><p><b>插件边界：</b> 插件是受信任代码，不是天然隔离的沙箱；只安装可信插件，并为 Workflow 和业务写操作保留审批或 dry-run。</p>
+</li>
+<li><p><b>状态边界：</b> daemon 保存权威状态，客户端缓存只用于快速显示；重连后以 daemon 返回结果为准。</p>
+</li>
+</ul>
+<h2>为什么采用这种架构</h2>
+<p>这种设计不是为了在每一项单点能力上替代 TRAE、AIME、Botmux 或 Codex，而是让它们能够参与同一套主机、项目和流程：</p>
+<ul><li><p><b>界面与执行分离：</b> 手机可以控制开发机，但不会把开发环境搬到手机。</p>
+</li>
+<li><p><b>Provider 与流程分离：</b> 更换底层模型工具时，Project、Workflow 和业务记录不必跟着重建。</p>
+</li>
+<li><p><b>通用底座与业务插件分离：</b> daemon 管 Agent、权限和状态；插件只负责自己的配置、队列和业务适配。</p>
+</li>
+<li><p><b>实时交互与持久任务分离：</b> WebSocket 负责即时过程，持久化时间线和任务存储负责断线恢复与审计。</p>
+</li>
+</ul>
+<p>更详细的包结构、协议、Agent 生命周期和存储说明见<a type="url-preview" href="https://github.com/ycwpub/paseo/blob/feature_paseo/docs/product-extensions/architecture.md">架构文档</a>。</p>

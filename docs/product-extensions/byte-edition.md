@@ -173,31 +173,378 @@ Bamboo 插件衔接 `life-settle-ai-assistant` 的对账排查能力；Argos 插
 
 Paseo 不替你购买模型，也不绕过内部系统权限。模型额度、网络访问和业务操作权限，仍由你选用的工具、账户及执行主机决定。
 
-## 三、怎么开始用
+## 三、架构设计
 
-### 先准备最小的一套环境
+### 一句话理解
 
-只体验 AI 编程，不需要先申请飞书机器人。准备下面三项即可：
+Paseo 字节版采用“**多客户端连接 Host daemon，daemon 统一管理 Project、Agent 和自动化流程，再调用主机上的 Provider 与业务工具**”的架构。
 
-- **字节版客户端和服务端：** 本机使用桌面版；远程任务需要在对应开发机运行字节版服务端。尽量保持两端为同一版本。
-- **一个可用的模型工具：** 例如已安装并登录的 TRAE CLI 或 Aiden。工具要安装在执行任务的主机上，只装在看界面的电脑上不够。
-- **一个可访问的代码目录：** 先选一个你熟悉的项目，容易判断 AI 是否理解正确。
+Mac、Android、Web、CLI 和飞书只是不同入口；真正执行代码、保存项目状态、运行 Workflow 和处理插件任务的是所选主机上的 daemon。这样既能在不同设备继续同一项工作，又不会把“界面在哪里”和“代码在哪里执行”混在一起。
 
-请使用本仓库维护者提供的字节版安装包。开源官网安装包、公共 npm 包和 Docker 镜像不能作为“已安装字节扩展”的依据。
+```mermaid
+flowchart TB
+  subgraph clients["客户端与协作入口"]
+    Mac["Mac Desktop"]
+    Mobile["Android / Web"]
+    CLI["CLI / TypeScript / Go SDK"]
+    Lark["飞书机器人与群聊"]
+  end
 
-如果手上还没有安装包，可以从本分支源码启动。按[开发环境说明](../development.md)准备 Node.js 和 npm，在仓库根目录执行：
+  subgraph transport["连接层"]
+    Connection["WebSocket / SSH / Relay（E2EE）"]
+  end
+
+  subgraph host["所选 Host 上的 Paseo daemon"]
+    Protocol["Protocol / Session / Capability"]
+    Core["Project / Workspace / Agent / Timeline"]
+    Context["Knowledge / Memory / Skill / MCP"]
+    Automation["Workflow / Schedule / Plugin Runtime"]
+    Channel["Lark Channel / Task Queue"]
+
+    Protocol --> Core
+    Core --> Context
+    Core --> Automation
+    Automation --> Channel
+  end
+
+  subgraph execution["主机执行资源与外部系统"]
+    Providers["TRAE CLI / Aiden / Codex / Claude Code / 其他 Provider"]
+    HostTools["Git / 文件 / Terminal / Desktop Browser"]
+    LarkAPI["飞书消息 / 文档 / Base / OAuth"]
+    ByteSystems["Meego / BITS / Bamboo / Argos / 其他内部工具"]
+  end
+
+  Mac --> Connection
+  Mobile --> Connection
+  CLI --> Connection
+  Lark --> Channel
+  Connection --> Protocol
+  Core --> Providers
+  Providers --> HostTools
+  Context --> LarkAPI
+  Channel --> LarkAPI
+  Automation --> ByteSystems
+```
+
+### 核心模块
+
+| 模块               | 主要职责                                                                           | 对使用者的价值                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 客户端与协作入口   | Mac、Android、Web、CLI、SDK 和飞书提供不同操作入口                                 | 在桌面深度开发、手机查看进度、终端自动化或群聊协作时，继续使用同一个 Host 上的任务    |
+| 连接层             | 使用本地连接、SSH、直连或 Relay 把客户端连接到 daemon                              | 远程开发机不需要直接暴露公网端口；Relay 传输使用端到端加密                            |
+| daemon 控制层      | 负责身份握手、能力协商、Project / Workspace / Agent 生命周期、权限请求和时间线     | daemon 是主机上的唯一事实源，多个客户端看到的是同一份任务状态，不依赖某个界面一直打开 |
+| Project 与上下文层 | 管理项目目录、知识、记忆、助手、Skill、MCP 和飞书文档缓存                          | 代码、业务资料、角色与长期经验围绕 Project 组织，不用在每个会话重新准备               |
+| Provider 执行层    | 通过统一适配器启动 TRAE CLI、Aiden、Codex 等执行工具，并规范化消息、工具调用和权限 | 上层流程不用绑定单一模型工具，可以按任务更换 Provider                                 |
+| 自动化与插件层     | 运行 Workflow、Schedule、插件进程、HTTP 服务、飞书任务队列和报警排查               | 把脚本、AI 判断、定时触发、记录和业务系统连接成可回看、可重试的流程                   |
+| 持久化层           | 将配置、Project、Agent 时间线、Workflow、插件记录和任务状态保存到 `$PASEO_HOME`    | 客户端断开后任务仍可由 daemon 管理，重连后继续查看；不同 Host 的状态彼此隔离          |
+
+### 一条任务怎样流转
+
+1. **选择执行位置。** 客户端先选择 Host、Project、Workspace、Provider、模型和权限模式。
+2. **组装上下文。** daemon 根据 Project 读取项目目录、知识、记忆、助手、Skill 和 MCP 配置，只加入当前任务允许访问的内容。
+3. **创建 Agent Session。** Provider 适配器在所选 Host 启动或恢复真实执行工具；代码和终端命令都在该 Host 上运行。
+4. **持续回传过程。** Provider 的回答、思考摘要、工具调用、权限请求和命令状态被转换成统一事件，写入时间线并广播给已连接客户端。
+5. **人工继续控制。** 用户可以在 Mac、Android、Web 或 CLI 查看同一进度，处理权限、追加指令、排队、停止或归档。
+6. **自动化继续处理。** 如果任务来自 Workflow、飞书替身或报警插件，daemon 还会更新本地队列、飞书消息、多维表格和执行记录，并按规则重试或等待人工处理。
+
+### 三种常见部署方式
+
+| 部署方式       | 连接关系                                                   | 适合场景                                                                         |
+| -------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Mac 单机       | Mac Desktop → 内置 daemon → Mac 上的代码和 Provider        | 个人开发、前端浏览器验证、无需长期在线的任务                                     |
+| Linux 远程执行 | Mac / Android → SSH、Relay 或 Tailscale → Linux CLI daemon | 使用开发机代码、公司网络和长期运行环境；关闭客户端后 daemon 继续工作             |
+| 多 Host 协作   | 一个客户端同时连接 Mac 与多台 Linux daemon                 | 不同项目分布在不同机器，或需要分别使用本地浏览器、开发机算力和不同 Provider 配置 |
+
+每个 Host 都有独立的 `$PASEO_HOME`、Provider 环境、Project 和插件数据。客户端可以统一展示多个 Host，但不会悄悄把一个 Host 的文件路径、凭据或运行任务搬到另一个 Host。
+
+### 安全与权限边界
+
+- **代码执行边界：** Agent、Terminal、Workflow 和插件都在所选 Host 上执行。Android 只是客户端，不在手机上运行代码。
+- **模型数据边界：** 代码文件默认留在 Host，但任务提示词、选中的上下文和工具结果可能发送给所选 Provider。使用内部资料前仍要遵守对应模型和数据规范。
+- **传输边界：** 本地和 SSH 连接不经过 Relay；启用 Relay 时，客户端与 daemon 使用端到端加密，配对链接是访问凭据。
+- **权限边界：** Provider 权限、Paseo 操作权限、飞书机器人应用权限和飞书用户 OAuth 是不同层级，任一层缺失都不能由其他层自动绕过。
+- **插件边界：** 插件是受信任代码，不是天然隔离的沙箱；只安装可信插件，并为 Workflow 和业务写操作保留审批或 dry-run。
+- **状态边界：** daemon 保存权威状态，客户端缓存只用于快速显示；重连后以 daemon 返回结果为准。
+
+### 为什么采用这种架构
+
+这种设计不是为了在每一项单点能力上替代 TRAE、AIME、Botmux 或 Codex，而是让它们能够参与同一套主机、项目和流程：
+
+- **界面与执行分离：** 手机可以控制开发机，但不会把开发环境搬到手机。
+- **Provider 与流程分离：** 更换底层模型工具时，Project、Workflow 和业务记录不必跟着重建。
+- **通用底座与业务插件分离：** daemon 管 Agent、权限和状态；插件只负责自己的配置、队列和业务适配。
+- **实时交互与持久任务分离：** WebSocket 负责即时过程，持久化时间线和任务存储负责断线恢复与审计。
+
+更详细的包结构、协议、Agent 生命周期和存储说明见[架构文档](https://github.com/ycwpub/paseo/blob/feature_paseo/docs/product-extensions/architecture.md)。
+
+## 四、怎么开始用
+
+### 从 GitHub 获取 Paseo 字节版源码
+
+Paseo 字节版源码位于：
+
+- GitHub：<https://github.com/ycwpub/paseo>
+- 分支：[`feature_paseo`](https://github.com/ycwpub/paseo/tree/feature_paseo)
+
+请显式下载 `feature_paseo` 分支，不要直接使用默认分支，也不要用官方 Paseo Release、公共 npm 包或 Docker 镜像代替字节版：
+
+```bash
+git clone --branch feature_paseo --single-branch https://github.com/ycwpub/paseo.git
+cd paseo
+git branch --show-current
+```
+
+最后一条命令应输出：
+
+```text
+feature_paseo
+```
+
+仓库通过 `.tool-versions` 固定 Node.js `22.20.0`。已经使用 [mise](https://mise.jdx.dev) 的用户可以执行 `mise install`；否则请先安装兼容的 Node.js 22 和 npm。所有平台都先在仓库根目录安装依赖：
 
 ```bash
 npm ci
-
-# 终端一：启动开发服务端
-npm run dev:server
-
-# 终端二：启动桌面开发界面
-npm run dev:desktop
 ```
 
-开发环境使用仓库内的独立数据目录，不会直接沿用正式版的全部配置。首次启动仍需配置主机和 Provider。这里的命令用于源码体验，不是安装包，也不要为了体验而重启正在执行任务的正式服务。
+源码构建会使用当前 checkout 的内容。以后拉取更新时，先确认没有未提交改动，再执行：
+
+```bash
+git switch feature_paseo
+git pull --ff-only origin feature_paseo
+npm ci
+```
+
+### 安装、配置和使用 Mac 版
+
+#### 1. 构建
+
+Apple Silicon Mac 使用：
+
+```bash
+npm run build:desktop -- --publish never --mac --arm64
+```
+
+Intel Mac 将最后一个参数改为 `--x64`：
+
+```bash
+npm run build:desktop -- --publish never --mac --x64
+```
+
+构建会先编译网页客户端、daemon 和 CLI，再生成桌面安装包。产物位于：
+
+```text
+packages/desktop/release/
+```
+
+常见产物包括：
+
+```text
+Paseo-<版本>-arm64.dmg
+Paseo-<版本>-arm64.zip
+mac-arm64/Paseo.app
+```
+
+Intel 构建的目录和文件名使用 `x64`。不要在同一个 checkout 中同时启动正式版和开发版 daemon；正式桌面版默认使用 `~/.paseo` 和 `127.0.0.1:6767`。
+
+#### 2. 安装
+
+打开生成的 `.dmg`，把 **Paseo.app** 拖入 `/Applications`，然后从“应用程序”启动。源码本地构建可能没有 Apple 公证；确认源码和产物可信后，可在 macOS“系统设置 → 隐私与安全性”中选择“仍要打开”。
+
+桌面 App 会自动启动内置 daemon，不需要另外安装 server。打开 **设置 → 本地主机 → 概览**，确认主机在线；需要退出 App 后继续运行任务时，再开启“退出后保持 daemon 运行”。
+
+#### 3. 配置
+
+1. 在执行任务的 Mac 上安装并登录要使用的 Provider，例如 TRAE CLI、Aiden、Codex 或 Claude Code。
+2. 打开 **设置 → 本地主机 → Providers**，添加或启用 Provider，刷新模型，并使用“诊断”确认 Paseo daemon 能找到实际命令。
+3. 创建或选择 Project，添加项目目录、知识目录和需要的飞书文档；再创建工作区。
+4. 需要管理 Linux 开发机时，打开 **设置 → 添加主机 → Remote SSH**，填写 `ssh://用户@主机`。远端必须已安装并启动 Linux CLI daemon。
+5. 需要手机访问本机任务时，在 **设置 → 本地主机 → 配对设备** 中启用 Relay，扫描二维码或复制配对链接。
+
+Provider 必须安装在真正执行任务的主机上。Mac 只作为远程主机的界面时，不需要在 Mac 上重复安装远端 Provider。
+
+#### 4. 使用
+
+进入工作区后，选择 Provider、模型和权限模式，再发送任务。文件、终端、Diff、PR、任务摘要和浏览器可以在同一工作区打开。建议先执行只读任务，再逐步允许修改和命令执行。
+
+### 安装、配置和使用 Android 版
+
+Android App 是客户端，不在手机上运行 coding agent。它需要连接 Mac 桌面版管理的 daemon，或安装了 Linux CLI 的远程主机。
+
+#### 1. 准备 Android 构建环境
+
+Android 构建可以在 macOS 或 Linux 上执行。仓库使用 Java 21 和 Android SDK command-line tools `21.0`。使用 mise 时：
+
+```bash
+mise install
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+```
+
+在 Android 手机中开启“开发者选项”和“USB 调试”，连接电脑后确认：
+
+```bash
+adb devices
+```
+
+#### 2. 直接构建并安装到已连接设备
+
+在仓库根目录执行：
+
+```bash
+npm run android:production
+```
+
+该命令会生成 Android 原生工程、构建 production variant，并安装到当前连接的设备或模拟器。包名是 `sh.paseo`。
+
+#### 3. 只生成 APK，再手动安装
+
+如果需要先生成 APK，再复制到其他 Android 设备：
+
+```bash
+npm run build:client
+cd packages/app
+APP_VARIANT=production npx expo prebuild --platform android --clean --non-interactive
+cd android
+./gradlew assembleRelease --no-daemon --max-workers=1 -Dorg.gradle.parallel=false
+cd ../../..
+```
+
+APK 路径：
+
+```text
+packages/app/android/app/build/outputs/apk/release/app-release.apk
+```
+
+通过 USB 安装：
+
+```bash
+adb install -r packages/app/android/app/build/outputs/apk/release/app-release.apk
+```
+
+本地源码构建的 release APK 使用本机生成工程中的测试签名，适合内部体验，不是应用商店正式签名。若设备已经安装同包名、不同签名的 Paseo，`adb install -r` 会失败；卸载旧版会清除该 App 的本地连接配置，请先确认后再操作。
+
+#### 4. 配置连接
+
+在要执行任务的 Mac 或 Linux 主机上生成配对信息：
+
+```bash
+paseo daemon pair
+```
+
+按提示启用 Relay 后，Android App 扫描二维码，或选择“粘贴配对链接”。也可以让手机和 daemon 主机加入同一个 Tailscale 网络，再添加直接连接。
+
+Provider、模型、Project、插件和飞书机器人保存在 daemon 主机，不保存在 Android 手机上。Android 连接成功后会读取该主机的现有配置。
+
+#### 5. 使用
+
+Android 端适合查看 Agent 进度、继续对话、处理授权、浏览文件、使用终端和检查 Diff。桌面内置浏览器仍由 Mac 桌面 App 承载；仅连接 Android 客户端时，依赖桌面浏览器的工具不可用。
+
+### 安装、配置和使用 Linux CLI 版
+
+Linux CLI 同时包含 `paseo` 命令和 daemon。它适合安装在开发机或长期在线的 Linux 主机上，再由 Mac 和 Android 连接。
+
+#### 1. 构建并安装
+
+在 Linux 上下载 `feature_paseo` 分支并执行 `npm ci` 后，在仓库根目录运行：
+
+```bash
+npm pack --workspace=@getpaseo/cli
+npm install -g ./getpaseo-cli-*.tgz
+```
+
+`npm pack` 会先构建 protocol、client、server 和 CLI，并把运行所需的 Paseo workspace 包打入 tarball，因此耗时会明显长于普通 TypeScript 编译。安装后确认：
+
+```bash
+paseo --version
+command -v paseo
+```
+
+#### 2. 启动和检查 daemon
+
+```bash
+paseo daemon start
+paseo daemon status --json
+```
+
+默认数据目录是 `~/.paseo`，默认监听 `127.0.0.1:6767`。不要直接把该端口暴露到公网；远程连接优先使用 SSH、Relay 或 Tailscale。
+
+#### 3. 配置 Provider 和 Project
+
+1. 在 Linux 主机安装并登录实际使用的 CLI，例如 `traecli`、`codex` 或其他 Provider。
+2. 使用诊断确认 daemon 的运行环境能找到命令：
+
+   ```bash
+   paseo provider diagnostic traecli
+   ```
+
+3. 可以从 Mac 桌面版通过 **Remote SSH** 连接这台 Linux 主机，再用图形界面配置 Provider、模型、Project、知识和插件。
+4. 也可以直接编辑 `~/.paseo/config.json`；修改后运行 `paseo reload`，命令会说明哪些配置已生效、哪些需要重启。
+5. 在代码目录创建 Project：
+
+   ```bash
+   cd /srv/your-project
+   paseo project create
+   paseo project ls
+   ```
+
+#### 4. 配对 Android 或其他客户端
+
+```bash
+paseo daemon pair
+```
+
+确认启用 Relay 后，扫描或粘贴配对链接。配对链接等同于访问凭据，不要发到公开群聊或文档。
+
+Mac 桌面版也可通过 SSH 直接连接，无需打开 Linux daemon 的公网端口：
+
+```text
+ssh://用户@Linux主机
+```
+
+#### 5. 使用 CLI
+
+在项目目录启动 Agent：
+
+```bash
+paseo run --provider traecli "先阅读项目结构和测试命令，不要修改文件"
+```
+
+常用命令：
+
+```bash
+paseo ls -a
+paseo attach <agent-id>
+paseo send <agent-id> "继续补充定向测试"
+paseo logs <agent-id>
+paseo stop <agent-id>
+```
+
+需要后台执行时给 `paseo run` 增加 `--background`。模型、权限模式和工作区隔离可继续通过对应参数或 Mac 桌面界面选择。
+
+### 三端如何配合
+
+推荐把 Linux 开发机作为长期在线的执行主机，Mac 作为主要开发和配置界面，Android 用于移动查看和处理授权：
+
+```text
+Mac / Android 客户端
+        │
+        ├── 连接 Mac 内置 daemon → 使用 Mac 上的代码和 Provider
+        │
+        └── 连接 Linux CLI daemon → 使用 Linux 开发机上的代码和 Provider
+```
+
+同一项任务只在其所属 daemon 主机上执行。客户端关闭后，独立启动的 Linux daemon 仍可继续运行；Mac 桌面内置 daemon 是否继续运行取决于“退出后保持 daemon 运行”设置。
+
+### 第一次使用前的共同准备
+
+只体验 AI 编程，不需要先申请飞书机器人。至少准备：
+
+- 一个已经安装并登录的 Provider；
+- 一个该主机可访问的代码目录；
+- 一台在线的 daemon 主机；
+- 一个已连接到该主机的 Mac、Android 或 CLI 客户端。
+
+尽量让客户端和 daemon 来自同一个 `feature_paseo` 提交。版本差异过大时，部分入口会要求更新主机。
 
 ### 第一次体验：先让它完成一件看得懂的小事
 

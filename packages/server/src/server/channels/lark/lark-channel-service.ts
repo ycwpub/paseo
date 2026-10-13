@@ -1947,6 +1947,14 @@ export class LarkChannelService {
         { err: error, processorId: processor.id, messageId: event.messageId },
         "Failed to collect group message processor context",
       );
+      this.groupMessageProcessorTaskStore.markCompleted(
+        task.id,
+        "failed",
+        new Date().toISOString(),
+        formatLarkProcessingError(error),
+        "context",
+      );
+      return;
     }
     const prompt = this.formatGroupMessageProcessorPrompt(processor, event, supplementalEvents);
     const targetConfig: StoredLarkChannelConfig = { ...bot.config, target: processor.target };
@@ -2074,6 +2082,19 @@ export class LarkChannelService {
         this.logger.warn(
           { err: error, processorId: processor.id, chatId: chat.chatId },
           "Failed to scan Lark group messages for processor",
+        );
+        this.groupMessageProcessorTaskStore.recordOperationalFailure(
+          {
+            processorId: processor.id,
+            processorName: processor.name,
+            botId: processor.botId,
+            source: "scan",
+            stage: "scan",
+            chatId: chat.chatId,
+            chatName: chat.name,
+            error: formatLarkProcessingError(error),
+          },
+          new Date().toISOString(),
         );
       }
     }

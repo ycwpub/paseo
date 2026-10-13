@@ -34,6 +34,21 @@ export interface EnqueueLarkGroupMessageProcessorTaskInput {
   scheduledAt: string | null;
 }
 
+export interface RecordLarkGroupMessageProcessorTaskFailureInput {
+  processorId: string;
+  processorName: string;
+  botId: string;
+  source: LarkGroupMessageProcessorTaskSource;
+  stage: LarkGroupMessageProcessorTaskFailureStage;
+  chatId?: string | null;
+  chatName?: string | null;
+  messageId?: string | null;
+  senderOpenId?: string | null;
+  senderName?: string | null;
+  content?: string | null;
+  error: string;
+}
+
 function cloneTask(task: LarkGroupMessageProcessorTask): LarkGroupMessageProcessorTask {
   return LarkGroupMessageProcessorTaskSchema.parse(JSON.parse(JSON.stringify(task)));
 }
@@ -122,6 +137,65 @@ export class LarkGroupMessageProcessorTaskStore {
       failureStage: status === "failed" ? (failureStage ?? "processing") : null,
       updatedAt: now,
     });
+  }
+
+  recordOperationalFailure(
+    input: RecordLarkGroupMessageProcessorTaskFailureInput,
+    now: string,
+  ): LarkGroupMessageProcessorTask {
+    this.ensureLoaded();
+    const chatId = input.chatId?.trim() || `${input.source}:${input.processorId}`;
+    const messageId = input.messageId?.trim() || `${input.source}-failure:${input.stage}:${chatId}`;
+    const existing = this.payload.tasks.find(
+      (task) =>
+        task.processorId === input.processorId &&
+        task.messageId === messageId &&
+        (task.status === "failed" || Boolean(input.messageId)),
+    );
+    if (existing) {
+      const updated = this.update(existing.id, {
+        processorName: input.processorName,
+        botId: input.botId,
+        source: input.source,
+        chatId,
+        chatName: input.chatName ?? existing.chatName,
+        senderOpenId: input.senderOpenId ?? existing.senderOpenId,
+        senderName: input.senderName ?? existing.senderName,
+        content: input.content?.trim() || existing.content,
+        status: "failed",
+        scheduledAt: null,
+        completedAt: now,
+        error: input.error,
+        failureStage: input.stage,
+        updatedAt: now,
+      });
+      if (!updated) throw new Error(`无法更新群消息处理器失败任务 ${existing.id}`);
+      return updated;
+    }
+    const task = LarkGroupMessageProcessorTaskSchema.parse({
+      id: randomUUID(),
+      processorId: input.processorId,
+      processorName: input.processorName,
+      botId: input.botId,
+      source: input.source,
+      chatId,
+      chatName: input.chatName ?? null,
+      messageId,
+      senderOpenId: input.senderOpenId ?? null,
+      senderName: input.senderName ?? null,
+      content: input.content?.trim() || this.failureContent(input.stage),
+      status: "failed",
+      scheduledAt: null,
+      startedAt: null,
+      completedAt: now,
+      agentId: null,
+      error: input.error,
+      failureStage: input.stage,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.persist([...this.payload.tasks, task]);
+    return cloneTask(task);
   }
 
   pause(taskIds: readonly string[], now: string): string[] {
@@ -238,5 +312,20 @@ export class LarkGroupMessageProcessorTaskStore {
     writePrivateFileAtomicSync(this.filePath, JSON.stringify(payload, null, 2));
     this.payload = payload;
     this.loaded = true;
+  }
+
+  private failureContent(stage: LarkGroupMessageProcessorTaskFailureStage): string {
+    switch (stage) {
+      case "listener":
+        return "监听飞书群消息";
+      case "scan":
+        return "扫描飞书群消息";
+      case "context":
+        return "读取群消息上下文";
+      case "processing":
+        return "处理群消息任务";
+      case "reply":
+        return "发送群消息回复";
+    }
   }
 }

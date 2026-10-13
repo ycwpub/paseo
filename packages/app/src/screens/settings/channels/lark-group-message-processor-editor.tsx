@@ -3,18 +3,40 @@ import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   LarkChannelBotStatus,
+  LarkChannelTarget,
   LarkGroupMessageProcessor,
   LarkGroupMessageProcessorCreateInput,
   LarkGroupMessageProcessorFilter,
 } from "@getpaseo/protocol/messages";
+import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
+import { useAssistants } from "@/hooks/use-assistants";
+import { registerProjectDescriptor } from "@/hooks/open-project";
 import { useProjects } from "@/hooks/use-projects";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useTeams } from "@/hooks/use-teams";
+import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
+import {
+  createLarkProjectBinding,
+  findLarkProjectIdByCwd,
+  rollbackLarkProjectBinding,
+} from "./lark-project-binding";
+import {
+  LarkProjectBindingFields,
+  type LarkProjectBindingMode,
+} from "./lark-project-binding-fields";
 import { useLarkGroupMessageProcessors } from "./use-lark-group-message-processors";
+
+const TARGET_WORKSPACE = "workspace";
+const TARGET_ASSISTANT_PREFIX = "assistant:";
+const TARGET_TEAM_PREFIX = "team:";
 
 interface ProcessorForm {
   name: string;
@@ -34,6 +56,7 @@ interface ProcessorForm {
   cwd: string;
   provider: string;
   model: string;
+  targetSelection: string;
   filters: LarkGroupMessageProcessorFilter[];
 }
 
@@ -49,7 +72,8 @@ type TextFormField =
   | "replyPrompt"
   | "cwd"
   | "provider"
-  | "model";
+  | "model"
+  | "targetSelection";
 
 type BooleanFormField = "enabled" | "realtimeEnabled" | "scanEnabled" | "autoArchiveAgent";
 
@@ -89,32 +113,50 @@ function toInteger(value: string, label: string, min: number, max: number): numb
   return number;
 }
 
-function formFromProcessor(
-  processor: LarkGroupMessageProcessor | null | undefined,
-  bots: readonly LarkChannelBotStatus[],
-): ProcessorForm {
-  if (!processor) {
-    return {
-      name: "",
-      enabled: true,
-      botId: bots[0]?.id ?? "",
-      realtimeEnabled: true,
-      delaySeconds: "60",
-      scanEnabled: true,
-      scanIntervalMinutes: "30",
-      scanLookbackMinutes: "60",
-      scanExcludeRecentMinutes: "10",
-      previousMessageCount: "10",
-      followingMessageCount: "10",
-      aiFilterPrompt: "",
-      replyPrompt: "结合群聊上下文，直接回答当前工作问题。",
-      autoArchiveAgent: true,
-      cwd: "",
-      provider: "",
-      model: "",
-      filters: [],
-    };
+function targetSelectionFor(target: LarkChannelTarget | null): string {
+  if (target?.kind === "assistant" && target.assistantId) {
+    return `${TARGET_ASSISTANT_PREFIX}${target.assistantId}`;
   }
+  if (target?.kind === "team" && target.teamId) {
+    return `${TARGET_TEAM_PREFIX}${target.teamId}`;
+  }
+  return TARGET_WORKSPACE;
+}
+
+function targetFormValues(target: LarkChannelTarget | null) {
+  return {
+    cwd: target?.cwd ?? "",
+    provider: target?.provider ?? "",
+    model: target?.model ?? "",
+    targetSelection: targetSelectionFor(target),
+  };
+}
+
+function defaultProcessorForm(target: LarkChannelTarget | null, botId: string): ProcessorForm {
+  return {
+    name: "",
+    enabled: true,
+    botId,
+    realtimeEnabled: true,
+    delaySeconds: "60",
+    scanEnabled: true,
+    scanIntervalMinutes: "30",
+    scanLookbackMinutes: "60",
+    scanExcludeRecentMinutes: "10",
+    previousMessageCount: "10",
+    followingMessageCount: "10",
+    aiFilterPrompt: "",
+    replyPrompt: "结合群聊上下文，直接回答当前工作问题。",
+    autoArchiveAgent: true,
+    ...targetFormValues(target),
+    filters: [],
+  };
+}
+
+function storedProcessorForm(
+  processor: LarkGroupMessageProcessor,
+  target: LarkChannelTarget | null,
+): ProcessorForm {
   return {
     name: processor.name,
     enabled: processor.enabled,
@@ -130,10 +172,168 @@ function formFromProcessor(
     aiFilterPrompt: processor.aiFilterPrompt,
     replyPrompt: processor.replyPrompt,
     autoArchiveAgent: processor.autoArchiveAgent,
-    cwd: processor.target.cwd ?? "",
-    provider: processor.target.provider ?? "",
-    model: processor.target.model ?? "",
+    ...targetFormValues(target),
     filters: processor.filters,
+  };
+}
+
+function formFromProcessor(
+  processor: LarkGroupMessageProcessor | null | undefined,
+  bots: readonly LarkChannelBotStatus[],
+): ProcessorForm {
+  const target = processor?.target ?? bots[0]?.target ?? null;
+  if (!processor) {
+    return defaultProcessorForm(target, bots[0]?.id ?? "");
+  }
+  return storedProcessorForm(processor, target);
+}
+
+function optionDisplay<T extends string>(
+  options: readonly SelectFieldOption<T>[],
+  value: T | null,
+) {
+  const option = options.find((entry) => entry.value === value);
+  return option ? { label: option.label, description: option.description } : null;
+}
+
+function buildProviderOptions(
+  entries: readonly ProviderSnapshotEntry[],
+): SelectFieldOption<string>[] {
+  return entries
+    .filter((entry) => entry.enabled !== false)
+    .map((entry) => ({
+      id: entry.provider,
+      value: entry.provider,
+      label: entry.label ?? entry.provider,
+      description: entry.description ?? entry.provider,
+    }));
+}
+
+function buildModelOptions(models: readonly AgentModelDefinition[]): SelectFieldOption<string>[] {
+  return models.map((model) => ({
+    id: model.id,
+    value: model.id,
+    label: model.label,
+    description: model.description ?? model.id,
+  }));
+}
+
+function buildTargetOptions(
+  assistants: ReturnType<typeof useAssistants>["assistants"],
+  teams: ReturnType<typeof useTeams>["teams"],
+): SelectFieldOption<string>[] {
+  return [
+    {
+      id: TARGET_WORKSPACE,
+      value: TARGET_WORKSPACE,
+      label: "不指定助手或团队",
+      description: "直接使用所选模型和 Project",
+    },
+    ...assistants.map((assistant) => ({
+      id: `${TARGET_ASSISTANT_PREFIX}${assistant.id}`,
+      value: `${TARGET_ASSISTANT_PREFIX}${assistant.id}`,
+      label: assistant.name,
+      description: `助手 · ${assistant.description || assistant.name}`,
+    })),
+    ...teams.map((team) => ({
+      id: `${TARGET_TEAM_PREFIX}${team.id}`,
+      value: `${TARGET_TEAM_PREFIX}${team.id}`,
+      label: team.name,
+      description: "团队",
+    })),
+  ];
+}
+
+function buildTarget(input: {
+  targetSelection: string;
+  provider: string;
+  model: string;
+  cwd: string;
+  projectId: string | null;
+}): LarkChannelTarget {
+  const shared = {
+    provider: input.provider || null,
+    model: input.model || null,
+    cwd: input.cwd,
+    workspaceId: null,
+    projectId: input.projectId,
+  };
+  if (input.targetSelection.startsWith(TARGET_ASSISTANT_PREFIX)) {
+    return {
+      kind: "assistant",
+      assistantId: input.targetSelection.slice(TARGET_ASSISTANT_PREFIX.length) || null,
+      ...shared,
+    };
+  }
+  if (input.targetSelection.startsWith(TARGET_TEAM_PREFIX)) {
+    return {
+      kind: "team",
+      teamId: input.targetSelection.slice(TARGET_TEAM_PREFIX.length) || null,
+      ...shared,
+    };
+  }
+  return { kind: "workspace", ...shared };
+}
+
+function validateProcessorForm(
+  form: ProcessorForm,
+  projectMode: LarkProjectBindingMode,
+): {
+  scan: LarkGroupMessageProcessorCreateInput["scan"];
+  context: LarkGroupMessageProcessorCreateInput["context"];
+} {
+  if (!form.name.trim()) throw new Error("请输入处理器名称");
+  if (!form.botId) throw new Error("请选择飞书机器人");
+  if (!form.provider.trim()) throw new Error("请选择模型提供方");
+  if (projectMode === "existing" && !form.cwd.trim()) {
+    throw new Error("请选择已有 Project");
+  }
+  const scan = {
+    enabled: form.scanEnabled,
+    intervalMinutes: toInteger(form.scanIntervalMinutes, "扫描间隔", 1, 1440),
+    lookbackMinutes: toInteger(form.scanLookbackMinutes, "扫描范围", 1, 10080),
+    excludeRecentMinutes: toInteger(form.scanExcludeRecentMinutes, "排除最近", 0, 10079),
+  };
+  if (scan.excludeRecentMinutes >= scan.lookbackMinutes) {
+    throw new Error("排除最近时间必须小于扫描范围");
+  }
+  return {
+    scan,
+    context: {
+      previousMessageCount: toInteger(form.previousMessageCount, "前文消息数量", 0, 100),
+      followingMessageCount: toInteger(form.followingMessageCount, "后文消息数量", 0, 100),
+    },
+  };
+}
+
+function buildProcessorInput(input: {
+  form: ProcessorForm;
+  scan: LarkGroupMessageProcessorCreateInput["scan"];
+  context: LarkGroupMessageProcessorCreateInput["context"];
+  cwd: string;
+  projectId: string | null;
+}): LarkGroupMessageProcessorCreateInput {
+  return {
+    name: input.form.name.trim(),
+    enabled: input.form.enabled,
+    botId: input.form.botId,
+    realtime: {
+      enabled: input.form.realtimeEnabled,
+      delaySeconds: toInteger(input.form.delaySeconds, "实时等待时间", 0, 3600),
+    },
+    scan: input.scan,
+    context: input.context,
+    filters: input.form.filters.filter((filter) => filter.value.trim()),
+    aiFilterPrompt: input.form.aiFilterPrompt.trim(),
+    replyPrompt: input.form.replyPrompt.trim(),
+    autoArchiveAgent: input.form.autoArchiveAgent,
+    target: buildTarget({
+      targetSelection: input.form.targetSelection,
+      provider: input.form.provider.trim(),
+      model: input.form.model.trim(),
+      cwd: input.cwd,
+      projectId: input.projectId,
+    }),
   };
 }
 
@@ -277,9 +477,24 @@ export function LarkGroupMessageProcessorEditor({
   onSaved: () => void;
 }) {
   const processors = useLarkGroupMessageProcessors(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const assistants = useAssistants(serverId);
+  const supportsTeams = useHostFeature(serverId, "teams");
+  const teams = useTeams(serverId, { enabled: supportsTeams });
+  const providerSnapshot = useProvidersSnapshot(serverId);
+  const supportsDirectorylessProjects = useHostFeature(serverId, "projectCreateDirectoryless");
   const { projects } = useProjects();
   const [form, setForm] = useState(() => formFromProcessor(processor, bots));
+  const [projectMode, setProjectMode] = useState<LarkProjectBindingMode>(
+    processor ? "existing" : "create",
+  );
+  const [newProjectName, setNewProjectName] = useState(processor?.name ?? "");
+  const [newProjectNameEdited, setNewProjectNameEdited] = useState(false);
+  const [newProjectNameRevision, setNewProjectNameRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const upsertProject = useSessionStore((state) => state.upsertProject);
+  const removeProject = useSessionStore((state) => state.removeProject);
+  const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const botOptions = useMemo(
     () =>
       bots.map((bot) => ({
@@ -307,6 +522,20 @@ export function LarkGroupMessageProcessorEditor({
       }),
     [projects, serverId],
   );
+  const providerEntries = useMemo(() => providerSnapshot.entries ?? [], [providerSnapshot.entries]);
+  const providerOptions = useMemo(() => buildProviderOptions(providerEntries), [providerEntries]);
+  const selectedProvider = useMemo(
+    () => providerEntries.find((entry) => entry.provider === form.provider) ?? null,
+    [form.provider, providerEntries],
+  );
+  const modelOptions = useMemo(
+    () => buildModelOptions(selectedProvider?.models ?? []),
+    [selectedProvider?.models],
+  );
+  const targetOptions = useMemo(
+    () => buildTargetOptions(assistants.assistants, teams.teams),
+    [assistants.assistants, teams.teams],
+  );
   const updateText = useCallback((field: TextFormField, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
   }, []);
@@ -319,6 +548,29 @@ export function LarkGroupMessageProcessorEditor({
   const updateCwd = useCallback((cwd: string) => {
     setForm((current) => ({ ...current, cwd }));
   }, []);
+  const updateProvider = useCallback((provider: string) => {
+    setForm((current) => ({ ...current, provider, model: "" }));
+  }, []);
+  const updateTargetSelection = useCallback((targetSelection: string) => {
+    setForm((current) => ({ ...current, targetSelection }));
+  }, []);
+  const updateProjectMode = useCallback((mode: LarkProjectBindingMode) => {
+    setProjectMode(mode);
+  }, []);
+  const updateNewProjectName = useCallback((name: string) => {
+    setNewProjectName(name);
+    setNewProjectNameEdited(true);
+  }, []);
+  const updateName = useCallback(
+    (name: string) => {
+      updateText("name", name);
+      if (!newProjectNameEdited) {
+        setNewProjectName(name);
+        setNewProjectNameRevision((current) => current + 1);
+      }
+    },
+    [newProjectNameEdited, updateText],
+  );
   const addFilter = useCallback(() => {
     setForm((current) => ({
       ...current,
@@ -347,61 +599,77 @@ export function LarkGroupMessageProcessorEditor({
       filters: current.filters.filter((_, currentIndex) => currentIndex !== index),
     }));
   }, []);
+  const updateModel = useCallback((model: string) => updateText("model", model), [updateText]);
   const save = useCallback(async () => {
+    let createdProjectId: string | null = null;
     try {
       setError(null);
-      if (!form.name.trim()) throw new Error("请输入处理器名称");
-      if (!form.botId) throw new Error("请选择飞书机器人");
-      if (!form.cwd.trim()) throw new Error("请选择项目目录");
-      if (!form.provider.trim()) throw new Error("请输入 provider");
-      const scan = {
-        enabled: form.scanEnabled,
-        intervalMinutes: toInteger(form.scanIntervalMinutes, "扫描间隔", 1, 1440),
-        lookbackMinutes: toInteger(form.scanLookbackMinutes, "扫描范围", 1, 10080),
-        excludeRecentMinutes: toInteger(form.scanExcludeRecentMinutes, "排除最近", 0, 10079),
-      };
-      if (scan.excludeRecentMinutes >= scan.lookbackMinutes) {
-        throw new Error("排除最近时间必须小于扫描范围");
-      }
-      const input: LarkGroupMessageProcessorCreateInput = {
-        name: form.name.trim(),
-        enabled: form.enabled,
-        botId: form.botId,
-        realtime: {
-          enabled: form.realtimeEnabled,
-          delaySeconds: toInteger(form.delaySeconds, "实时等待时间", 0, 3600),
-        },
-        scan,
-        context: {
-          previousMessageCount: toInteger(form.previousMessageCount, "前文消息数量", 0, 100),
-          followingMessageCount: toInteger(form.followingMessageCount, "后文消息数量", 0, 100),
-        },
-        filters: form.filters.filter((filter) => filter.value.trim()),
-        aiFilterPrompt: form.aiFilterPrompt.trim(),
-        replyPrompt: form.replyPrompt.trim(),
-        autoArchiveAgent: form.autoArchiveAgent,
-        target: {
-          kind: "workspace",
-          provider: form.provider.trim(),
-          model: form.model.trim() || null,
-          cwd: form.cwd.trim(),
-          workspaceId: null,
-          projectId: null,
-        },
-      };
+      const validated = validateProcessorForm(form, projectMode);
+      const selectedProjectId =
+        findLarkProjectIdByCwd(projects, serverId, form.cwd) ??
+        (processor?.target.cwd === form.cwd ? (processor.target.projectId ?? null) : null);
+      const createdProject =
+        projectMode === "create"
+          ? await createLarkProjectBinding({
+              name: newProjectName || form.name,
+              supportsDirectorylessProjects,
+              client,
+              registerProject: (created) => {
+                registerProjectDescriptor({
+                  serverId,
+                  project: created,
+                  upsertProject,
+                  setHasHydratedWorkspaces,
+                });
+              },
+            })
+          : null;
+      const resolvedCwd = createdProject?.cwd ?? form.cwd.trim();
+      const resolvedProjectId = createdProject?.projectId ?? selectedProjectId;
+      createdProjectId = createdProject?.projectId ?? null;
+      const input = buildProcessorInput({
+        form,
+        scan: validated.scan,
+        context: validated.context,
+        cwd: resolvedCwd,
+        projectId: resolvedProjectId,
+      });
       if (processor) await processors.update(processor.id, input);
       else await processors.create(input);
       onSaved();
     } catch (reason) {
+      if (createdProjectId) {
+        await rollbackLarkProjectBinding({
+          projectId: createdProjectId,
+          client,
+          unregisterProject: (projectId) => removeProject(serverId, projectId),
+        });
+      }
       setError(reason instanceof Error ? reason.message : String(reason));
     }
-  }, [form, onSaved, processor, processors]);
+  }, [
+    client,
+    form,
+    newProjectName,
+    onSaved,
+    processor,
+    processors,
+    projectMode,
+    projects,
+    removeProject,
+    serverId,
+    setHasHydratedWorkspaces,
+    supportsDirectorylessProjects,
+    upsertProject,
+  ]);
   const savePressed = useCallback(() => void save(), [save]);
 
   return (
     <SettingsSection title={processor ? "编辑群消息处理器" : "创建群消息处理器"}>
       <View style={styles.content}>
-        <ProcessorTextField label="名称" field="name" value={form.name} update={updateText} />
+        <Field label="名称">
+          <FormTextInput value={form.name} onChangeText={updateName} />
+        </Field>
         <SelectField
           label="飞书机器人"
           value={form.botId}
@@ -411,30 +679,53 @@ export function LarkGroupMessageProcessorEditor({
           placeholder="选择机器人"
           emptyText="暂无可用飞书机器人"
         />
-        <SelectField
-          label="项目目录"
-          value={form.cwd}
-          selectedDisplay={null}
-          options={projectOptions}
-          onChange={updateCwd}
-          placeholder="选择已有 Project"
-          emptyText="暂无可用 Project"
-          searchable
-        />
         <Text style={settingsStyles.rowHint}>
           请先将该机器人手动加入群。处理器只监听并扫描机器人已加入的群。
         </Text>
-        <ProcessorTextField
-          label="Provider"
-          field="provider"
-          value={form.provider}
-          update={updateText}
+        <SelectField
+          label="模型提供方"
+          value={form.provider || null}
+          selectedDisplay={optionDisplay(providerOptions, form.provider || null)}
+          options={providerOptions}
+          onChange={updateProvider}
+          placeholder="选择模型提供方"
+          emptyText="暂无可用模型提供方"
+          searchable
         />
-        <ProcessorTextField
+        <SelectField
           label="模型（可选）"
-          field="model"
-          value={form.model}
-          update={updateText}
+          value={form.model || null}
+          selectedDisplay={optionDisplay(modelOptions, form.model || null)}
+          options={modelOptions}
+          onChange={updateModel}
+          placeholder="选择模型"
+          emptyText="该提供方暂无模型"
+          disabled={!form.provider}
+          searchable
+        />
+        <SelectField
+          label="助手或团队"
+          value={form.targetSelection}
+          selectedDisplay={optionDisplay(targetOptions, form.targetSelection)}
+          options={targetOptions}
+          onChange={updateTargetSelection}
+          placeholder="选择助手或团队"
+          emptyText="暂无助手或团队"
+          searchable
+        />
+        <LarkProjectBindingFields
+          mode={projectMode}
+          cwd={form.cwd}
+          newProjectName={newProjectName}
+          newProjectNameRevision={newProjectNameRevision}
+          supportsDirectorylessProjects={supportsDirectorylessProjects}
+          projectOptions={projectOptions}
+          selectedProjectDisplay={optionDisplay(projectOptions, form.cwd || null)}
+          defaultNameDescription="默认与群消息处理器名称相同"
+          testIDPrefix="lark-group-processor"
+          onModeChange={updateProjectMode}
+          onCwdChange={updateCwd}
+          onNewProjectNameChange={updateNewProjectName}
         />
         <ProcessorSwitchRow
           label="启用处理器"

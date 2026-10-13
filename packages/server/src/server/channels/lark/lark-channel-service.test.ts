@@ -177,6 +177,7 @@ describe("LarkChannelService", () => {
       ]),
       addBotToChat: vi.fn(async () => undefined),
       getMessage: vi.fn(async () => null),
+      listChatMessages: vi.fn(async () => []),
       listThreadMessages: vi.fn(async () => []),
     };
     const directoryStore = new LarkDirectoryStore({ paseoHome, logger });
@@ -417,6 +418,130 @@ describe("LarkChannelService", () => {
       "omt_topic",
       expect.any(String),
     );
+  });
+
+  test("creates one group-processor task for a human message and replies in its topic", async () => {
+    const harness = createHarness();
+    const processor = harness.service.createGroupMessageProcessor({
+      name: "研发群自动答疑",
+      enabled: true,
+      botId: harness.botId,
+      realtime: { enabled: true, delaySeconds: 0 },
+      scan: { enabled: false, intervalMinutes: 30, lookbackMinutes: 60, excludeRecentMinutes: 10 },
+      context: { previousMessageCount: 0, followingMessageCount: 0 },
+      filters: [],
+      aiFilterPrompt: "",
+      replyPrompt: "直接回答当前问题",
+      autoArchiveAgent: true,
+      target: {
+        kind: "workspace",
+        provider: "claude",
+        model: null,
+        cwd: "/repo",
+        workspaceId: null,
+        projectId: null,
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_group_processor",
+      messageId: "om_group_processor",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_1",
+      unionId: null,
+      senderType: "user",
+      senderAppId: null,
+      displayName: "Alice",
+      topicName: "发布问题",
+      text: "请问发布失败如何排查？",
+      createTime: Date.now(),
+      mentions: [],
+    } satisfies NormalizedLarkMessageEvent);
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_group_processor_scan",
+      messageId: "om_group_processor",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_1",
+      unionId: null,
+      senderType: "user",
+      senderAppId: null,
+      displayName: "Alice",
+      topicName: "发布问题",
+      text: "请问发布失败如何排查？",
+      createTime: Date.now(),
+      mentions: [],
+    } satisfies NormalizedLarkMessageEvent);
+
+    const tasks = harness.service.listGroupMessageProcessorTasks(processor.id);
+    expect(tasks).toHaveLength(1);
+    const task = tasks[0]!;
+    expect(task).toMatchObject({ status: "running", source: "listener" });
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+
+    harness.lastMessages.set("agent-created", "请先检查发布日志和变更记录。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_group_processor",
+      "请先检查发布日志和变更记录。",
+    );
+    expect(harness.service.listGroupMessageProcessorTasks(processor.id)[0]).toMatchObject({
+      status: "completed",
+      agentId: "agent-created",
+    });
+  });
+
+  test("does not create group-processor tasks for bot-authored messages", async () => {
+    const harness = createHarness();
+    const processor = harness.service.createGroupMessageProcessor({
+      name: "研发群自动答疑",
+      enabled: true,
+      botId: harness.botId,
+      realtime: { enabled: true, delaySeconds: 0 },
+      scan: { enabled: false, intervalMinutes: 30, lookbackMinutes: 60, excludeRecentMinutes: 10 },
+      context: { previousMessageCount: 0, followingMessageCount: 0 },
+      filters: [],
+      aiFilterPrompt: "",
+      replyPrompt: "直接回答当前问题",
+      autoArchiveAgent: true,
+      target: {
+        kind: "workspace",
+        provider: "claude",
+        model: null,
+        cwd: "/repo",
+        workspaceId: null,
+        projectId: null,
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_peer_bot",
+      messageId: "om_peer_bot",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_peer_bot",
+      unionId: null,
+      senderType: "app",
+      senderAppId: "cli_peer",
+      displayName: "其他机器人",
+      topicName: "机器人消息",
+      text: "请处理这条消息",
+      createTime: Date.now(),
+      mentions: [],
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.service.listGroupMessageProcessorTasks(processor.id)).toEqual([]);
+    expect(harness.createAgent).not.toHaveBeenCalled();
   });
 
   test("routes an explicit bot handoff without also mentioning the human user", async () => {

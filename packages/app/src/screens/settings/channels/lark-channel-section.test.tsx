@@ -7,6 +7,7 @@ import type {
   LarkBotApplication,
   LarkChannelBotStatus,
   LarkChannelStatus,
+  LarkGroupMessageProcessor,
   LarkReminder,
   LarkSubstituteMode,
 } from "@getpaseo/protocol/messages";
@@ -564,6 +565,95 @@ vi.mock("./lark-substitute-task-list-page", () => ({
   ),
 }));
 
+vi.mock("./lark-group-message-processor-section", () => ({
+  LarkGroupMessageProcessorSection: ({
+    onCreate,
+    onEdit,
+    onOpenTasks,
+  }: {
+    onCreate: () => void;
+    onEdit: (processor: LarkGroupMessageProcessor) => void;
+    onOpenTasks: (processor: LarkGroupMessageProcessor) => void;
+  }) => {
+    const processor = React.useMemo<LarkGroupMessageProcessor>(
+      () => ({
+        id: "group-processor-1",
+        name: "研发群自动答疑",
+        enabled: true,
+        botId: "bot-1",
+        realtime: { enabled: true, delaySeconds: 60 },
+        scan: { enabled: true, intervalMinutes: 30, lookbackMinutes: 60, excludeRecentMinutes: 10 },
+        context: { previousMessageCount: 10, followingMessageCount: 10 },
+        filters: [],
+        aiFilterPrompt: "",
+        replyPrompt: "回答问题",
+        autoArchiveAgent: true,
+        target: makeBot().target,
+        createdAt: "2026-10-13T00:00:00.000Z",
+        updatedAt: "2026-10-13T00:00:00.000Z",
+      }),
+      [],
+    );
+    const handleEdit = React.useCallback(() => onEdit(processor), [onEdit, processor]);
+    const handleOpenTasks = React.useCallback(
+      () => onOpenTasks(processor),
+      [onOpenTasks, processor],
+    );
+    return (
+      <div>
+        <button type="button" onClick={onCreate}>
+          创建群消息处理器
+        </button>
+        <button type="button" onClick={handleEdit}>
+          编辑群消息处理器
+        </button>
+        <button type="button" onClick={handleOpenTasks}>
+          群消息处理器任务
+        </button>
+      </div>
+    );
+  },
+  LarkGroupMessageProcessorEditor: ({
+    processor,
+    onSaved,
+  }: {
+    processor?: { name: string } | null;
+    onSaved: () => void;
+  }) => (
+    <div>
+      <span>{processor ? `正在编辑 ${processor.name}` : "正在创建群消息处理器"}</span>
+      <button type="button" onClick={onSaved}>
+        保存群消息处理器
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("./lark-group-message-processor-task-list-page", () => ({
+  LarkGroupMessageProcessorTaskListPage: ({
+    processor,
+  }: {
+    processor: LarkGroupMessageProcessor;
+  }) => <div>{`${processor.name}群消息任务列表`}</div>,
+}));
+
+vi.mock("./lark-group-message-processor-editor", () => ({
+  LarkGroupMessageProcessorEditor: ({
+    processor,
+    onSaved,
+  }: {
+    processor?: { name: string } | null;
+    onSaved: () => void;
+  }) => (
+    <div>
+      <span>{processor ? `正在编辑 ${processor.name}` : "正在创建群消息处理器"}</span>
+      <button type="button" onClick={onSaved}>
+        保存群消息处理器
+      </button>
+    </div>
+  ),
+}));
+
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
   return {
     id: "bot-1",
@@ -1088,6 +1178,26 @@ describe("LarkChannelSection", () => {
     expect(screen.getByRole("button", { name: "创建定时任务" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "编辑定时任务" })).toBeTruthy();
     expect(onDetailNavigationChange).toHaveBeenCalledWith(null);
+  });
+
+  test("opens group message processor creation, editing, and task pages", () => {
+    channelState.current.status = makeStatus([makeBot()]);
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "创建群消息处理器" }));
+    expect(screen.getByTestId("host-page-channels-group-processor-create")).toBeTruthy();
+    expect(screen.getByText("正在创建群消息处理器")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存群消息处理器" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑群消息处理器" }));
+    expect(screen.getByTestId("host-page-channels-group-processor-edit")).toBeTruthy();
+    expect(screen.getByText("正在编辑 研发群自动答疑")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存群消息处理器" }));
+    fireEvent.click(screen.getByRole("button", { name: "群消息处理器任务" }));
+    expect(screen.getByTestId("host-page-channels-group-processor-tasks")).toBeTruthy();
+    expect(screen.getByText("研发群自动答疑群消息任务列表")).toBeTruthy();
   });
 
   test("searches contacts and opens a dedicated page to supplement identity fields", async () => {

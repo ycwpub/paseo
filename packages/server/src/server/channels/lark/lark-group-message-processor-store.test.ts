@@ -117,4 +117,29 @@ describe("Lark group message processor stores", () => {
     expect(restarted.resetFailedForRetry([task.id], "2026-10-13T00:02:00.000Z")).toEqual([task.id]);
     expect(restarted.get(task.id)?.status).toBe("pending");
   });
+
+  test("records a scan failure as a visible failed task", () => {
+    const store = new LarkGroupMessageProcessorTaskStore(createHome());
+    const task = store.recordOperationalFailure(
+      {
+        processorId: "processor-1",
+        processorName: "研发群自动答疑",
+        botId: "bot-1",
+        source: "scan",
+        stage: "scan",
+        chatId: "oc_research",
+        chatName: "研发群",
+        error: "飞书接口读取群消息失败",
+      },
+      "2026-10-13T00:00:00.000Z",
+    );
+
+    expect(task).toMatchObject({
+      status: "failed",
+      source: "scan",
+      failureStage: "scan",
+      chatName: "研发群",
+      error: "飞书接口读取群消息失败",
+    });
+  });
 });

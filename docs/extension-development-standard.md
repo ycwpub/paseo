@@ -211,6 +211,10 @@ real-time events and compensating scans over bot-joined groups, ignore bot-autho
 deduplicate by processor and message, apply static include/exclude filters before Agent creation,
 and only create/reply in a Lark topic after the Agent returns a non-skip answer. Processors retain
 their own task list, manual scan range, pause, retry, delete, failure stage, and error details.
+The editor selects a Provider/model and an optional Assistant or Team, then binds an existing
+Project or creates a directoryless Project named after the processor; failed saves roll back that
+new Project. Group scan and context-read failures are persisted as failed tasks instead of being
+left only in logs.
 The protocol, channel session route, Server capability gates, bot capability registry, processor
 and task stores, matcher, scheduler, Agent lifecycle bridge, channel settings UI, and focused
 regression tests are changed together.

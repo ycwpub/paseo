@@ -1,0 +1,36 @@
+name: Linux network helper
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/linux-network-helper.yml"
+      - "packages/desktop/native/network-helper/linux/**"
+      - "packages/desktop/scripts/build-linux-network-helper.mjs"
+      - "packages/desktop/scripts/test-linux-network-helper.sh"
+  push:
+    branches:
+      - feature_paseo
+    paths:
+      - ".github/workflows/linux-network-helper.yml"
+      - "packages/desktop/native/network-helper/linux/**"
+      - "packages/desktop/scripts/build-linux-network-helper.mjs"
+      - "packages/desktop/scripts/test-linux-network-helper.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  escape-tests:
+    name: namespace escape tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Compile helper and run process-tree escape tests
+        run: npm run test:linux-network-helper --workspace=@getpaseo/desktop

@@ -15,9 +15,10 @@
   },
   "main": "dist/main.js",
   "scripts": {
-    "build": "npm --prefix ../.. run build:server:clean && npm run build:main && electron-builder --config electron-builder.yml",
+    "build": "npm --prefix ../.. run build:server:clean && npm run build:main && node scripts/build-linux-network-helper.mjs && electron-builder --config electron-builder.yml",
     "build:test": "npm --prefix ../.. run build:app-deps:clean && cd ../app && cross-env PASEO_WEB_PLATFORM=electron npx expo export --platform web && cd ../desktop && npm --prefix ../.. run build:server:clean && npm run build:main && electron-builder --config electron-builder-test.yml",
     "build:main": "tsc -p tsconfig.json",
+    "test:linux-network-helper": "bash scripts/test-linux-network-helper.sh",
     "capture-harness": "./capture-harness/run.sh",
     "dev": "./scripts/dev.sh",
     "dev:win": "powershell ./scripts/dev.ps1",

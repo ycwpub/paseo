@@ -38,6 +38,15 @@ Linux 严格模式使用独立 network namespace 和防火墙规则。macOS 严�
 扩展或特权辅助进程。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider 工具白名单只能作为兼容
 配置，不能把执行状态提升为 `strict`。
 
+Linux 桌面包包含一个最小权限的 setuid launcher。它只负责创建新的 network namespace，
+随后清空附加组、降回调用用户并设置 `no_new_privs`，再执行目标进程树。第一阶段 helper
+只有 `deny_all` 能力，用于证明 curl、Python、Node、子进程和孙进程不能直连宿主网络；
+它必须返回 `strict_ready=false`。只有受控 Project 代理接入并通过逃逸测试后，helper 才能
+报告 `project_proxy` 和 `strict_ready=true`。
+
+deb/rpm 安装脚本把 helper 设置为 `root:root`、模式 `4755`。AppImage 挂载内容不能安全地
+获得 setuid 权限，因此 AppImage 在单独安装受信任 helper 前保持 `unavailable`。
+
 ## 审计
 
 审计记录包含 Project、Workspace、Agent 或任务、调用来源、目标、决策、命中规则和耗时。

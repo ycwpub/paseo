@@ -66,6 +66,9 @@ linux:
   extraResources:
     - from: bin/paseo
       to: bin/paseo
+    - from: native-build/linux/${arch}/paseo-network-helper
+      to: network-helper/paseo-network-helper
+  afterInstall: scripts/linux-network-helper-after-install.sh
   target:
     - AppImage
     - deb

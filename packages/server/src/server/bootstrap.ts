@@ -12,6 +12,7 @@ import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js
 import { ProjectCallAuthorizer } from "./project-call-permissions/project-call-authorizer.js";
 import { ProjectCallAuditStore } from "./project-call-permissions/project-call-audit-store.js";
 import { ProjectNetworkEnforcer } from "./project-call-permissions/project-network-enforcer.js";
+import { LinuxProjectNetworkIsolationAdapter } from "./project-call-permissions/linux-project-network-isolation-adapter.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -1611,6 +1612,9 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     workspaceRegistry,
     projectRegistry,
+    adapter: new LinuxProjectNetworkIsolationAdapter({
+      helperPath: process.env.PASEO_LINUX_NETWORK_HELPER_PATH,
+    }),
   });
   const createAgentCommandDependencies: CreateAgentCommandDependencies = {
     agentManager,

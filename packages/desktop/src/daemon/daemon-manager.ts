@@ -515,6 +515,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
       PASEO_DESKTOP_MANAGED: "1",
       PASEO_CLI: getBundledCliShimPath(),
       PASEO_WEB_UI_ENABLED: "false",
+      ...resolveLinuxNetworkHelperEnv(),
     },
     stdio: ["ignore", "ignore", "ignore"],
   });
@@ -572,6 +573,17 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     writeDesktopDaemonBuildId(getPaseoHome(), desktopBuildId);
   }
   return running;
+}
+
+function resolveLinuxNetworkHelperEnv(): Record<string, string> {
+  if (process.platform !== "linux") return {};
+  return {
+    PASEO_LINUX_NETWORK_HELPER_PATH: path.join(
+      process.resourcesPath,
+      "network-helper",
+      "paseo-network-helper",
+    ),
+  };
 }
 
 export async function stopDesktopDaemon(

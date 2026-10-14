@@ -11,7 +11,7 @@
   <a href="README.ko.md">한국어</a>
 </p>
 
-> **想了解 Paseo 字节版？** 从写代码、管理开发机，到飞书问答和报警排查，[这份介绍](docs/product-extensions/byte-edition.md)讲清楚能帮你省哪些事，以及如何开始。下文保留上游开源版说明；使用字节扩展请按该指南准备字节版环境，不要直接套用下文的官方下载安装方式。
+> **想让 AI 真正把事情做下去，而不只是回答问题？** Paseo 字节版把项目知识、Mac / Linux 开发机、TRAE CLI / Aiden / Codex、飞书协作和报警排查接到同一个工作台。[先看它能替你省掉哪些重复工作](docs/product-extensions/byte-edition.md)。下文保留上游开源版说明；使用字节扩展请按该指南准备字节版环境，不要直接套用下文的官方下载安装方式。
 
 <p align="center">
   <a href="https://github.com/getpaseo/paseo/stargazers">

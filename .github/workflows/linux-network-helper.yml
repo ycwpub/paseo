@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - feature_paseo
+      - "ci/linux-network-helper-*"
     paths:
       - ".github/workflows/linux-network-helper.yml"
       - "packages/desktop/native/network-helper/linux/**"

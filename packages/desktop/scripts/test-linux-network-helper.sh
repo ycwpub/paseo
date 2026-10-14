@@ -88,13 +88,22 @@ if [[ -z "${child_pid:-}" ]]; then
 fi
 kill "$helper_pid"
 wait "$helper_pid" 2>/dev/null || true
+is_live_process() {
+  local pid="$1"
+  if [[ ! -r "/proc/$pid/stat" ]]; then
+    return 1
+  fi
+  local state
+  state="$(awk '{print $3}' "/proc/$pid/stat")"
+  [[ "$state" != "Z" && "$state" != "X" ]]
+}
 for _ in $(seq 1 50); do
-  if ! kill -0 "$child_pid" 2>/dev/null; then
+  if ! is_live_process "$child_pid"; then
     break
   fi
   sleep 0.05
 done
-if kill -0 "$child_pid" 2>/dev/null; then
+if is_live_process "$child_pid"; then
   echo "isolated child survived helper termination" >&2
   kill -KILL "$child_pid" 2>/dev/null || true
   exit 1

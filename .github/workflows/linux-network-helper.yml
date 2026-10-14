@@ -34,4 +34,17 @@ jobs:
           node-version: "22"
 
       - name: Compile helper and run process-tree escape tests
-        run: npm run test:linux-network-helper --workspace=@getpaseo/desktop
+        shell: bash
+        run: |
+          set +e
+          log_file="$RUNNER_TEMP/linux-network-helper.log"
+          npm run test:linux-network-helper --workspace=@getpaseo/desktop >"$log_file" 2>&1
+          status=$?
+          cat "$log_file"
+          {
+            echo "## Linux network helper output"
+            echo '```text'
+            tail -200 "$log_file"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$status"

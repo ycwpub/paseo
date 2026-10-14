@@ -47,6 +47,11 @@ Linux 桌面包包含一个最小权限的 setuid launcher。它只负责创建�
 deb/rpm 安装脚本把 helper 设置为 `root:root`、模式 `4755`。AppImage 挂载内容不能安全地
 获得 setuid 权限，因此 AppImage 在单独安装受信任 helper 前保持 `unavailable`。
 
+受控代理使用短期、仅内存保存的 Workspace 凭据。普通 HTTP 请求按完整 URL、Method 和
+Path 授权；HTTPS `CONNECT` 只能按协议、主机和端口授权，因此带 Method 或 Path 限制的
+规则不能授权 CONNECT 隧道。环回、链路本地、私网、未指定和组播地址默认拒绝，避免
+DNS rebinding 把公网白名单解析到宿主或内网。
+
 ## 审计
 
 审计记录包含 Project、Workspace、Agent 或任务、调用来源、目标、决策、命中规则和耗时。

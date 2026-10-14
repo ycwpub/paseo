@@ -397,3 +397,4 @@ export * from "./plugin/app-rpc-schemas.js";
 export * from "./plugin/rpc-schemas.js";
 export * from "./client-access/rpc-schemas.js";
 export * from "./reasoning-translation/rpc-schemas.js";
+export * from "./project-call-permissions.js";

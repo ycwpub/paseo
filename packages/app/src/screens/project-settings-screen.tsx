@@ -67,6 +67,7 @@ import {
   type ProjectHostEntry,
   type ProjectSummary,
 } from "@/utils/projects";
+import { ProjectCallPermissionsEditor } from "@/projects/permissions/project-call-permissions-editor";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -672,6 +673,11 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
+  const handleProjectCallPermissionsChange = useCallback(
+    (projectCallPermissions: ProjectConfigDraft["projectCallPermissions"]) =>
+      updateDraft((d) => ({ ...d, projectCallPermissions })),
+    [updateDraft],
+  );
   const handleSaveGlobalIndexInterval = useCallback(() => {
     const parsed = Number(globalIndexIntervalText.trim());
     if (!Number.isSafeInteger(parsed) || parsed <= 0) return;
@@ -817,6 +823,10 @@ function ProjectConfigForm({
 
   return (
     <View>
+      <ProjectCallPermissionsEditor
+        value={draft.projectCallPermissions}
+        onChange={handleProjectCallPermissionsChange}
+      />
       <ProjectLarkGroupsList
         serverId={serverId}
         projectId={projectId}

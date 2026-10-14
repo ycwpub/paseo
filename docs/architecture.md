@@ -403,6 +403,19 @@ Providers that can accept native tool definitions should set `supportsNativePase
 6. Tool calls are normalized to `ToolCallDetail` (shell, read, edit, write, search, etc.)
 7. Permission requests flow: agent → server → client → user decision → server → agent
 
+## Project call permissions
+
+Project call permissions are evaluated by the daemon, not by Agent prompts. The Project policy
+engine owns allow/deny matching, the Project authorizer resolves Workspace membership, and execution
+boundaries call that authorizer before invoking downstream work. Deny rules take precedence over
+allow rules.
+
+Managed mode covers daemon RPC/MCP and HTTP paths that use the Project HTTP client. Strict mode also
+requires a platform adapter that isolates the complete Provider process tree. If that adapter is not
+active, Agent creation fails with `PROJECT_STRICT_NETWORK_UNAVAILABLE`; Paseo never treats proxy
+environment variables as process isolation. The complete contract is in
+[`product-extensions/project-call-permissions.md`](./product-extensions/project-call-permissions.md).
+
 ## Storage
 
 `$PASEO_HOME` defaults to `~/.paseo`. The most important files:

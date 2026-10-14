@@ -23,6 +23,11 @@ import {
   projectLarkGroupsToDraft,
   type ProjectLarkGroupDraft,
 } from "@/projects/lark/project-lark-context-model";
+import {
+  projectCallPermissionsDraftToConfig,
+  projectCallPermissionsToDraft,
+  type ProjectCallPermissionsDraft,
+} from "@/projects/permissions/project-call-permissions-model";
 
 export { METADATA_PROMPT_KEYS };
 export type { LifecycleOriginalKind, MetadataPromptKey, ProjectScriptDraft };
@@ -64,6 +69,7 @@ export interface ProjectConfigDraft extends BaseProjectConfigDraft {
   projectKnowledge: ProjectKnowledgeDraft;
   instructionTemplates: ProjectInstructionTemplateDraft[];
   projectLarkGroups: ProjectLarkGroupDraft[];
+  projectCallPermissions: ProjectCallPermissionsDraft;
   projectConfigBase: Record<string, unknown> | undefined;
 }
 
@@ -236,6 +242,7 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
     projectKnowledge: projectKnowledgeToDraft(config?.project),
     instructionTemplates: instructionTemplatesToDraft(config?.project?.instructionTemplates),
     projectLarkGroups: projectLarkGroupsToDraft(config?.project?.larkGroups),
+    projectCallPermissions: projectCallPermissionsToDraft(config?.project?.permissions),
     projectConfigBase: config?.project as Record<string, unknown> | undefined,
   };
 }
@@ -310,6 +317,13 @@ export function applyDraftToConfig(input: {
     nextProject.larkGroups = nextLarkGroups;
   } else {
     delete nextProject.larkGroups;
+  }
+
+  const nextPermissions = projectCallPermissionsDraftToConfig(input.draft.projectCallPermissions);
+  if (nextPermissions) {
+    nextProject.permissions = nextPermissions;
+  } else {
+    delete nextProject.permissions;
   }
 
   if (Object.keys(nextProject).length === 0) {

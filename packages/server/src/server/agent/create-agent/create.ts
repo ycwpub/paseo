@@ -32,6 +32,7 @@ import {
 } from "../timeline-append.js";
 import { prepareAgentCloudKnowledge } from "./cloud-knowledge.js";
 import { resolveCreateAgentIntent } from "./intent.js";
+import type { ProjectNetworkEnforcer } from "../../project-call-permissions/project-network-enforcer.js";
 
 export interface CreateAgentSessionWorktreeResult {
   sessionConfig: AgentSessionConfig;
@@ -56,6 +57,7 @@ export interface CreateAgentCommandDependencies {
   readAssistant?: (assistantId: string) => Assistant | null;
   readPluginProjectContext?: (projectId: string) => string | null;
   readSubstituteProjectContext?: (projectId: string) => string | null;
+  projectNetworkEnforcer?: Pick<ProjectNetworkEnforcer, "assertExecutionAllowed">;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -201,6 +203,10 @@ export async function createAgentCommand(
     input.kind === "session"
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
+
+  await dependencies.projectNetworkEnforcer?.assertExecutionAllowed(
+    requireResolvedWorkspaceId(resolved.createOptions.workspaceId),
+  );
 
   const cloudKnowledge = await prepareAgentCloudKnowledge({
     config: resolved.config,

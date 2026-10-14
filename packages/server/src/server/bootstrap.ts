@@ -9,6 +9,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Logger } from "pino";
 import { z } from "zod";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
+import { ProjectCallAuthorizer } from "./project-call-permissions/project-call-authorizer.js";
+import { ProjectCallAuditStore } from "./project-call-permissions/project-call-audit-store.js";
+import { ProjectNetworkEnforcer } from "./project-call-permissions/project-network-enforcer.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -1604,6 +1607,11 @@ export async function createPaseoDaemon(
     );
   };
 
+  const projectNetworkEnforcer = new ProjectNetworkEnforcer({
+    paseoHome: config.paseoHome,
+    workspaceRegistry,
+    projectRegistry,
+  });
   const createAgentCommandDependencies: CreateAgentCommandDependencies = {
     agentManager,
     agentStorage,
@@ -1619,6 +1627,7 @@ export async function createPaseoDaemon(
     readPluginProjectContext: (projectId) => pluginService.buildProjectAgentContext(projectId),
     readSubstituteProjectContext: (projectId) =>
       larkChannelService?.buildSubstituteProjectAgentContext(projectId) ?? null,
+    projectNetworkEnforcer,
     readAssistant: (assistantId) => assistantStore.get(assistantId),
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
@@ -2169,6 +2178,15 @@ export async function createPaseoDaemon(
   );
   logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
 
+  const projectCallAuditStore = new ProjectCallAuditStore({
+    directory: path.join(config.paseoHome, "audit"),
+  });
+  const projectCallAuthorizer = new ProjectCallAuthorizer({
+    paseoHome: config.paseoHome,
+    workspaceRegistry,
+    projectRegistry,
+    auditStore: projectCallAuditStore,
+  });
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
@@ -2224,6 +2242,7 @@ export async function createPaseoDaemon(
     assistantStore,
     teamStore,
     pluginProjectService: pluginService,
+    projectCallAuthorizer,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,

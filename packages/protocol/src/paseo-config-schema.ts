@@ -4,6 +4,7 @@ import {
   PaseoGitRepositoryResourceSchema,
   resolveGitRepositoryManagedPath,
 } from "./project-git-resource.js";
+import { ProjectCallPermissionsSchema } from "./project-call-permissions.js";
 
 const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
 
@@ -256,6 +257,7 @@ export const PaseoProjectConfigSchema = z
     variables: z.record(z.string(), z.string()).optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     larkGroups: z.array(PaseoProjectLarkGroupSchema).optional(),
+    permissions: ProjectCallPermissionsSchema.optional(),
     // COMPAT(projectLarkDocuments): legacy Project links are migrated into
     // knowledge.general cloud documents when saved. Keep old configs parseable
     // until 2027-02-20.

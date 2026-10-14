@@ -114,6 +114,8 @@ import type {
   PaseoToolExecutionContext,
   PaseoToolResult,
 } from "./types.js";
+import type { ProjectCallAuthorizer } from "../../project-call-permissions/project-call-authorizer.js";
+import { executeProjectAuthorizedTool } from "./project-tool-authorization.js";
 
 export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
@@ -160,6 +162,7 @@ export interface PaseoToolHostDependencies {
       update: PluginProjectUpdate,
     ): Promise<PluginProjectSnapshot>;
   } | null;
+  projectCallAuthorizer?: Pick<ProjectCallAuthorizer, "authorize">;
   paseoHome?: string;
   worktreesRoot?: string;
   /**
@@ -663,7 +666,18 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       if (!tool) {
         throw new Error(`Paseo tool not found: ${name}`);
       }
-      return tool.handler(await parseToolInput(tool, input), context);
+      const execute = async () => tool.handler(await parseToolInput(tool, input), context);
+      const callerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+      if (!options.projectCallAuthorizer || !callerAgentId || !callerAgent?.workspaceId) {
+        return execute();
+      }
+      return executeProjectAuthorizedTool({
+        toolName: name,
+        workspaceId: callerAgent.workspaceId,
+        agentId: callerAgentId,
+        authorize: options.projectCallAuthorizer.authorize.bind(options.projectCallAuthorizer),
+        execute,
+      });
     },
   });
 

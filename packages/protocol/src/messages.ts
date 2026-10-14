@@ -147,6 +147,7 @@ export {
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
+export * from "./project-call-permissions.js";
 // ---------------------------------------------------------------------------
 // Mutable daemon config schemas (shared between server store and client)
 // ---------------------------------------------------------------------------

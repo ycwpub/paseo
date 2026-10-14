@@ -63,6 +63,9 @@ linux:
   artifactName: "Paseo-${version}-${arch}.${ext}"
   maintainer: "Mohamed Boudra <hello@moboudra.com>"
   vendor: "Paseo"
+  depends:
+    - iproute2
+    - iptables
   extraResources:
     - from: bin/paseo
       to: bin/paseo

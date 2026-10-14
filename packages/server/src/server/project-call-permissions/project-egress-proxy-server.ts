@@ -45,8 +45,20 @@ async function lookupAll(hostname: string): Promise<Array<{ address: string; fam
 function proxyToken(request: IncomingMessage): string | null {
   const header = request.headers["proxy-authorization"];
   const value = Array.isArray(header) ? header[0] : header;
-  const match = /^Bearer ([A-Za-z0-9_-]+)$/u.exec(value?.trim() ?? "");
-  return match?.[1] ?? null;
+  const normalized = value?.trim() ?? "";
+  const bearer = /^Bearer ([A-Za-z0-9_-]+)$/u.exec(normalized);
+  if (bearer) return bearer[1] ?? null;
+  const basic = /^Basic ([A-Za-z0-9+/=]+)$/u.exec(normalized);
+  if (!basic) return null;
+  try {
+    const decoded = Buffer.from(basic[1]!, "base64").toString("utf8");
+    const separator = decoded.indexOf(":");
+    return decoded.slice(0, separator) === "paseo" && separator > 0
+      ? decoded.slice(separator + 1)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function writeText(response: ServerResponse, status: number, body: string): void {

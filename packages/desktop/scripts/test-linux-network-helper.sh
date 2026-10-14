@@ -19,6 +19,10 @@ cleanup() {
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+  if [[ -n "${second_server_pid:-}" ]]; then
+    kill "$second_server_pid" 2>/dev/null || true
+    wait "$second_server_pid" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -31,7 +35,7 @@ print(sock.getsockname()[1])
 sock.close()
 PY
 )"
-python3 -m http.server "$port" --bind 127.0.0.1 --directory "$repo_root" >/tmp/paseo-network-helper-http.log 2>&1 &
+python3 -m http.server "$port" --bind 0.0.0.0 --directory "$repo_root" >/tmp/paseo-network-helper-http.log 2>&1 &
 server_pid=$!
 
 for _ in $(seq 1 50); do
@@ -45,9 +49,9 @@ curl --fail --silent --show-error "http://127.0.0.1:$port/package.json" >/dev/nu
 status="$("$helper" --status-json)"
 node -e '
 const status = JSON.parse(process.argv[1]);
-if (status.capability !== "deny_all") throw new Error("unexpected helper capability");
+if (status.capability !== "proxy_namespace") throw new Error("unexpected helper capability");
 if (status.privilege_active !== true) throw new Error("setuid privilege is not active");
-if (status.strict_ready !== false) throw new Error("deny-only helper must not claim strict readiness");
+if (status.strict_ready !== false) throw new Error("unwired proxy helper must not claim strict readiness");
 ' "$status"
 
 caller_uid="$(id -u)"
@@ -72,6 +76,34 @@ expect_blocked "Node socket" node -e \
 expect_blocked "grandchild curl" bash -c \
   "bash -c 'curl --fail --silent --show-error http://127.0.0.1:$port/package.json >/dev/null'"
 expect_blocked "host namespace escape" nsenter -t 1 -n /usr/bin/true
+
+second_port="$(
+  python3 - <<'PY'
+import socket
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
+)"
+python3 -m http.server "$second_port" --bind 0.0.0.0 --directory "$repo_root" >/tmp/paseo-network-helper-http-2.log 2>&1 &
+second_server_pid=$!
+
+proxy_token="0123456789abcdef0123456789abcdef"
+PASEO_PROJECT_PROXY_TOKEN="$proxy_token" "$helper" --proxy-port "$port" -- bash -c \
+  'curl --noproxy "*" --fail --silent --show-error "http://$PASEO_PROJECT_PROXY_HOST:'"$port"'/package.json" >/dev/null'
+
+if PASEO_PROJECT_PROXY_TOKEN="$proxy_token" "$helper" --proxy-port "$port" -- bash -c \
+  'curl --noproxy "*" --connect-timeout 1 --fail --silent --show-error "http://$PASEO_PROJECT_PROXY_HOST:'"$second_port"'/package.json" >/dev/null'; then
+  echo "proxy namespace reached a non-proxy host port" >&2
+  exit 1
+fi
+
+if PASEO_PROJECT_PROXY_TOKEN="$proxy_token" "$helper" --proxy-port "$port" -- \
+  curl --noproxy "*" --connect-timeout 1 --fail --silent --show-error "https://1.1.1.1/" >/dev/null; then
+  echo "proxy namespace reached the internet without the Project proxy" >&2
+  exit 1
+fi
 
 "$helper" -- sleep 30 &
 helper_pid=$!

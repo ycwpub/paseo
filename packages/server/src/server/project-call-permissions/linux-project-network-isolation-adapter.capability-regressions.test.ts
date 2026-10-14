@@ -13,7 +13,7 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
       runStatus: async () =>
         JSON.stringify({
           version: "1",
-          capability: "deny_all",
+          capability: "proxy_namespace",
           privilege_active: true,
           strict_ready: false,
         }),

@@ -16,13 +16,20 @@ async function proxyRequest(input: {
   port: number;
   target: string;
   token?: string;
+  authorization?: string;
 }): Promise<{ status: number; body: string }> {
+  const headers: Record<string, string> = {};
+  if (input.authorization) {
+    headers["Proxy-Authorization"] = input.authorization;
+  } else if (input.token) {
+    headers["Proxy-Authorization"] = `Bearer ${input.token}`;
+  }
   const request = http.request({
     host: "127.0.0.1",
     port: input.port,
     method: "GET",
     path: input.target,
-    headers: input.token ? { "Proxy-Authorization": `Bearer ${input.token}` } : {},
+    headers,
   });
   request.end();
   const [response] = (await once(request, "response")) as [http.IncomingMessage];
@@ -110,6 +117,35 @@ describe("ProjectEgressProxyServer", () => {
         method: "GET",
       },
     });
+  });
+
+  it("accepts Basic proxy authentication emitted by standard proxy URLs", async () => {
+    const credentials = new ProjectEgressProxyCredentials({
+      createToken: () => "basic-token",
+    });
+    credentials.issue({ workspaceId: "workspace-a", source: "agent_process" });
+    const server = new ProjectEgressProxyServer({
+      authorizer: {
+        authorize: async () => ({
+          allowed: true,
+          reason: "matched_allow",
+          matchedRuleId: "allow-example",
+          enforcement: "strict",
+        }),
+      },
+      credentials,
+      fetchImplementation: async () => new Response("basic-ok"),
+    });
+    servers.push(server);
+    const address = await server.start();
+
+    await expect(
+      proxyRequest({
+        port: address.port,
+        target: "http://example.com/",
+        authorization: `Basic ${Buffer.from("paseo:basic-token").toString("base64")}`,
+      }),
+    ).resolves.toEqual({ status: 200, body: "basic-ok" });
   });
 
   it("returns a permission failure without contacting the target", async () => {

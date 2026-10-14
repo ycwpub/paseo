@@ -67,13 +67,20 @@ static void restore_default_signals(void) {
   (void)sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 }
 
-static int enter_isolated_network(uid_t caller_uid, gid_t caller_gid, char **command) {
+static int set_parent_death_signal(void) {
   if (prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) != 0) {
     perror("paseo-network-helper: PR_SET_PDEATHSIG");
     return EXIT_FAILURE;
   }
   if (getppid() == 1) {
     fprintf(stderr, "paseo-network-helper: parent exited before isolation completed\n");
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+static int enter_isolated_network(uid_t caller_uid, gid_t caller_gid, char **command) {
+  if (set_parent_death_signal() != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
   if (unshare(CLONE_NEWNET) != 0) {
@@ -95,6 +102,12 @@ static int enter_isolated_network(uid_t caller_uid, gid_t caller_gid, char **com
   }
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
     perror("paseo-network-helper: PR_SET_NO_NEW_PRIVS");
+    return EXIT_FAILURE;
+  }
+  // Linux clears PR_SET_PDEATHSIG when effective or filesystem credentials change.
+  // Re-arm it after dropping privileges so the isolated process tree cannot outlive
+  // the privileged helper that owns its namespace.
+  if (set_parent_death_signal() != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
 

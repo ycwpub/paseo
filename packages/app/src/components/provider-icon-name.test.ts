@@ -23,7 +23,6 @@ describe("resolveProviderIconName", () => {
 
   it("falls back to the bot icon for unknown custom providers", () => {
     expect(resolveProviderIconName("custom-claude-profile")).toEqual({ kind: "bot" });
-    expect(resolveProviderIconName("traex")).toEqual({ kind: "bot" });
   });
 });
 

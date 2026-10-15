@@ -8,6 +8,9 @@ on:
       - "packages/desktop/native/network-helper/linux/**"
       - "packages/desktop/scripts/build-linux-network-helper.mjs"
       - "packages/desktop/scripts/test-linux-network-helper.sh"
+      - "packages/desktop/scripts/linux-network-helper-after-install.sh"
+      - "packages/desktop/electron-builder.yml"
+      - "packages/desktop/package.json"
       - "packages/server/src/server/project-call-permissions/**"
       - "packages/server/src/utils/project-network-process*"
   push:
@@ -19,6 +22,9 @@ on:
       - "packages/desktop/native/network-helper/linux/**"
       - "packages/desktop/scripts/build-linux-network-helper.mjs"
       - "packages/desktop/scripts/test-linux-network-helper.sh"
+      - "packages/desktop/scripts/linux-network-helper-after-install.sh"
+      - "packages/desktop/electron-builder.yml"
+      - "packages/desktop/package.json"
       - "packages/server/src/server/project-call-permissions/**"
       - "packages/server/src/utils/project-network-process*"
 
@@ -86,7 +92,7 @@ jobs:
         run: |
           set +e
           log_file="$RUNNER_TEMP/linux-desktop-packages.log"
-          npm run build:desktop -- --publish never --linux --x64 >"$log_file" 2>&1
+          npm run build:desktop -- --publish never --linux deb rpm --x64 >"$log_file" 2>&1
           status=$?
           cat "$log_file"
           if (( status != 0 )); then

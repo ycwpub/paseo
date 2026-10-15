@@ -177,13 +177,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          deb="$(find packages/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          deb="$(realpath "$(find packages/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)")"
           test -n "$deb"
           package_name="$(dpkg-deb -f "$deb" Package)"
-          sudo dpkg -i "$deb"
+          sudo apt-get install -y "$deb"
           test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
             "root:root:4755"
-          sudo dpkg -i "$deb"
+          sudo apt-get install --reinstall -y "$deb"
           test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
             "root:root:4755"
           sudo dpkg -r "$package_name"

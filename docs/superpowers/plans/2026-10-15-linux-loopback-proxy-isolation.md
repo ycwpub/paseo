@@ -157,6 +157,11 @@ tests, Electron Builder deb/rpm packaging, GitHub Actions Debian 12 privileged c
   `Install and upgrade deb package`,
   `Install and upgrade rpm package`.
 
+  The deb step installs the local package through `apt-get` so Electron's Debian runtime
+  dependencies are resolved, then uses `--reinstall` to exercise the upgrade hook. The rpm step
+  continues to use `--nodeps` because it validates package metadata and the helper install hook, not
+  a runnable Fedora desktop environment inside Debian.
+
 - [ ] **Step 2: Run local targeted regressions**
 
   Run the Project permission, HTTP/CONNECT, Workflow/Plugin, packaging, and provider-owned Vitest

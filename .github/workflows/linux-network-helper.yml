@@ -78,6 +78,7 @@ jobs:
           test "$ID" = "debian"
           test "$VERSION_ID" = "12"
           echo "Testing on $PRETTY_NAME"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install dependencies
         shell: bash

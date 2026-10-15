@@ -57,4 +57,6 @@ Linux acceptance runs only in a privileged Debian 12 container and must prove:
 4. Project allow/deny, HTTP/CONNECT, DNS pinning, and DNS rebinding tests pass through the relay.
 5. The helper process tree terminates when its owner exits.
 6. deb and rpm packages build, install, reinstall/upgrade, preserve `root:root:4755`, and uninstall.
-7. The Debian job does not install iproute2 or iptables as test prerequisites.
+7. The helper escape test runs before iproute2 is installed and without iptables. The workflow may
+   install iproute2 afterward only to add the public-looking loopback address used by the Project
+   proxy integration fixture.

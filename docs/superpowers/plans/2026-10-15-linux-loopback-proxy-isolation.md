@@ -39,7 +39,8 @@ tests, Electron Builder deb/rpm packaging, GitHub Actions Debian 12 privileged c
 **Interfaces:**
 
 - Consumes: the existing `test:linux-network-helper` shell integration entrypoint.
-- Produces: a Debian job and packaging assertion that do not install or require iproute2/iptables.
+- Produces: a Debian helper test that runs before iproute2 is installed and without iptables, plus a
+  packaging assertion that forbids runtime iproute2/iptables dependencies.
 
 - [ ] **Step 1: Change the packaging regression first**
 
@@ -52,10 +53,12 @@ tests, Electron Builder deb/rpm packaging, GitHub Actions Debian 12 privileged c
 
   Expected: FAIL because `electron-builder.yml` still declares netfilter dependencies.
 
-- [ ] **Step 3: Remove Debian CI netfilter prerequisites**
+- [ ] **Step 3: Isolate Debian CI network-fixture prerequisites**
 
-  Delete `iproute2` and `iptables` from the Debian 12 apt install list. Leave the integration test
-  unchanged so it remains the real behavioral regression.
+  Delete `iproute2` and `iptables` from the Debian 12 base install list. Run the helper integration
+  first, then install only `iproute2` in a separate step to create the public-looking loopback
+  address required by the later Project proxy test. Leave the helper integration test unchanged so
+  it remains the real behavioral regression.
 
 ### Task 2: Replace veth/iptables with an isolated loopback listener
 

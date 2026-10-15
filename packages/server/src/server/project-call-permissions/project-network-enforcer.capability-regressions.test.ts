@@ -52,4 +52,50 @@ describe("ProjectNetworkEnforcer", () => {
       }),
     );
   });
+
+  it("returns adapter launch environment only for an active strict policy", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-strict-network-env-"));
+    const project = { projectId: "project-a", rootPath: "/repo/project-a" };
+    const write = writeProjectConfigForProject({
+      paseoHome,
+      project,
+      config: {
+        project: {
+          directoryMode: "single",
+          permissions: {
+            enabled: true,
+            enforcement: "strict",
+            defaultAction: "deny",
+          },
+        },
+      },
+      expectedRevision: null,
+    });
+    expect(write.ok).toBe(true);
+    const enforcer = new ProjectNetworkEnforcer({
+      paseoHome,
+      workspaceRegistry: {
+        get: async () => ({
+          workspaceId: "workspace-a",
+          projectId: "project-a",
+          archivedAt: null,
+        }),
+      },
+      projectRegistry: { get: async () => project },
+      adapter: {
+        status: async () => "active",
+        prepare: async (input) => ({
+          PASEO_PROJECT_NETWORK_ISOLATION: "1",
+          PASEO_TEST_CONTEXT: `${input.projectId}/${input.workspaceId}/${input.source}`,
+        }),
+      },
+    });
+
+    await expect(
+      enforcer.prepareExecutionEnvironment("workspace-a", "agent_process"),
+    ).resolves.toEqual({
+      PASEO_PROJECT_NETWORK_ISOLATION: "1",
+      PASEO_TEST_CONTEXT: "project-a/workspace-a/agent_process",
+    });
+  });
 });

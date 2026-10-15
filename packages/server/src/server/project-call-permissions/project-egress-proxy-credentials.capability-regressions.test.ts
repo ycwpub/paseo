@@ -50,6 +50,23 @@ describe("ProjectEgressProxyCredentials", () => {
     });
   });
 
+  it("extends a live credential while requests continue", () => {
+    let now = 1_000;
+    const credentials = new ProjectEgressProxyCredentials({
+      now: () => now,
+      createToken: () => "sliding-token",
+      ttlMs: 5_000,
+    });
+    credentials.issue({ workspaceId: "workspace-a", source: "agent_process" });
+
+    now = 5_000;
+    expect(credentials.resolve("sliding-token")).not.toBeNull();
+    now = 9_500;
+    expect(credentials.resolve("sliding-token")).not.toBeNull();
+    now = 15_000;
+    expect(credentials.resolve("sliding-token")).toBeNull();
+  });
+
   it("caps live credentials and evicts the oldest entry", () => {
     let sequence = 0;
     const credentials = new ProjectEgressProxyCredentials({

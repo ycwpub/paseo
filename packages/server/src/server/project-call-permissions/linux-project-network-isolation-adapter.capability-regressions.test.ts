@@ -6,14 +6,14 @@ import {
 } from "./linux-project-network-isolation-adapter.js";
 
 describe("LinuxProjectNetworkIsolationAdapter", () => {
-  it("does not treat the deny-only helper as strict-ready", async () => {
+  it("keeps the project proxy helper unavailable until every process path is wired", async () => {
     const adapter = new LinuxProjectNetworkIsolationAdapter({
       platform: "linux",
       helperPath: "/opt/Paseo/resources/network-helper/paseo-network-helper",
       runStatus: async () =>
         JSON.stringify({
           version: "1",
-          capability: "proxy_namespace",
+          capability: "project_proxy",
           privilege_active: true,
           strict_ready: false,
         }),
@@ -51,5 +51,41 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
     expect(() => parseLinuxProjectNetworkHelperStatus("not json")).toThrow(
       "Invalid Linux network helper status",
     );
+  });
+
+  it("starts the proxy and returns helper launch environment", async () => {
+    const adapter = new LinuxProjectNetworkIsolationAdapter({
+      platform: "linux",
+      helperPath: "/opt/Paseo/helper",
+      runStatus: async () =>
+        JSON.stringify({
+          version: "3",
+          capability: "project_proxy",
+          privilege_active: true,
+          strict_ready: true,
+        }),
+      proxyServer: {
+        start: async () => ({ host: "0.0.0.0", port: 43123 }),
+      },
+      credentials: {
+        issue: () => ({
+          token: "token-value-0123456789",
+          expiresAt: Date.now() + 60_000,
+        }),
+      },
+    });
+
+    await expect(
+      adapter.prepare({
+        projectId: "project-a",
+        workspaceId: "workspace-a",
+        source: "agent_process",
+      }),
+    ).resolves.toEqual({
+      PASEO_PROJECT_NETWORK_ISOLATION: "1",
+      PASEO_LINUX_NETWORK_HELPER_PATH: "/opt/Paseo/helper",
+      PASEO_PROJECT_PROXY_PORT: "43123",
+      PASEO_PROJECT_PROXY_TOKEN: "token-value-0123456789",
+    });
   });
 });

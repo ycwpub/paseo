@@ -27,7 +27,7 @@ static void print_usage(FILE *stream) {
 
 static int print_status(void) {
   const bool privilege_active = geteuid() == 0;
-  printf("{\"version\":\"%s\",\"capability\":\"proxy_namespace\","
+  printf("{\"version\":\"%s\",\"capability\":\"project_proxy\","
          "\"privilege_active\":%s,\"strict_ready\":false}\n",
          PASEO_NETWORK_HELPER_VERSION,
          privilege_active ? "true" : "false");
@@ -190,8 +190,10 @@ static int configure_proxy_environment(const char *host_ip, int proxy_port) {
     fprintf(stderr, "paseo-network-helper: proxy URL is too long\n");
     return EXIT_FAILURE;
   }
-  if (setenv("HTTP_PROXY", proxy_url, 1) != 0 || setenv("HTTPS_PROXY", proxy_url, 1) != 0 ||
-      setenv("ALL_PROXY", proxy_url, 1) != 0 || setenv("NO_PROXY", "", 1) != 0 ||
+  if (setenv("HTTP_PROXY", proxy_url, 1) != 0 || setenv("http_proxy", proxy_url, 1) != 0 ||
+      setenv("HTTPS_PROXY", proxy_url, 1) != 0 || setenv("https_proxy", proxy_url, 1) != 0 ||
+      setenv("ALL_PROXY", proxy_url, 1) != 0 || setenv("all_proxy", proxy_url, 1) != 0 ||
+      setenv("NO_PROXY", "", 1) != 0 || setenv("no_proxy", "", 1) != 0 ||
       setenv("PASEO_PROJECT_PROXY_URL", proxy_url, 1) != 0 ||
       setenv("PASEO_PROJECT_PROXY_HOST", host_ip, 1) != 0 || unsetenv(PROXY_TOKEN_ENV) != 0) {
     perror("paseo-network-helper: set proxy environment");

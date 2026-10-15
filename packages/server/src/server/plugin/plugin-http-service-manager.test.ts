@@ -408,6 +408,7 @@ describe("PluginHttpServiceManager", () => {
       scriptPath: "/tmp/processor.json",
       inputPayload: JSON.stringify({ data: { question: "hello" } }),
       targetNodeId: "review",
+      projectId: "project-1",
     });
 
     const tested = await manager.testProjectRoute({
@@ -539,6 +540,7 @@ describe("PluginHttpServiceManager", () => {
       scriptPath: expect.stringContaining("/plugins/http-services/inline-workflows/"),
       inputPayload: JSON.stringify({ request: "hello" }),
       targetNodeId: undefined,
+      projectId: "project-custom",
     });
     const scriptPath = runScript.mock.calls[0]?.[0].scriptPath;
     expect(JSON.parse(readFileSync(scriptPath!, "utf8"))).toMatchObject({

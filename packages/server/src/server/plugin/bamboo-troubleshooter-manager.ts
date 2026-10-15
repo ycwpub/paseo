@@ -30,6 +30,7 @@ import {
   type BambooAgentOrchestratorDependencies,
 } from "./bamboo-agent-orchestrator.js";
 import { resolveBambooAgentOrchestratorDependencies } from "./bamboo-agent-orchestrator-dependencies.js";
+import type { ProjectNetworkEnforcer } from "../project-call-permissions/project-network-enforcer.js";
 import { classifyBambooExecutionFailure } from "./bamboo-execution-failure-policy.js";
 import { BambooDedicatedBotListener } from "./bamboo-dedicated-bot-listener.js";
 import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
@@ -72,6 +73,7 @@ export class BambooTroubleshooterManager {
         window: AlertScanWindow,
       ) => Promise<NormalizedLarkMessageEvent[]>;
       resolveCommandEnvironment?: (config: AlertTroubleshooterConfig) => NodeJS.ProcessEnv;
+      projectNetworkEnforcer?: Pick<ProjectNetworkEnforcer, "prepareExecutionEnvironment">;
       credentialResolver?: Pick<BambooBotCredentialResolver, "resolve">;
       startBotEvents?: LarkChannelClientAdapter["startEvents"];
     },
@@ -108,11 +110,17 @@ export class BambooTroubleshooterManager {
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
           buildBambooPrompt(config, trigger, record, wikiTarget),
         buildPromptAppendix: ({ wikiTarget }) => buildBambooPromptAppendix(wikiTarget),
-        executeRecord: (input) =>
+        executeRecord: async (input) =>
           (options.agentOrchestrator ?? executeBambooAgentPipeline)(
             {
               ...input,
-              commandEnvironment: options.resolveCommandEnvironment?.(input.config),
+              commandEnvironment: {
+                ...options.resolveCommandEnvironment?.(input.config),
+                ...(await options.projectNetworkEnforcer?.prepareExecutionEnvironment(
+                  input.workspace.workspaceId,
+                  "plugin_process",
+                )),
+              },
             },
             resolveBambooAgentOrchestratorDependencies({
               overrides: options.agentOrchestratorDependencies,

@@ -1,4 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import https from "node:https";
 import { lookup as dnsLookup } from "node:dns/promises";
 import net, { type AddressInfo, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
@@ -22,6 +23,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
+const MAX_PROXY_RESPONSE_BYTES = 32 * 1024 * 1024;
 
 export interface ProjectEgressProxyAddress {
   host: string;
@@ -97,17 +99,24 @@ function forwardedHeaders(request: IncomingMessage): Headers {
   return headers;
 }
 
+function fetchInputUrl(input: string | URL | Request): URL {
+  if (input instanceof URL) return input;
+  return new URL(typeof input === "string" ? input : input.url);
+}
+
 export class ProjectEgressProxyServer {
   private readonly server: http.Server;
   private readonly host: string;
   private readonly port: number;
   private readonly options: ProjectEgressProxyServerOptions;
   private address: ProjectEgressProxyAddress | null = null;
+  private readonly secureFetch: typeof fetch;
 
   public constructor(options: ProjectEgressProxyServerOptions) {
     this.options = options;
     this.host = options.host ?? "127.0.0.1";
     this.port = options.port ?? 0;
+    this.secureFetch = options.fetchImplementation ?? this.createPinnedFetch();
     this.server = http.createServer((request, response) => {
       void this.handleRequest(request, response);
     });
@@ -170,10 +179,11 @@ export class ProjectEgressProxyServer {
       }
       const body = await readRequestBody(request);
       const upstream = await projectFetch(target, {
-        workspaceId: credential.workspaceId,
+        ...(credential.workspaceId ? { workspaceId: credential.workspaceId } : {}),
+        ...(credential.projectId ? { projectId: credential.projectId } : {}),
         source: credential.source,
         authorize: this.options.authorizer.authorize.bind(this.options.authorizer),
-        fetchImplementation: this.options.fetchImplementation,
+        fetchImplementation: this.secureFetch,
         method: request.method ?? "GET",
         headers: forwardedHeaders(request),
         body: body ? new Uint8Array(body) : undefined,
@@ -190,6 +200,86 @@ export class ProjectEgressProxyServer {
       const message = error instanceof Error ? error.message : String(error);
       writeText(response, message.includes("PROJECT_PERMISSION_DENIED") ? 403 : 502, message);
     }
+  }
+
+  private createPinnedFetch(): typeof fetch {
+    return async (input, init) => {
+      const url = fetchInputUrl(input);
+      const addresses = await (this.options.lookup ?? lookupAll)(url.hostname);
+      if (
+        addresses.length === 0 ||
+        addresses.some((entry) => isRestrictedProjectProxyAddress(entry.address))
+      ) {
+        throw new Error("Project proxy rejected a restricted or private target address");
+      }
+      const selected = addresses[0]!;
+      return this.requestPinnedAddress(url, selected, init);
+    };
+  }
+
+  private requestPinnedAddress(
+    url: URL,
+    selected: { address: string; family: number },
+    init: RequestInit | undefined,
+  ): Promise<Response> {
+    return new Promise((resolve, reject) => {
+      const headers = Object.fromEntries(new Headers(init?.headers).entries());
+      headers.host = url.host;
+      const requestFn = url.protocol === "https:" ? https.request : http.request;
+      const request = requestFn(
+        {
+          hostname: selected.address,
+          family: selected.family,
+          port: url.port || (url.protocol === "https:" ? 443 : 80),
+          path: `${url.pathname}${url.search}`,
+          method: init?.method ?? "GET",
+          headers,
+          ...(url.protocol === "https:" ? { servername: url.hostname } : {}),
+          signal: init?.signal ?? undefined,
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+          let total = 0;
+          response.on("data", (chunk) => {
+            const buffer = Buffer.from(chunk);
+            total += buffer.length;
+            if (total > MAX_PROXY_RESPONSE_BYTES) {
+              request.destroy(
+                new Error(`Project proxy response exceeds ${MAX_PROXY_RESPONSE_BYTES} bytes`),
+              );
+              return;
+            }
+            chunks.push(buffer);
+          });
+          response.once("end", () => {
+            const responseHeaders = new Headers();
+            for (const [name, value] of Object.entries(response.headers)) {
+              if (Array.isArray(value)) {
+                for (const item of value) responseHeaders.append(name, item);
+              } else if (value !== undefined) {
+                responseHeaders.set(name, value);
+              }
+            }
+            resolve(
+              new Response(Buffer.concat(chunks), {
+                status: response.statusCode ?? 502,
+                statusText: response.statusMessage ?? "",
+                headers: responseHeaders,
+              }),
+            );
+          });
+        },
+      );
+      request.once("error", reject);
+      const body = init?.body;
+      if (body instanceof Uint8Array) {
+        request.end(body);
+      } else if (typeof body === "string") {
+        request.end(body);
+      } else {
+        request.end();
+      }
+    });
   }
 
   private async handleConnect(
@@ -209,7 +299,8 @@ export class ProjectEgressProxyServer {
     try {
       const target = parseProjectProxyConnectTarget(request.url ?? "");
       await authorizeProjectProxyTarget({
-        workspaceId: credential.workspaceId,
+        ...(credential.workspaceId ? { workspaceId: credential.workspaceId } : {}),
+        ...(credential.projectId ? { projectId: credential.projectId } : {}),
         source: credential.source,
         method: "CONNECT",
         target: request.url ?? "",

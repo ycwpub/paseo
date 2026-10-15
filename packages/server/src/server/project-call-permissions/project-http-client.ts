@@ -7,7 +7,8 @@ const DEFAULT_MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export interface ProjectFetchInit extends RequestInit {
-  workspaceId: string;
+  workspaceId?: string;
+  projectId?: string;
   agentId?: string;
   taskId?: string;
   source: string;
@@ -25,6 +26,7 @@ function redirectedMethod(status: number, method: string): string {
 export async function projectFetch(input: string | URL, init: ProjectFetchInit): Promise<Response> {
   const {
     workspaceId,
+    projectId,
     agentId,
     taskId,
     source,
@@ -33,6 +35,9 @@ export async function projectFetch(input: string | URL, init: ProjectFetchInit):
     maxRedirects = DEFAULT_MAX_REDIRECTS,
     ...requestInit
   } = init;
+  if (Boolean(workspaceId) === Boolean(projectId)) {
+    throw new Error("Project HTTP 请求必须且只能指定 workspaceId 或 projectId");
+  }
   let url = new URL(input);
   let method = (requestInit.method ?? "GET").toUpperCase();
 
@@ -41,7 +46,8 @@ export async function projectFetch(input: string | URL, init: ProjectFetchInit):
       throw new Error(`不支持的 Project HTTP 协议：${url.protocol}`);
     }
     const authorizationInput: AuthorizeProjectCallInput = {
-      workspaceId,
+      ...(workspaceId ? { workspaceId } : {}),
+      ...(projectId ? { projectId } : {}),
       ...(agentId ? { agentId } : {}),
       ...(taskId ? { taskId } : {}),
       source,

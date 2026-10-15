@@ -42,6 +42,7 @@ interface PluginHttpWorkflowRunner {
     scriptPath: string;
     inputPayload: string;
     targetNodeId?: string;
+    projectId?: string;
   }): Promise<{ id: string }>;
   waitForRun(runId: string): Promise<{
     status: "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
@@ -1050,6 +1051,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         scriptPath: binding.definition.workflowPath,
         inputPayload: JSON.stringify(job.input),
         targetNodeId: binding.definition.targetNodeId,
+        projectId: job.projectId,
       });
       await this.store.update(job.id, (current) => ({ ...current, workflowRunId: run.id }));
       const completed = await this.workflowService.waitForRun(run.id);

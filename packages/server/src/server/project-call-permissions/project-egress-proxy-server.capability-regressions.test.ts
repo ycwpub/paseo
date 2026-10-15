@@ -210,4 +210,36 @@ describe("ProjectEgressProxyServer", () => {
       }),
     ).resolves.toContain("502 Bad Gateway");
   });
+
+  it("rejects ordinary HTTP when DNS resolves to a restricted address", async () => {
+    const credentials = new ProjectEgressProxyCredentials({
+      createToken: () => "http-rebind-token",
+    });
+    credentials.issue({ workspaceId: "workspace-a", source: "agent_process" });
+    const server = new ProjectEgressProxyServer({
+      authorizer: {
+        authorize: async () => ({
+          allowed: true,
+          reason: "matched_allow",
+          matchedRuleId: "allow-hostname",
+          enforcement: "strict",
+        }),
+      },
+      credentials,
+      lookup: async () => [{ address: "127.0.0.1", family: 4 }],
+    });
+    servers.push(server);
+    const address = await server.start();
+
+    await expect(
+      proxyRequest({
+        port: address.port,
+        target: "http://rebind.example.test/private",
+        token: "http-rebind-token",
+      }),
+    ).resolves.toEqual({
+      status: 502,
+      body: "Project proxy rejected a restricted or private target address",
+    });
+  });
 });

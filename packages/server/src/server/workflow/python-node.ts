@@ -1,10 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { Readable } from "node:stream";
 import { WorkflowCommandExecutionError, trimWorkflowOutput } from "./command-node.js";
 import { MAX_WORKFLOW_RESULT_CHARS, WORKFLOW_RESULT_FILE_DESCRIPTOR } from "./command-result.js";
+import { spawnProcess } from "../../utils/spawn.js";
 
 export interface PythonNodeProcessOutput {
   stdout: string;
@@ -93,7 +94,7 @@ function executePythonFile(
   scriptPath: string,
 ): Promise<PythonNodeProcessOutput> {
   return new Promise((resolve, reject) => {
-    const child = spawn(input.pythonPath, [scriptPath], {
+    const child = spawnProcess(input.pythonPath, [scriptPath], {
       cwd: input.cwd,
       env: {
         ...(input.env ?? process.env),

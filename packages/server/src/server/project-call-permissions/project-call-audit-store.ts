@@ -8,7 +8,7 @@ import type {
 export interface ProjectCallAuditRecord {
   timestamp: string;
   projectId: string;
-  workspaceId: string;
+  workspaceId?: string;
   agentId?: string;
   taskId?: string;
   source: string;
@@ -24,7 +24,7 @@ export interface ProjectCallAuditRecord {
 
 export interface AppendProjectCallAuditInput {
   projectId: string;
-  workspaceId: string;
+  workspaceId?: string;
   agentId?: string;
   taskId?: string;
   source: string;
@@ -56,7 +56,7 @@ export class ProjectCallAuditStore {
     const record: ProjectCallAuditRecord = {
       timestamp: new Date().toISOString(),
       projectId: input.projectId,
-      workspaceId: input.workspaceId,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...(input.agentId ? { agentId: input.agentId } : {}),
       ...(input.taskId ? { taskId: input.taskId } : {}),
       source: input.source,

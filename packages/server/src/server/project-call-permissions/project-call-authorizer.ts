@@ -28,7 +28,8 @@ export interface ProjectCallAuthorizerDependencies {
 }
 
 export interface AuthorizeProjectCallInput {
-  workspaceId: string;
+  workspaceId?: string;
+  projectId?: string;
   agentId?: string;
   taskId?: string;
   source: string;
@@ -61,13 +62,20 @@ export class ProjectCallAuthorizer {
 
   public async authorize(input: AuthorizeProjectCallInput): Promise<ProjectCallPermissionDecision> {
     const startedAt = Date.now();
-    const workspace = await this.dependencies.workspaceRegistry.get(input.workspaceId);
-    if (!workspace || workspace.archivedAt) {
-      throw new Error(`Workspace ${input.workspaceId} 不存在或已归档`);
+    if (Boolean(input.workspaceId) === Boolean(input.projectId)) {
+      throw new Error("Project 调用必须且只能指定 workspaceId 或 projectId");
     }
-    const project = await this.dependencies.projectRegistry.get(workspace.projectId);
+    let projectId = input.projectId;
+    if (input.workspaceId) {
+      const workspace = await this.dependencies.workspaceRegistry.get(input.workspaceId);
+      if (!workspace || workspace.archivedAt) {
+        throw new Error(`Workspace ${input.workspaceId} 不存在或已归档`);
+      }
+      projectId = workspace.projectId;
+    }
+    const project = await this.dependencies.projectRegistry.get(projectId!);
     if (!project) {
-      throw new Error(`Project ${workspace.projectId} 不存在`);
+      throw new Error(`Project ${projectId} 不存在`);
     }
     const config = readProjectConfigForProject({
       paseoHome: this.dependencies.paseoHome,
@@ -82,7 +90,7 @@ export class ProjectCallAuthorizer {
     );
     await this.dependencies.auditStore?.append({
       projectId: project.projectId,
-      workspaceId: input.workspaceId,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...(input.agentId ? { agentId: input.agentId } : {}),
       ...(input.taskId ? { taskId: input.taskId } : {}),
       source: input.source,

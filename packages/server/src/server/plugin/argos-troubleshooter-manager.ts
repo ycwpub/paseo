@@ -32,6 +32,7 @@ import {
   writeArgosScanAudit,
   type ArgosGroupScanAudit,
 } from "./argos-scan-audit.js";
+import type { ProjectNetworkEnforcer } from "../project-call-permissions/project-network-enforcer.js";
 
 type ManagerOptions = ConstructorParameters<typeof ProjectAlertTroubleshooterManager>[0];
 
@@ -65,6 +66,7 @@ export class ArgosTroubleshooterManager {
         window: AlertScanWindow,
       ) => Promise<NormalizedLarkMessageEvent[]>;
       resolveCommandEnvironment?: (config: AlertTroubleshooterConfig) => NodeJS.ProcessEnv;
+      projectNetworkEnforcer?: Pick<ProjectNetworkEnforcer, "prepareExecutionEnvironment">;
     },
   ) {
     this.manager = new ProjectAlertTroubleshooterManager({
@@ -99,11 +101,17 @@ export class ArgosTroubleshooterManager {
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
           buildArgosPrompt(config, trigger, record, wikiTarget),
         buildPromptAppendix: ({ wikiTarget }) => buildArgosPromptAppendix(wikiTarget),
-        executeRecord: (input) =>
+        executeRecord: async (input) =>
           (options.agentOrchestrator ?? executeArgosAgentPipeline)(
             {
               ...input,
-              commandEnvironment: options.resolveCommandEnvironment?.(input.config),
+              commandEnvironment: {
+                ...options.resolveCommandEnvironment?.(input.config),
+                ...(await options.projectNetworkEnforcer?.prepareExecutionEnvironment(
+                  input.workspace.workspaceId,
+                  "plugin_process",
+                )),
+              },
             },
             options.agentOrchestratorDependencies,
           ),

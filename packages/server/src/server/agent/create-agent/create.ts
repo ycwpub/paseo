@@ -57,7 +57,7 @@ export interface CreateAgentCommandDependencies {
   readAssistant?: (assistantId: string) => Assistant | null;
   readPluginProjectContext?: (projectId: string) => string | null;
   readSubstituteProjectContext?: (projectId: string) => string | null;
-  projectNetworkEnforcer?: Pick<ProjectNetworkEnforcer, "assertExecutionAllowed">;
+  projectNetworkEnforcer?: Pick<ProjectNetworkEnforcer, "prepareExecutionEnvironment">;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -204,9 +204,7 @@ export async function createAgentCommand(
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
 
-  await dependencies.projectNetworkEnforcer?.assertExecutionAllowed(
-    requireResolvedWorkspaceId(resolved.createOptions.workspaceId),
-  );
+  await applyProjectNetworkEnvironment(dependencies, resolved);
 
   const cloudKnowledge = await prepareAgentCloudKnowledge({
     config: resolved.config,
@@ -274,6 +272,22 @@ export async function createAgentCommand(
     initialPromptStarted,
     initialPromptError,
     ...(resolved.createdWorktree ? { createdWorktree: resolved.createdWorktree } : {}),
+  };
+}
+
+async function applyProjectNetworkEnvironment(
+  dependencies: CreateAgentCommandDependencies,
+  resolved: ResolvedCreateAgent,
+): Promise<void> {
+  const networkEnvironment =
+    (await dependencies.projectNetworkEnforcer?.prepareExecutionEnvironment(
+      requireResolvedWorkspaceId(resolved.createOptions.workspaceId),
+      "agent_process",
+    )) ?? {};
+  if (Object.keys(networkEnvironment).length === 0) return;
+  resolved.createOptions.env = {
+    ...resolved.createOptions.env,
+    ...networkEnvironment,
   };
 }
 

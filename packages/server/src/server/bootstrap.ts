@@ -13,6 +13,8 @@ import { ProjectCallAuthorizer } from "./project-call-permissions/project-call-a
 import { ProjectCallAuditStore } from "./project-call-permissions/project-call-audit-store.js";
 import { ProjectNetworkEnforcer } from "./project-call-permissions/project-network-enforcer.js";
 import { LinuxProjectNetworkIsolationAdapter } from "./project-call-permissions/linux-project-network-isolation-adapter.js";
+import { ProjectEgressProxyCredentials } from "./project-call-permissions/project-egress-proxy-credentials.js";
+import { ProjectEgressProxyServer } from "./project-call-permissions/project-egress-proxy-server.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -1608,12 +1610,29 @@ export async function createPaseoDaemon(
     );
   };
 
+  const projectCallAuditStore = new ProjectCallAuditStore({
+    directory: path.join(config.paseoHome, "audit"),
+  });
+  const projectCallAuthorizer = new ProjectCallAuthorizer({
+    paseoHome: config.paseoHome,
+    workspaceRegistry,
+    projectRegistry,
+    auditStore: projectCallAuditStore,
+  });
+  const projectEgressProxyCredentials = new ProjectEgressProxyCredentials();
+  const projectEgressProxyServer = new ProjectEgressProxyServer({
+    authorizer: projectCallAuthorizer,
+    credentials: projectEgressProxyCredentials,
+    host: "0.0.0.0",
+  });
   const projectNetworkEnforcer = new ProjectNetworkEnforcer({
     paseoHome: config.paseoHome,
     workspaceRegistry,
     projectRegistry,
     adapter: new LinuxProjectNetworkIsolationAdapter({
       helperPath: process.env.PASEO_LINUX_NETWORK_HELPER_PATH,
+      proxyServer: projectEgressProxyServer,
+      credentials: projectEgressProxyCredentials,
     }),
   });
   const createAgentCommandDependencies: CreateAgentCommandDependencies = {
@@ -1914,6 +1933,7 @@ export async function createPaseoDaemon(
       }),
     assistantStore,
     teamStore,
+    projectNetworkEnforcer,
   });
   await workflowService.start();
   const pluginHttpServiceManager = new PluginHttpServiceManager({
@@ -1996,6 +2016,7 @@ export async function createPaseoDaemon(
           ),
     resolveCommandEnvironment: (alertConfig) =>
       bambooBotCredentialResolver.commandEnvironment(alertConfig),
+    projectNetworkEnforcer,
     credentialResolver: bambooBotCredentialResolver,
     startBotEvents: (botConfig, handler) => larkChannelAdapter.startEvents(botConfig, handler),
     logger,
@@ -2044,6 +2065,7 @@ export async function createPaseoDaemon(
           ),
     resolveCommandEnvironment: (alertConfig) =>
       bambooBotCredentialResolver.commandEnvironment(alertConfig),
+    projectNetworkEnforcer,
     logger,
   });
   pluginService.attachAlertTroubleshooterRuntime({
@@ -2182,15 +2204,6 @@ export async function createPaseoDaemon(
   );
   logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
 
-  const projectCallAuditStore = new ProjectCallAuditStore({
-    directory: path.join(config.paseoHome, "audit"),
-  });
-  const projectCallAuthorizer = new ProjectCallAuthorizer({
-    paseoHome: config.paseoHome,
-    workspaceRegistry,
-    projectRegistry,
-    auditStore: projectCallAuditStore,
-  });
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
@@ -2574,6 +2587,7 @@ export async function createPaseoDaemon(
       await projectLarkContextService.stop().catch(() => undefined);
       await pluginService.stopAllPlugins().catch(() => undefined);
       await pluginHttpServiceManager.stop().catch(() => undefined);
+      await projectEgressProxyServer.stop().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
         httpServer.closeAllConnections();
@@ -2606,6 +2620,7 @@ export async function createPaseoDaemon(
     speechService.stop();
     await pluginService.stopAllPlugins().catch(() => undefined);
     await pluginHttpServiceManager.stop().catch(() => undefined);
+    await projectEgressProxyServer.stop().catch(() => undefined);
     await workflowService.stop().catch(() => undefined);
     await scheduleService.stop().catch(() => undefined);
     relayReconcileStopped = true;

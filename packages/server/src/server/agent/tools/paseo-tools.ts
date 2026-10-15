@@ -2804,6 +2804,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       if (!inputPayload && !inputPresetId) {
         throw new Error("Workflow input JSON or inputPresetId is required");
       }
+      const callerWorkspaceId = resolveCallerAgent()?.workspaceId;
       const run = background
         ? await workflowService.runScript({
             scriptPath,
@@ -2811,6 +2812,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
             inputPresetId,
             targetNodeId,
             targetInputMode,
+            ...(callerWorkspaceId ? { workspaceId: callerWorkspaceId } : {}),
           })
         : await workflowService.runScriptAndWait({
             scriptPath,
@@ -2818,6 +2820,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
             inputPresetId,
             targetNodeId,
             targetInputMode,
+            ...(callerWorkspaceId ? { workspaceId: callerWorkspaceId } : {}),
           });
       return {
         content: [],

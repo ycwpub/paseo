@@ -1,7 +1,8 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
 import type { WorkflowNodeInputEnvelope } from "@getpaseo/protocol/workflow/data-contract";
 import { MAX_WORKFLOW_RESULT_CHARS, WORKFLOW_RESULT_FILE_DESCRIPTOR } from "./command-result.js";
+import { spawnProcess } from "../../utils/spawn.js";
 
 const MAX_OUTPUT_CHARS = 200_000;
 
@@ -53,7 +54,7 @@ export function runBashWorkflowNode(input: {
       process.platform === "win32"
         ? ["/d", "/s", "/c", wrappedInstruction]
         : ["-c", wrappedInstruction, "paseo-workflow"];
-    const child = spawn(input.shell, args, {
+    const child = spawnProcess(input.shell, args, {
       cwd: input.cwd,
       env: {
         ...input.env,

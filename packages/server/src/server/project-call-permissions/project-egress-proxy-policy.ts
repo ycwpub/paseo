@@ -33,7 +33,8 @@ export function parseProjectProxyConnectTarget(target: string): ProjectProxyConn
 }
 
 export async function authorizeProjectProxyTarget(input: {
-  workspaceId: string;
+  workspaceId?: string;
+  projectId?: string;
   source: string;
   method: string;
   target: string;
@@ -45,7 +46,8 @@ export async function authorizeProjectProxyTarget(input: {
       ? parseProjectProxyConnectTarget(input.target).authorizationUrl
       : new URL(input.target).toString();
   const authorizationInput: AuthorizeProjectCallInput = {
-    workspaceId: input.workspaceId,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
     source: input.source,
     request: { kind: "http", url, method },
   };

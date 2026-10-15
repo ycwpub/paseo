@@ -8,6 +8,8 @@ on:
       - "packages/desktop/native/network-helper/linux/**"
       - "packages/desktop/scripts/build-linux-network-helper.mjs"
       - "packages/desktop/scripts/test-linux-network-helper.sh"
+      - "packages/server/src/server/project-call-permissions/**"
+      - "packages/server/src/utils/project-network-process*"
   push:
     branches:
       - feature_paseo
@@ -17,6 +19,8 @@ on:
       - "packages/desktop/native/network-helper/linux/**"
       - "packages/desktop/scripts/build-linux-network-helper.mjs"
       - "packages/desktop/scripts/test-linux-network-helper.sh"
+      - "packages/server/src/server/project-call-permissions/**"
+      - "packages/server/src/utils/project-network-process*"
 
 permissions:
   contents: read
@@ -32,6 +36,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build Protocol declarations
+        run: npm run build:protocol
 
       - name: Compile helper and run process-tree escape tests
         shell: bash
@@ -56,3 +66,15 @@ jobs:
             echo "::error title=Linux network helper escape test failed::$diagnostic"
           fi
           exit "$status"
+
+      - name: Run Project policy and proxy integration
+        shell: bash
+        env:
+          PASEO_LINUX_NETWORK_HELPER_TEST_PATH: ${{ github.workspace }}/packages/desktop/native-build/linux/x64/paseo-network-helper
+          PASEO_LINUX_NETWORK_TARGET_ADDRESS: 11.0.0.2
+        run: |
+          sudo ip address add 11.0.0.2/32 dev lo
+          echo '127.0.0.1 paseo-rebind.test' | sudo tee -a /etc/hosts
+          npx vitest run \
+            packages/server/src/server/project-call-permissions/linux-project-network-isolation.local.e2e.test.ts \
+            --bail=1

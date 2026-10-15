@@ -8,6 +8,7 @@ import {
   quoteWindowsArgument,
   quoteWindowsCommand,
 } from "./windows-command.js";
+import { resolveProjectNetworkProcess } from "./project-network-process.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -73,8 +74,13 @@ export function spawnProcess(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
+  const networkProcess = resolveProjectNetworkProcess({
+    command: resolvedCommand,
+    args: resolvedArgs,
+    env: childEnv,
+  });
 
-  return spawn(resolvedCommand, resolvedArgs, {
+  return spawn(networkProcess.command, networkProcess.args, {
     ...spawnOptions,
     env: childEnv,
     shell,
@@ -103,8 +109,13 @@ export async function execCommand(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
+  const networkProcess = resolveProjectNetworkProcess({
+    command: resolvedCommand,
+    args: resolvedArgs,
+    env: childEnv,
+  });
 
-  return execFileAsync(resolvedCommand, resolvedArgs, {
+  return execFileAsync(networkProcess.command, networkProcess.args, {
     cwd: options?.cwd,
     env: childEnv,
     encoding: options?.encoding ?? "utf8",

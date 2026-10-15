@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 export interface ProjectEgressProxyCredentialContext {
-  workspaceId: string;
+  workspaceId?: string;
+  projectId?: string;
   source: string;
 }
 
@@ -40,6 +41,9 @@ export class ProjectEgressProxyCredentials {
   }
 
   public issue(context: ProjectEgressProxyCredentialContext): IssuedProjectEgressProxyCredential {
+    if (Boolean(context.workspaceId) === Boolean(context.projectId)) {
+      throw new Error("Project proxy credential requires exactly one Project identity");
+    }
     this.pruneExpired();
     while (this.entries.size >= this.maxEntries) {
       const oldest = this.entries.keys().next().value;
@@ -62,8 +66,10 @@ export class ProjectEgressProxyCredentials {
       this.entries.delete(token);
       return null;
     }
+    entry.expiresAt = this.now() + this.ttlMs;
     return {
-      workspaceId: entry.workspaceId,
+      ...(entry.workspaceId ? { workspaceId: entry.workspaceId } : {}),
+      ...(entry.projectId ? { projectId: entry.projectId } : {}),
       source: entry.source,
     };
   }

@@ -1,13 +1,11 @@
-import { execFile } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
+import { execCommand } from "../../utils/spawn.js";
 import { z } from "zod";
 import type { AlertTroubleshooterConfig } from "@getpaseo/protocol/messages";
 import type { AlertTroubleshooterRecord } from "./alert-troubleshooter-record-store.js";
 import { resolveBambooAlertRunnerPath } from "./bamboo-troubleshooter-document-publisher.js";
 
-const execFileAsync = promisify(execFile);
 const RUNNER_TIMEOUT_MS = 15 * 60_000;
 
 const PreparedDataSchema = z
@@ -131,7 +129,7 @@ export interface BambooAgentRunnerDependencies {
 const defaultDependencies: BambooAgentRunnerDependencies = {
   resolveRunnerPath: resolveBambooAlertRunnerPath,
   run: async (executable, args, options) => {
-    const result = await execFileAsync(executable, [...args], options);
+    const result = await execCommand(executable, [...args], options);
     return { stdout: String(result.stdout ?? ""), stderr: String(result.stderr ?? "") };
   },
 };

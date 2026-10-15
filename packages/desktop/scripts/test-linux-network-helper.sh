@@ -49,9 +49,9 @@ curl --fail --silent --show-error "http://127.0.0.1:$port/package.json" >/dev/nu
 status="$("$helper" --status-json)"
 node -e '
 const status = JSON.parse(process.argv[1]);
-if (status.capability !== "proxy_namespace") throw new Error("unexpected helper capability");
+if (status.capability !== "project_proxy") throw new Error("unexpected helper capability");
 if (status.privilege_active !== true) throw new Error("setuid privilege is not active");
-if (status.strict_ready !== false) throw new Error("unwired proxy helper must not claim strict readiness");
+if (status.strict_ready !== false) throw new Error("partially wired proxy helper must fail closed");
 ' "$status"
 
 caller_uid="$(id -u)"

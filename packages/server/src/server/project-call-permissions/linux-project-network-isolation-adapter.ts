@@ -2,6 +2,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { ProjectNetworkIsolationAdapter } from "./project-network-enforcer.js";
+import type { ProjectEgressProxyCredentials } from "./project-egress-proxy-credentials.js";
+import type { ProjectEgressProxyServer } from "./project-egress-proxy-server.js";
+import { PROJECT_NETWORK_ENV } from "../../utils/project-network-process.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,6 +44,8 @@ export interface LinuxProjectNetworkIsolationAdapterOptions {
   platform?: NodeJS.Platform;
   helperPath: string | null | undefined;
   runStatus?: (helperPath: string) => Promise<string>;
+  proxyServer?: Pick<ProjectEgressProxyServer, "start">;
+  credentials?: Pick<ProjectEgressProxyCredentials, "issue">;
 }
 
 async function runHelperStatus(helperPath: string): Promise<string> {
@@ -56,11 +61,15 @@ export class LinuxProjectNetworkIsolationAdapter implements ProjectNetworkIsolat
   private readonly platform: NodeJS.Platform;
   private readonly helperPath: string | null;
   private readonly runStatus: (helperPath: string) => Promise<string>;
+  private readonly proxyServer: Pick<ProjectEgressProxyServer, "start"> | null;
+  private readonly credentials: Pick<ProjectEgressProxyCredentials, "issue"> | null;
 
   public constructor(options: LinuxProjectNetworkIsolationAdapterOptions) {
     this.platform = options.platform ?? process.platform;
     this.helperPath = options.helperPath?.trim() || null;
     this.runStatus = options.runStatus ?? runHelperStatus;
+    this.proxyServer = options.proxyServer ?? null;
+    this.credentials = options.credentials ?? null;
   }
 
   public async status(_projectId: string): Promise<"active" | "unavailable"> {
@@ -71,5 +80,26 @@ export class LinuxProjectNetworkIsolationAdapter implements ProjectNetworkIsolat
     } catch {
       return "unavailable";
     }
+  }
+
+  public async prepare(input: {
+    projectId: string;
+    workspaceId?: string;
+    source: string;
+  }): Promise<Record<string, string>> {
+    if (!this.helperPath || !this.proxyServer || !this.credentials) {
+      throw new Error("Linux Project network isolation is not fully configured");
+    }
+    const proxy = await this.proxyServer.start();
+    const credential = this.credentials.issue({
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : { projectId: input.projectId }),
+      source: input.source,
+    });
+    return {
+      [PROJECT_NETWORK_ENV.enabled]: "1",
+      [PROJECT_NETWORK_ENV.helperPath]: this.helperPath,
+      [PROJECT_NETWORK_ENV.proxyPort]: String(proxy.port),
+      [PROJECT_NETWORK_ENV.proxyToken]: credential.token,
+    };
   }
 }

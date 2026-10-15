@@ -1,13 +1,11 @@
-import { execFile } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
+import { execCommand } from "../../utils/spawn.js";
 import { z } from "zod";
 import type { AlertTroubleshooterConfig } from "@getpaseo/protocol/messages";
 import type { AlertTroubleshooterRecord } from "./alert-troubleshooter-record-store.js";
 import { resolveCompatibleBambooRunnerPath } from "./bamboo-runner-contract.js";
 
-const execFileAsync = promisify(execFile);
 const RUNNER_TIMEOUT_MS = 15 * 60_000;
 
 const PublishResultSchema = z.object({
@@ -78,7 +76,7 @@ async function findMarkdownFile(cwd: string, resultId: string): Promise<string> 
 const defaultDependencies: BambooTroubleshooterPublisherDependencies = {
   resolveRunnerPath: resolveBambooAlertRunnerPath,
   run: async (executable, args, options) => {
-    const result = await execFileAsync(executable, [...args], options);
+    const result = await execCommand(executable, [...args], options);
     return {
       stdout: String(result.stdout ?? ""),
       stderr: String(result.stderr ?? ""),

@@ -48,6 +48,7 @@ import {
   resolveTeamLeaderCreateContext,
 } from "../team/team-agent-context.js";
 import type { TeamStore } from "../team/team-store.js";
+import type { ProjectNetworkEnforcer } from "../project-call-permissions/project-network-enforcer.js";
 import { runPythonNode } from "./python-node.js";
 import {
   resolveWorkflowCommandEnvironment,
@@ -124,6 +125,10 @@ export interface WorkflowServiceOptions {
   resolveAgentProjectVariables?: (cwd: string) => Promise<WorkflowVariableValues>;
   assistantStore?: Pick<AssistantStore, "get">;
   teamStore?: Pick<TeamStore, "get">;
+  projectNetworkEnforcer?: Pick<
+    ProjectNetworkEnforcer,
+    "prepareExecutionEnvironment" | "prepareProjectExecutionEnvironment"
+  >;
   now?: () => Date;
 }
 
@@ -198,6 +203,8 @@ interface WorkflowRunInput {
   inputPresetId?: string;
   targetNodeId?: string;
   targetInputMode?: WorkflowTargetInputMode;
+  workspaceId?: string;
+  projectId?: string;
 }
 
 interface ResolvedWorkflowRunInput {
@@ -221,10 +228,12 @@ export class WorkflowService {
   >;
   private readonly assistantStore: WorkflowServiceOptions["assistantStore"];
   private readonly teamStore: WorkflowServiceOptions["teamStore"];
+  private readonly projectNetworkEnforcer: WorkflowServiceOptions["projectNetworkEnforcer"];
   private readonly now: () => Date;
   private readonly activeRuns = new Map<string, Promise<void>>();
   private readonly activeCommandProcesses = new Map<ChildProcess, string>();
   private readonly activeAgentIds = new Map<string, Set<string>>();
+  private readonly networkEnvironmentByRun = new Map<string, Record<string, string>>();
   private readonly terminationRequests = new Map<
     string,
     { status: Extract<WorkflowTerminalStatus, "cancelled" | "timed_out">; message: string }
@@ -251,6 +260,7 @@ export class WorkflowService {
     this.resolveAgentProjectVariables = options.resolveAgentProjectVariables ?? (async () => ({}));
     this.assistantStore = options.assistantStore;
     this.teamStore = options.teamStore;
+    this.projectNetworkEnforcer = options.projectNetworkEnforcer;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -438,14 +448,41 @@ export class WorkflowService {
       throw new Error(`Workflow run not found after runtime directory creation: ${run.id}`);
     }
     run = preparedRun;
+    const networkEnvironment = await this.resolveRunNetworkEnvironment(input);
+    if (Object.keys(networkEnvironment).length > 0) {
+      this.networkEnvironmentByRun.set(run.id, networkEnvironment);
+    }
     const task = this.executeRun(run).finally(() => {
       this.activeRuns.delete(run.id);
+      this.networkEnvironmentByRun.delete(run.id);
     });
     this.activeRuns.set(run.id, task);
     void task.catch((error) => {
       this.logger.error({ err: error, runId: run.id }, "Workflow execution failed");
     });
     return run;
+  }
+
+  private async resolveRunNetworkEnvironment(
+    input: WorkflowRunInput,
+  ): Promise<Record<string, string>> {
+    if (input.workspaceId) {
+      return (
+        (await this.projectNetworkEnforcer?.prepareExecutionEnvironment(
+          input.workspaceId,
+          "workflow_process",
+        )) ?? {}
+      );
+    }
+    if (input.projectId) {
+      return (
+        (await this.projectNetworkEnforcer?.prepareProjectExecutionEnvironment(
+          input.projectId,
+          "workflow_process",
+        )) ?? {}
+      );
+    }
+    return {};
   }
 
   async runScriptAndWait(input: WorkflowRunInput): Promise<WorkflowRun> {
@@ -781,6 +818,7 @@ export class WorkflowService {
       env: {
         ...environment.env,
         ...step.env,
+        ...this.networkEnvironmentByRun.get(run.id),
       },
       path: step.env?.PATH?.trim() || environment.path,
     };
@@ -870,6 +908,7 @@ export class WorkflowService {
       env: {
         ...environment.env,
         ...step.env,
+        ...this.networkEnvironmentByRun.get(run.id),
       },
       path: step.env?.PATH?.trim() || environment.path,
     };

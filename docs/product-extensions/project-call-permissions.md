@@ -38,19 +38,21 @@ Linux 严格模式使用独立 network namespace 和防火墙规则。macOS 严�
 扩展或特权辅助进程。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider 工具白名单只能作为兼容
 配置，不能把执行状态提升为 `strict`。
 
-Linux 桌面包包含一个最小权限的 setuid launcher。它只负责创建新的 network namespace，
-随后清空附加组、降回调用用户并设置 `no_new_privs`，再执行目标进程树。第一阶段 helper
-只有 `deny_all` 能力，用于证明 curl、Python、Node、子进程和孙进程不能直连宿主网络；
-它必须返回 `strict_ready=false`。只有受控 Project 代理接入并通过逃逸测试后，helper 才能
-报告 `project_proxy` 和 `strict_ready=true`。
+Linux 桌面包包含一个最小权限的 setuid launcher。它创建新的 network namespace 和 veth，
+不配置默认路由，并通过宿主 iptables 只允许该 veth 访问本次执行分配的代理端口。随后
+helper 清空附加组、降回调用用户、设置 `no_new_privs`，再执行 Provider、Workflow 或
+Plugin 进程树。代理凭据通过环境传入 helper，转换为标准 HTTP 代理 URL 后删除原始变量。
+只有 helper、受控代理、所有 Project 进程入口和允许/拒绝/DNS rebinding/逃逸测试同时
+通过时，helper 才报告 `project_proxy` 和 `strict_ready=true`。
 
 deb/rpm 安装脚本把 helper 设置为 `root:root`、模式 `4755`。AppImage 挂载内容不能安全地
 获得 setuid 权限，因此 AppImage 在单独安装受信任 helper 前保持 `unavailable`。
 
-受控代理使用短期、仅内存保存的 Workspace 凭据。普通 HTTP 请求按完整 URL、Method 和
-Path 授权；HTTPS `CONNECT` 只能按协议、主机和端口授权，因此带 Method 或 Path 限制的
-规则不能授权 CONNECT 隧道。环回、链路本地、私网、未指定和组播地址默认拒绝，避免
-DNS rebinding 把公网白名单解析到宿主或内网。
+受控代理使用短期、仅内存保存、访问时滑动续期的 Workspace/Project 凭据。普通 HTTP
+请求按完整 URL、Method 和 Path 授权；HTTPS `CONNECT` 只能按协议、主机和端口授权，
+因此带 Method 或 Path 限制的规则不能授权 CONNECT 隧道。环回、链路本地、私网、未指定
+和组播地址默认拒绝。普通 HTTP 在授权后固定使用已校验的 DNS 地址，同时保留原 Host 和
+TLS SNI；每次重定向重新授权和解析，防止 DNS rebinding 与解析后替换。
 
 ## 审计
 

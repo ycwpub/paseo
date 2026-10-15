@@ -228,8 +228,8 @@ export function ProjectCallPermissionsEditor({
             {value.enforcement === "strict" ? (
               <Alert
                 variant="warning"
-                title="当前主机尚未启用严格网络隔离"
-                description="保存后会阻止该 Project 启动新任务，不会静默降级。安装并启用系统网络隔离组件后才能运行；如需继续使用，可切换到“托管出口”。"
+                title="严格模式要求系统网络隔离组件"
+                description="主机在每次执行前校验隔离组件；Linux deb/rpm 会随应用安装。组件缺失、权限错误或版本不兼容时会阻止任务，绝不会静默降级。"
               />
             ) : (
               <Alert

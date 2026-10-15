@@ -28,7 +28,7 @@ static void print_usage(FILE *stream) {
 static int print_status(void) {
   const bool privilege_active = geteuid() == 0;
   printf("{\"version\":\"%s\",\"capability\":\"project_proxy\","
-         "\"privilege_active\":%s,\"strict_ready\":false}\n",
+         "\"privilege_active\":%s,\"strict_ready\":true}\n",
          PASEO_NETWORK_HELPER_VERSION,
          privilege_active ? "true" : "false");
   return privilege_active ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -6,7 +6,7 @@ import {
 } from "./linux-project-network-isolation-adapter.js";
 
 describe("LinuxProjectNetworkIsolationAdapter", () => {
-  it("keeps the project proxy helper unavailable until every process path is wired", async () => {
+  it("activates the privileged project proxy helper after every process path is wired", async () => {
     const adapter = new LinuxProjectNetworkIsolationAdapter({
       platform: "linux",
       helperPath: "/opt/Paseo/resources/network-helper/paseo-network-helper",
@@ -15,11 +15,11 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
           version: "1",
           capability: "project_proxy",
           privilege_active: true,
-          strict_ready: false,
+          strict_ready: true,
         }),
     });
 
-    await expect(adapter.status("project-a")).resolves.toBe("unavailable");
+    await expect(adapter.status("project-a")).resolves.toBe("active");
   });
 
   it("accepts only a privileged helper that explicitly reports strict readiness", async () => {

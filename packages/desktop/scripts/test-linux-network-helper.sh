@@ -51,7 +51,7 @@ node -e '
 const status = JSON.parse(process.argv[1]);
 if (status.capability !== "project_proxy") throw new Error("unexpected helper capability");
 if (status.privilege_active !== true) throw new Error("setuid privilege is not active");
-if (status.strict_ready !== false) throw new Error("partially wired proxy helper must fail closed");
+if (status.strict_ready !== true) throw new Error("project proxy helper must be strict-ready");
 ' "$status"
 
 caller_uid="$(id -u)"

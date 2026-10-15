@@ -39,7 +39,8 @@ Linux 严格模式使用独立 network namespace 和防火墙规则。macOS 严�
 配置，不能把执行状态提升为 `strict`。
 
 Linux 桌面包包含一个最小权限的 setuid launcher。它创建新的 network namespace 和 veth，
-不配置默认路由，并通过宿主 iptables 只允许该 veth 访问本次执行分配的代理端口。随后
+不配置默认路由，并在该 namespace 的 iptables OUTPUT 链只允许访问本次执行分配的代理
+IP:Port 和 loopback。规则随 namespace 删除，不修改宿主 INPUT/FORWARD 链。随后
 helper 清空附加组、降回调用用户、设置 `no_new_privs`，再执行 Provider、Workflow 或
 Plugin 进程树。代理凭据通过环境传入 helper，转换为标准 HTTP 代理 URL 后删除原始变量。
 只有 helper、受控代理、所有 Project 进程入口和允许/拒绝/DNS rebinding/逃逸测试同时

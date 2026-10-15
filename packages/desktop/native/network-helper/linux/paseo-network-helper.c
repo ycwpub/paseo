@@ -210,38 +210,10 @@ static int run_ip(const char *ip_tool, char *const arguments[]) {
   return EXIT_SUCCESS;
 }
 
-static void remove_firewall_rules(const char *iptables_tool,
-                                  const char *host_interface,
-                                  const char *proxy_port) {
-  char *delete_allow[] = {(char *)iptables_tool,
-                          "-D",
-                          "INPUT",
-                          "-i",
-                          (char *)host_interface,
-                          "-p",
-                          "tcp",
-                          "--dport",
-                          (char *)proxy_port,
-                          "-j",
-                          "ACCEPT",
-                          NULL};
-  char *delete_drop[] = {(char *)iptables_tool,
-                         "-D",
-                         "INPUT",
-                         "-i",
-                         (char *)host_interface,
-                         "-j",
-                         "DROP",
-                         NULL};
-  while (run_tool(iptables_tool, delete_allow, true) == EXIT_SUCCESS) {
-  }
-  while (run_tool(iptables_tool, delete_drop, true) == EXIT_SUCCESS) {
-  }
-}
-
 static int configure_proxy_namespace(const char *namespace_name,
                                      const char *host_interface,
                                      const char *child_interface,
+                                     const char *host_ip,
                                      const char *host_cidr,
                                      const char *child_cidr,
                                      const char *proxy_port) {
@@ -312,45 +284,55 @@ static int configure_proxy_namespace(const char *namespace_name,
     return EXIT_FAILURE;
   }
 
-  remove_firewall_rules(iptables_tool, host_interface, proxy_port);
-  char *insert_drop[] = {(char *)iptables_tool,
-                         "-I",
-                         "INPUT",
-                         "1",
-                         "-i",
-                         (char *)host_interface,
+  char *allow_loopback[] = {(char *)ip_tool,
+                            "netns",
+                            "exec",
+                            (char *)namespace_name,
+                            (char *)iptables_tool,
+                            "-A",
+                            "OUTPUT",
+                            "-o",
+                            "lo",
+                            "-j",
+                            "ACCEPT",
+                            NULL};
+  char *allow_proxy[] = {(char *)ip_tool,
+                         "netns",
+                         "exec",
+                         (char *)namespace_name,
+                         (char *)iptables_tool,
+                         "-A",
+                         "OUTPUT",
+                         "-d",
+                         (char *)host_ip,
+                         "-p",
+                         "tcp",
+                         "--dport",
+                         (char *)proxy_port,
                          "-j",
-                         "DROP",
+                         "ACCEPT",
                          NULL};
-  char *insert_allow[] = {(char *)iptables_tool,
-                          "-I",
-                          "INPUT",
-                          "1",
-                          "-i",
-                          (char *)host_interface,
-                          "-p",
-                          "tcp",
-                          "--dport",
-                          (char *)proxy_port,
-                          "-j",
-                          "ACCEPT",
-                          NULL};
-  if (run_tool(iptables_tool, insert_drop, false) != EXIT_SUCCESS ||
-      run_tool(iptables_tool, insert_allow, false) != EXIT_SUCCESS) {
-    fprintf(stderr, "paseo-network-helper: failed to install proxy firewall rules\n");
+  char *drop_other[] = {(char *)ip_tool,
+                        "netns",
+                        "exec",
+                        (char *)namespace_name,
+                        (char *)iptables_tool,
+                        "-A",
+                        "OUTPUT",
+                        "-j",
+                        "DROP",
+                        NULL};
+  if (run_tool(ip_tool, allow_loopback, false) != EXIT_SUCCESS ||
+      run_tool(ip_tool, allow_proxy, false) != EXIT_SUCCESS ||
+      run_tool(ip_tool, drop_other, false) != EXIT_SUCCESS) {
+    fprintf(stderr, "paseo-network-helper: failed to install namespace firewall rules\n");
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }
 
-static void cleanup_proxy_namespace(const char *namespace_name,
-                                    const char *host_interface,
-                                    const char *proxy_port) {
-  char iptables_tool[128];
+static void cleanup_proxy_namespace(const char *namespace_name, const char *host_interface) {
   char ip_tool[128];
-  if (find_tool("iptables", iptables_tool, sizeof(iptables_tool))) {
-    remove_firewall_rules(iptables_tool, host_interface, proxy_port);
-  }
   if (find_tool("ip", ip_tool, sizeof(ip_tool))) {
     char *delete_namespace[] = {
         (char *)ip_tool, "netns", "del", (char *)namespace_name, NULL};
@@ -419,21 +401,22 @@ static int launch_proxy_network(uid_t caller_uid,
   (void)snprintf(child_cidr, sizeof(child_cidr), "%s/30", child_ip);
   (void)snprintf(proxy_port_text, sizeof(proxy_port_text), "%d", proxy_port);
 
-  cleanup_proxy_namespace(namespace_name, host_interface, proxy_port_text);
+  cleanup_proxy_namespace(namespace_name, host_interface);
   if (configure_proxy_namespace(namespace_name,
                                 host_interface,
                                 child_interface,
+                                host_ip,
                                 host_cidr,
                                 child_cidr,
                                 proxy_port_text) != EXIT_SUCCESS) {
-    cleanup_proxy_namespace(namespace_name, host_interface, proxy_port_text);
+    cleanup_proxy_namespace(namespace_name, host_interface);
     return EXIT_FAILURE;
   }
 
   const pid_t child = fork();
   if (child < 0) {
     perror("paseo-network-helper: fork proxy child");
-    cleanup_proxy_namespace(namespace_name, host_interface, proxy_port_text);
+    cleanup_proxy_namespace(namespace_name, host_interface);
     return EXIT_FAILURE;
   }
   if (child == 0) {
@@ -441,7 +424,7 @@ static int launch_proxy_network(uid_t caller_uid,
         namespace_name, host_ip, proxy_port, caller_uid, caller_gid, command);
   }
   const int status = wait_for_child(child);
-  cleanup_proxy_namespace(namespace_name, host_interface, proxy_port_text);
+  cleanup_proxy_namespace(namespace_name, host_interface);
   return status;
 }
 

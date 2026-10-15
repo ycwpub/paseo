@@ -63,20 +63,26 @@ linux:
   artifactName: "Paseo-${version}-${arch}.${ext}"
   maintainer: "Mohamed Boudra <hello@moboudra.com>"
   vendor: "Paseo"
-  depends:
-    - iproute2
-    - iptables
   extraResources:
     - from: bin/paseo
       to: bin/paseo
     - from: native-build/linux/${arch}/paseo-network-helper
       to: network-helper/paseo-network-helper
-  afterInstall: scripts/linux-network-helper-after-install.sh
   target:
     - AppImage
     - deb
     - rpm
     - tar.gz
+deb:
+  depends:
+    - iproute2
+    - iptables
+  afterInstall: scripts/linux-network-helper-after-install.sh
+rpm:
+  depends:
+    - iproute
+    - iptables
+  afterInstall: scripts/linux-network-helper-after-install.sh
 appImage:
   # Keep the AppImage filename stable across versions (no ${version}) so
   # electron-updater overwrites the file in place instead of renaming it to a new

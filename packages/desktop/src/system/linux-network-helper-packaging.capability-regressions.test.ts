@@ -23,6 +23,10 @@ describe("Linux Project network helper packaging", () => {
 
     expect(builder).toContain("native-build/linux/${arch}/paseo-network-helper");
     expect(builder).toContain("network-helper/paseo-network-helper");
-    expect(builder).toContain("afterInstall: scripts/linux-network-helper-after-install.sh");
+    expect(
+      builder.match(/afterInstall: scripts\/linux-network-helper-after-install\.sh/gu),
+    ).toHaveLength(2);
+    expect(builder).toMatch(/deb:\n  depends:\n    - iproute2\n    - iptables/u);
+    expect(builder).toMatch(/rpm:\n  depends:\n    - iproute\n    - iptables/u);
   });
 });

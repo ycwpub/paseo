@@ -8,6 +8,38 @@ import {
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
+
+describe("Debian Project external proxy configuration", () => {
+  test("defaults the global switch off and accepts explicit patches", () => {
+    expect(
+      MutableDaemonConfigSchema.parse({
+        mcp: { injectIntoAgents: false },
+      }).externalProxy,
+    ).toEqual({ enabled: false });
+    expect(
+      MutableDaemonConfigPatchSchema.parse({
+        externalProxy: { enabled: true },
+      }).externalProxy,
+    ).toEqual({ enabled: true });
+  });
+
+  test("keeps the Debian capability optional for old daemon server info", () => {
+    expect(
+      parseServerInfoStatusPayload({
+        status: "server_info",
+        serverId: "srv_debian",
+        features: { projectExternalProxy: true },
+      })?.features?.projectExternalProxy,
+    ).toBe(true);
+    expect(
+      parseServerInfoStatusPayload({
+        status: "server_info",
+        serverId: "srv_legacy",
+      })?.features?.projectExternalProxy,
+    ).toBeUndefined();
+  });
+});
+
 describe("global instruction template configuration", () => {
   test("parses daemon-global templates and template patches", () => {
     const instructionTemplates = [

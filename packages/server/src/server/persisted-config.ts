@@ -262,6 +262,12 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        externalProxy: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough()
+          .optional(),
         git: z
           .object({
             maxProcessesPerSecond: z.number().int().positive().optional(),

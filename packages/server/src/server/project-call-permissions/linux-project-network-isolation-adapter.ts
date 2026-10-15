@@ -42,6 +42,7 @@ export function parseLinuxProjectNetworkHelperStatus(
 
 export interface LinuxProjectNetworkIsolationAdapterOptions {
   platform?: NodeJS.Platform;
+  externalProxyAvailable?: boolean;
   helperPath: string | null | undefined;
   runStatus?: (helperPath: string) => Promise<string>;
   proxyServer?: Pick<ProjectEgressProxyServer, "start">;
@@ -59,6 +60,7 @@ async function runHelperStatus(helperPath: string): Promise<string> {
 
 export class LinuxProjectNetworkIsolationAdapter implements ProjectNetworkIsolationAdapter {
   private readonly platform: NodeJS.Platform;
+  private readonly externalProxyAvailable: boolean;
   private readonly helperPath: string | null;
   private readonly runStatus: (helperPath: string) => Promise<string>;
   private readonly proxyServer: Pick<ProjectEgressProxyServer, "start"> | null;
@@ -66,6 +68,7 @@ export class LinuxProjectNetworkIsolationAdapter implements ProjectNetworkIsolat
 
   public constructor(options: LinuxProjectNetworkIsolationAdapterOptions) {
     this.platform = options.platform ?? process.platform;
+    this.externalProxyAvailable = options.externalProxyAvailable ?? false;
     this.helperPath = options.helperPath?.trim() || null;
     this.runStatus = options.runStatus ?? runHelperStatus;
     this.proxyServer = options.proxyServer ?? null;
@@ -73,7 +76,9 @@ export class LinuxProjectNetworkIsolationAdapter implements ProjectNetworkIsolat
   }
 
   public async status(_projectId: string): Promise<"active" | "unavailable"> {
-    if (this.platform !== "linux" || !this.helperPath) return "unavailable";
+    if (this.platform !== "linux" || !this.externalProxyAvailable || !this.helperPath) {
+      return "unavailable";
+    }
     try {
       const status = parseLinuxProjectNetworkHelperStatus(await this.runStatus(this.helperPath));
       return status.privilegeActive && status.strictReady ? "active" : "unavailable";

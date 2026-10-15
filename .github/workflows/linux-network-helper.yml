@@ -12,7 +12,11 @@ on:
       - "packages/desktop/electron-builder.yml"
       - "packages/desktop/package.json"
       - "packages/server/src/server/project-call-permissions/**"
+      - "packages/server/src/server/daemon-config-store*"
+      - "packages/server/src/server/config.ts"
+      - "packages/server/src/server/persisted-config.ts"
       - "packages/server/src/utils/project-network-process*"
+      - "packages/protocol/src/messages.ts"
   push:
     branches:
       - feature_paseo
@@ -26,7 +30,11 @@ on:
       - "packages/desktop/electron-builder.yml"
       - "packages/desktop/package.json"
       - "packages/server/src/server/project-call-permissions/**"
+      - "packages/server/src/server/daemon-config-store*"
+      - "packages/server/src/server/config.ts"
+      - "packages/server/src/server/persisted-config.ts"
       - "packages/server/src/utils/project-network-process*"
+      - "packages/protocol/src/messages.ts"
 
 permissions:
   contents: read
@@ -148,6 +156,9 @@ jobs:
             PASEO_LINUX_NETWORK_HELPER_TEST_PATH="$PASEO_LINUX_NETWORK_HELPER_TEST_PATH" \
             PASEO_LINUX_NETWORK_TARGET_ADDRESS="$PASEO_LINUX_NETWORK_TARGET_ADDRESS" \
             npx vitest run \
+              packages/server/src/server/project-call-permissions/debian-external-proxy-platform.capability-regressions.test.ts \
+              packages/server/src/server/project-call-permissions/linux-project-network-isolation-adapter.capability-regressions.test.ts \
+              packages/server/src/server/project-call-permissions/project-network-enforcer.capability-regressions.test.ts \
               packages/server/src/server/project-call-permissions/linux-project-network-isolation.local.e2e.test.ts \
               --bail=1
 

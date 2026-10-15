@@ -321,6 +321,7 @@ function createServer(options?: {
   logger?: ReturnType<typeof createLogger>;
   requireClientApproval?: boolean;
   startPaused?: boolean;
+  projectExternalProxy?: boolean;
 }) {
   const speechReadiness = options?.speechReadiness ?? null;
   let daemonConfigChangeListener: DaemonConfigChangeListener | null = null;
@@ -361,7 +362,11 @@ function createServer(options?: {
     "/tmp/paseo-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
-    { allowedOrigins: new Set(), startPaused: options?.startPaused },
+    {
+      allowedOrigins: new Set(),
+      startPaused: options?.startPaused,
+      projectExternalProxy: options?.projectExternalProxy,
+    },
     createWorkspaceAutoNameStub(),
     undefined,
     speechReadiness
@@ -1401,7 +1406,7 @@ describe("relay external socket reconnect behavior", () => {
   });
 
   test("advertises current features in initial server_info", async () => {
-    const server = createServer();
+    const server = createServer({ projectExternalProxy: true });
     const socket = new MockSocket();
 
     const serverInfo = await attachRelayAndHello({
@@ -1422,7 +1427,22 @@ describe("relay external socket reconnect behavior", () => {
     expect(serverInfo.features?.reasoningTranslation).toBe(true);
     expect(serverInfo.features?.plugins).toBe(true);
     expect(serverInfo.features?.pluginManagement).toBe(true);
+    expect(serverInfo.features?.projectExternalProxy).toBe(true);
     expect(serverInfo.features?.agentTurnIdentity).toBeUndefined();
+    await server.close();
+  });
+
+  test("does not advertise the external proxy on unsupported servers", async () => {
+    const server = createServer({ projectExternalProxy: false });
+    const socket = new MockSocket();
+
+    const serverInfo = await attachRelayAndHello({
+      server,
+      socket,
+      clientId: "cid-no-project-external-proxy",
+    });
+
+    expect(serverInfo.features?.projectExternalProxy).toBeUndefined();
     await server.close();
   });
 

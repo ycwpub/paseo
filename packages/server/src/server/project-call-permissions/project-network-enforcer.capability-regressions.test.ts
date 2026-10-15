@@ -10,28 +10,13 @@ import {
 } from "./project-network-enforcer.js";
 
 describe("ProjectNetworkEnforcer", () => {
-  it("fails closed when strict network policy has no active OS adapter", async () => {
+  it("fails closed for every Project when the global external proxy is enabled without an adapter", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-strict-network-"));
     const project = { projectId: "project-a", rootPath: "/repo/project-a" };
-    const write = writeProjectConfigForProject({
-      paseoHome,
-      project,
-      config: {
-        project: {
-          directoryMode: "single",
-          permissions: {
-            enabled: true,
-            enforcement: "strict",
-            defaultAction: "deny",
-          },
-        },
-      },
-      expectedRevision: null,
-    });
-    expect(write.ok).toBe(true);
 
     const enforcer = new ProjectNetworkEnforcer({
       paseoHome,
+      isExternalProxyEnabled: () => true,
       workspaceRegistry: {
         get: async () => ({
           workspaceId: "workspace-a",
@@ -53,8 +38,8 @@ describe("ProjectNetworkEnforcer", () => {
     );
   });
 
-  it("returns adapter launch environment only for an active strict policy", async () => {
-    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-strict-network-env-"));
+  it("bypasses the adapter when the global external proxy is off", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-direct-network-"));
     const project = { projectId: "project-a", rootPath: "/repo/project-a" };
     const write = writeProjectConfigForProject({
       paseoHome,
@@ -74,6 +59,28 @@ describe("ProjectNetworkEnforcer", () => {
     expect(write.ok).toBe(true);
     const enforcer = new ProjectNetworkEnforcer({
       paseoHome,
+      isExternalProxyEnabled: () => false,
+      workspaceRegistry: {
+        get: async () => ({
+          workspaceId: "workspace-a",
+          projectId: "project-a",
+          archivedAt: null,
+        }),
+      },
+      projectRegistry: { get: async () => project },
+    });
+
+    await expect(
+      enforcer.prepareExecutionEnvironment("workspace-a", "agent_process"),
+    ).resolves.toEqual({});
+  });
+
+  it("returns adapter launch environment for a Project without permission rules when globally enabled", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-strict-network-env-"));
+    const project = { projectId: "project-a", rootPath: "/repo/project-a" };
+    const enforcer = new ProjectNetworkEnforcer({
+      paseoHome,
+      isExternalProxyEnabled: () => true,
       workspaceRegistry: {
         get: async () => ({
           workspaceId: "workspace-a",

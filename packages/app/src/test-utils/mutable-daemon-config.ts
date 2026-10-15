@@ -15,6 +15,7 @@ export function createMutableDaemonConfig(
     },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
+    externalProxy: { enabled: false },
     clientAccess: { requireApproval: true },
     projectIndexing: { updateIntervalMinutes: 1440 },
     providers: {},

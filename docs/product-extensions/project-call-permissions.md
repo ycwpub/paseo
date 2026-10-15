@@ -5,7 +5,8 @@ Project 调用权限控制 Project 内 Agent、Workflow 和插件可以调用的
 
 ## 策略
 
-未配置 `project.permissions` 的旧 Project 保持原行为。用户启用权限后，新策略默认拒绝。
+未配置 `project.permissions` 的旧 Project 保持规则兼容放行。用户启用权限后，新策略默认
+拒绝。
 
 每条规则的动作是 `allow` 或 `deny`。一次调用的判断顺序固定为：
 
@@ -26,6 +27,17 @@ HTTP 规则分别匹配协议、主机、端口、方法和路径。主机匹配
 
 ## 强制执行层
 
+Debian 服务器提供全局 `externalProxy.enabled` 开关，默认关闭。关闭时 Project 子进程
+直接访问网络，不注入代理或 namespace 隔离环境，HTTP 白名单和黑名单不执行；RPC/MCP
+仍可使用 Project 规则授权。开启时，所有 Project 的 Agent、Workflow 和插件子进程都必须
+经过 Project 出站代理，无论该 Project 是否配置了规则。Paseo 更新、飞书连接等不带
+Project 身份的后台流量不经过该代理。
+
+服务器从 `/etc/os-release` 判断 `ID=debian`，并通过
+`server_info.features.projectExternalProxy` 向远端客户端发布能力。非 Debian 服务器强制
+关闭且拒绝开启配置；不能根据客户端系统推断。全局开关开启但 helper 不可用时，任务启动
+必须 fail-closed。
+
 权限状态分为：
 
 - `managed`：daemon 内 RPC/MCP、插件/Workflow 托管 HTTP 已强制执行。
@@ -34,9 +46,9 @@ HTTP 规则分别匹配协议、主机、端口、方法和路径。主机匹配
 - `unavailable`：用户要求严格模式，但当前平台没有可用的操作系统强制能力。此状态
   必须阻止相关 Project 启动新的执行任务，不能降级为仅注入代理环境变量。
 
-Linux 严格模式使用独立 network namespace。macOS 严格模式使用受控网络扩展或特权辅助
-进程。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider 工具白名单只能作为兼容配置，不能把执行
-状态提升为 `strict`。
+Debian 外部代理使用独立 network namespace。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider
+工具白名单只能作为兼容配置，不能把执行状态提升为 `strict`。Project 配置中的历史
+`enforcement` 字段继续兼容读取，但是否包装子进程由服务器全局外部代理开关决定。
 
 Linux 桌面包包含一个最小权限的 setuid launcher。它创建仅启用 loopback 的匿名 network
 namespace，并在该 namespace 内创建只监听本次代理端口的 socket；宿主 namespace 中受
@@ -47,6 +59,10 @@ veth、默认路由或其他网络接口，因此 Project 进程不能绕过 rel
 helper，转换为标准 HTTP 代理 URL 后删除原始变量；relay 不接收动态目标并清除原始凭据。
 只有 helper、受控代理、所有 Project 进程入口和允许/拒绝/DNS rebinding/逃逸测试同时在
 Debian 12 验收通过时，helper 才报告 `project_proxy` 和 `strict_ready=true`。
+
+Project 配置页始终保留 RPC/MCP 规则编辑。只有远端服务器发布 Debian 外部代理能力且全局
+开关已开启时，HTTP 白名单和黑名单才可编辑；否则保留并展示已保存规则，但所有编辑控件
+置灰并说明恢复操作。
 
 deb/rpm 安装脚本把 helper 设置为 `root:root`、模式 `4755`。AppImage 挂载内容不能安全地
 获得 setuid 权限，因此 AppImage 在单独安装受信任 helper 前保持 `unavailable`。

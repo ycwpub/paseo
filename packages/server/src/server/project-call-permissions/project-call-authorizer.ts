@@ -24,6 +24,7 @@ export interface ProjectCallAuthorizerDependencies {
   projectRegistry: {
     get(projectId: string): Promise<ProjectCallProject | null>;
   };
+  isExternalProxyEnabled?: () => boolean;
   auditStore?: Pick<ProjectCallAuditStore, "append">;
 }
 
@@ -84,8 +85,10 @@ export class ProjectCallAuthorizer {
     if (!config.ok) {
       throw new Error(`无法读取 Project 权限配置：${config.error.code}`);
     }
+    const httpPolicyEnabled =
+      input.request.kind !== "http" || this.dependencies.isExternalProxyEnabled?.() !== false;
     const decision = evaluateProjectCallPermission(
-      config.config?.project?.permissions,
+      httpPolicyEnabled ? config.config?.project?.permissions : undefined,
       input.request,
     );
     await this.dependencies.auditStore?.append({

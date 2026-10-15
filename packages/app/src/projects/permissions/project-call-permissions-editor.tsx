@@ -19,16 +19,20 @@ import {
 export interface ProjectCallPermissionsEditorProps {
   value: ProjectCallPermissionsDraft;
   onChange(value: ProjectCallPermissionsDraft): void;
+  httpRulesEditable: boolean;
+  httpRulesDisabledReason: string | null;
 }
 
 function ChoiceButtons<T extends string>({
   value,
   choices,
   onChange,
+  disabled = false,
 }: {
   value: T;
   choices: Array<{ value: T; label: string }>;
   onChange(value: T): void;
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.choiceRow}>
@@ -38,6 +42,7 @@ function ChoiceButtons<T extends string>({
           size="sm"
           variant={value === choice.value ? "default" : "outline"}
           onPress={() => onChange(choice.value)}
+          disabled={disabled}
         >
           {choice.label}
         </Button>
@@ -52,12 +57,14 @@ function RuleHeader({
   onIdChange,
   onActionChange,
   onRemove,
+  disabled = false,
 }: {
   id: string;
   action: "allow" | "deny";
   onIdChange(value: string): void;
   onActionChange(value: "allow" | "deny"): void;
   onRemove(): void;
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.ruleHeader}>
@@ -67,6 +74,7 @@ function RuleHeader({
         placeholder="规则 ID"
         accessibilityLabel="规则 ID"
         style={styles.flexInput}
+        editable={!disabled}
       />
       <ChoiceButtons
         value={action}
@@ -75,8 +83,9 @@ function RuleHeader({
           { value: "deny", label: "黑名单" },
         ]}
         onChange={onActionChange}
+        disabled={disabled}
       />
-      <Button size="sm" variant="ghost" onPress={onRemove}>
+      <Button size="sm" variant="ghost" onPress={onRemove} disabled={disabled}>
         删除
       </Button>
     </View>
@@ -87,10 +96,12 @@ function RpcRuleRow({
   rule,
   onChange,
   onRemove,
+  disabled = false,
 }: {
   rule: ProjectRpcPermissionRuleDraft;
   onChange(rule: ProjectRpcPermissionRuleDraft): void;
   onRemove(): void;
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.ruleCard}>
@@ -100,6 +111,7 @@ function RpcRuleRow({
         onIdChange={(id) => onChange({ ...rule, id })}
         onActionChange={(action) => onChange({ ...rule, action })}
         onRemove={onRemove}
+        disabled={disabled}
       />
       <ChoiceButtons
         value={rule.target.type}
@@ -125,10 +137,12 @@ function HttpRuleRow({
   rule,
   onChange,
   onRemove,
+  disabled = false,
 }: {
   rule: ProjectHttpPermissionRuleDraft;
   onChange(rule: ProjectHttpPermissionRuleDraft): void;
   onRemove(): void;
+  disabled?: boolean;
 }) {
   const host = rule.hosts?.[0] ?? { type: "exact" as const, value: "" };
   const path = rule.path ?? { type: "prefix" as const, value: "/" };
@@ -140,6 +154,7 @@ function HttpRuleRow({
         onIdChange={(id) => onChange({ ...rule, id })}
         onActionChange={(action) => onChange({ ...rule, action })}
         onRemove={onRemove}
+        disabled={disabled}
       />
       <View style={styles.httpFields}>
         <TextInput
@@ -148,6 +163,7 @@ function HttpRuleRow({
           placeholder="主机，例如 api.example.com"
           accessibilityLabel="HTTP 主机"
           style={styles.flexInput}
+          editable={!disabled}
         />
         <TextInput
           value={rule.methods?.[0] ?? ""}
@@ -155,6 +171,7 @@ function HttpRuleRow({
           placeholder="GET"
           accessibilityLabel="HTTP 方法"
           style={styles.methodInput}
+          editable={!disabled}
         />
         <TextInput
           value={path.value}
@@ -162,6 +179,7 @@ function HttpRuleRow({
           placeholder="/api/"
           accessibilityLabel="HTTP 路径"
           style={styles.flexInput}
+          editable={!disabled}
         />
       </View>
       <Text style={styles.hint}>
@@ -174,6 +192,8 @@ function HttpRuleRow({
 export function ProjectCallPermissionsEditor({
   value,
   onChange,
+  httpRulesEditable,
+  httpRulesDisabledReason,
 }: ProjectCallPermissionsEditorProps) {
   const setEnabled = (enabled: boolean) => {
     if (enabled && !value.configured) {
@@ -216,26 +236,18 @@ export function ProjectCallPermissionsEditor({
               onChange={(defaultAction) => onChange({ ...value, configured: true, defaultAction })}
             />
           </SettingsSection>
-          <SettingsSection title="网络强制模式">
-            <ChoiceButtons
-              value={value.enforcement}
-              choices={[
-                { value: "strict", label: "严格模式" },
-                { value: "managed", label: "托管出口" },
-              ]}
-              onChange={(enforcement) => onChange({ ...value, configured: true, enforcement })}
-            />
-            {value.enforcement === "strict" ? (
+          <SettingsSection title="外部代理状态">
+            {httpRulesEditable ? (
               <Alert
                 variant="warning"
-                title="严格模式要求系统网络隔离组件"
-                description="主机在每次执行前校验隔离组件；Linux deb/rpm 会随应用安装。组件缺失、权限错误或版本不兼容时会阻止任务，绝不会静默降级。"
+                title="服务器外部代理已开启"
+                description="该 Project 的 Agent、Workflow 和插件请求会经过外部代理，并应用下面的 HTTP 白名单和黑名单。"
               />
             ) : (
               <Alert
                 variant="warning"
-                title="托管出口不能限制 shell 直连"
-                description="RPC、Paseo MCP 和托管 HTTP 会被拦截，但 Agent 仍可能通过 curl、SDK 或直接 Socket 绕过。"
+                title="HTTP 规则当前未生效"
+                description={httpRulesDisabledReason ?? "服务器未开启外部代理。"}
               />
             )}
           </SettingsSection>
@@ -245,6 +257,7 @@ export function ProjectCallPermissionsEditor({
               <Button
                 size="sm"
                 variant="ghost"
+                disabled={!httpRulesEditable}
                 onPress={() =>
                   onChange({
                     ...value,
@@ -299,30 +312,33 @@ export function ProjectCallPermissionsEditor({
             }
             flush
           >
-            {value.httpRules.length === 0 ? (
-              <Text style={styles.empty}>暂无 HTTP 规则</Text>
-            ) : (
-              value.httpRules.map((rule) => (
-                <HttpRuleRow
-                  key={rule.rowId}
-                  rule={rule}
-                  onChange={(next) =>
-                    onChange({
-                      ...value,
-                      httpRules: value.httpRules.map((entry) =>
-                        entry.rowId === rule.rowId ? next : entry,
-                      ),
-                    })
-                  }
-                  onRemove={() =>
-                    onChange({
-                      ...value,
-                      httpRules: value.httpRules.filter((entry) => entry.rowId !== rule.rowId),
-                    })
-                  }
-                />
-              ))
-            )}
+            <View style={!httpRulesEditable ? styles.disabledRules : undefined}>
+              {value.httpRules.length === 0 ? (
+                <Text style={styles.empty}>暂无 HTTP 规则</Text>
+              ) : (
+                value.httpRules.map((rule) => (
+                  <HttpRuleRow
+                    key={rule.rowId}
+                    rule={rule}
+                    disabled={!httpRulesEditable}
+                    onChange={(next) =>
+                      onChange({
+                        ...value,
+                        httpRules: value.httpRules.map((entry) =>
+                          entry.rowId === rule.rowId ? next : entry,
+                        ),
+                      })
+                    }
+                    onRemove={() =>
+                      onChange({
+                        ...value,
+                        httpRules: value.httpRules.filter((entry) => entry.rowId !== rule.rowId),
+                      })
+                    }
+                  />
+                ))
+              )}
+            </View>
           </SettingsSection>
         </>
       ) : null}
@@ -385,5 +401,8 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     padding: theme.spacing[4],
+  },
+  disabledRules: {
+    opacity: theme.opacity[50],
   },
 }));

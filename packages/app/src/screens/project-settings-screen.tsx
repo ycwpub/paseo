@@ -68,6 +68,7 @@ import {
   type ProjectSummary,
 } from "@/utils/projects";
 import { ProjectCallPermissionsEditor } from "@/projects/permissions/project-call-permissions-editor";
+import { resolveProjectHttpPermissionAvailability } from "@/projects/permissions/project-call-permissions-availability";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -551,6 +552,15 @@ function ProjectConfigForm({
   const queryClient = useQueryClient();
   const toast = useToast();
   const { config: daemonConfig, patchConfig } = useDaemonConfig(serverId);
+  const externalProxyFeature = useHostFeature(serverId, "projectExternalProxy");
+  const httpPermissionAvailability = useMemo(
+    () =>
+      resolveProjectHttpPermissionAvailability({
+        featureAdvertised: externalProxyFeature,
+        externalProxyEnabled: daemonConfig?.externalProxy.enabled === true,
+      }),
+    [daemonConfig?.externalProxy.enabled, externalProxyFeature],
+  );
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
@@ -826,6 +836,8 @@ function ProjectConfigForm({
       <ProjectCallPermissionsEditor
         value={draft.projectCallPermissions}
         onChange={handleProjectCallPermissionsChange}
+        httpRulesEditable={httpPermissionAvailability.editable}
+        httpRulesDisabledReason={httpPermissionAvailability.reason}
       />
       <ProjectLarkGroupsList
         serverId={serverId}

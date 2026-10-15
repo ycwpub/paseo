@@ -9,6 +9,7 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
   it("activates the privileged project proxy helper after every process path is wired", async () => {
     const adapter = new LinuxProjectNetworkIsolationAdapter({
       platform: "linux",
+      externalProxyAvailable: true,
       helperPath: "/opt/Paseo/resources/network-helper/paseo-network-helper",
       runStatus: async () =>
         JSON.stringify({
@@ -20,6 +21,23 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
     });
 
     await expect(adapter.status("project-a")).resolves.toBe("active");
+  });
+
+  it("stays unavailable on non-Debian Linux hosts", async () => {
+    const adapter = new LinuxProjectNetworkIsolationAdapter({
+      platform: "linux",
+      externalProxyAvailable: false,
+      helperPath: "/opt/Paseo/resources/network-helper/paseo-network-helper",
+      runStatus: async () =>
+        JSON.stringify({
+          version: "3",
+          capability: "project_proxy",
+          privilege_active: true,
+          strict_ready: true,
+        }),
+    });
+
+    await expect(adapter.status("project-a")).resolves.toBe("unavailable");
   });
 
   it("accepts only a privileged helper that explicitly reports strict readiness", async () => {
@@ -56,6 +74,7 @@ describe("LinuxProjectNetworkIsolationAdapter", () => {
   it("starts the proxy and returns helper launch environment", async () => {
     const adapter = new LinuxProjectNetworkIsolationAdapter({
       platform: "linux",
+      externalProxyAvailable: true,
       helperPath: "/opt/Paseo/helper",
       runStatus: async () =>
         JSON.stringify({

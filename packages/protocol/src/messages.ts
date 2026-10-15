@@ -229,6 +229,12 @@ const MutableBrowserToolsConfigSchema = z
   })
   .passthrough();
 
+const MutableExternalProxyConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+  })
+  .passthrough();
+
 export const PluginIdSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 
 export const DirectoryPluginSourceSchema = z
@@ -274,6 +280,7 @@ export const MutableDaemonConfigSchema = z
     app: z.object({ baseUrl: z.string() }).optional(),
     catalogRefreshTimeoutMs: z.number().int().positive().optional(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
+    externalProxy: MutableExternalProxyConfigSchema.default({ enabled: false }),
     relay: MutableRelayConfigSchema.default({
       endpoints: [],
       pairingBaseUrls: [],
@@ -310,6 +317,7 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: z.object({ injectIntoAgents: z.boolean().optional() }).passthrough().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    externalProxy: MutableExternalProxyConfigSchema.partial().optional(),
     relay: z
       .object({
         endpoints: z.array(RelayEndpointConfigSchema).optional(),
@@ -3622,6 +3630,8 @@ export const ServerInfoStatusPayloadSchema = z
         projectHierarchy: z.boolean().optional(),
         // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
         projectConfigById: z.boolean().optional(),
+        // COMPAT(projectExternalProxy): added in v0.7.0, remove gate after 2027-10-15.
+        projectExternalProxy: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: z.boolean().optional(),
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.

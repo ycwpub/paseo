@@ -29,6 +29,49 @@ describe("DaemonConfigStore", () => {
       requireApproval: false,
     });
   });
+  test("persists the Debian external proxy switch and notifies live runtimes", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+      },
+      undefined,
+      { externalProxyAvailable: true },
+    );
+    const onChange = vi.fn();
+    store.onFieldChange("externalProxy.enabled", onChange);
+
+    expect(store.patch({ externalProxy: { enabled: true } }).externalProxy).toEqual({
+      enabled: true,
+    });
+    expect(onChange).toHaveBeenCalledWith(true);
+    expect(loadPersistedConfig(paseoHome).daemon?.externalProxy).toEqual({
+      enabled: true,
+    });
+  });
+
+  test("forces the external proxy off and rejects enable patches outside Debian", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        externalProxy: { enabled: true },
+      },
+      undefined,
+      { externalProxyAvailable: false },
+    );
+
+    expect(store.get().externalProxy).toEqual({ enabled: false });
+    expect(() => store.patch({ externalProxy: { enabled: true } })).toThrow(
+      "外部代理仅支持 Debian 服务器",
+    );
+    expect(loadPersistedConfig(paseoHome).daemon?.externalProxy).toBeUndefined();
+  });
+
   test("persists daemon-global instruction templates", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

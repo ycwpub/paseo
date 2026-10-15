@@ -24,6 +24,7 @@ interface SupportedMutableConfigPatch {
   relay?: MutableDaemonConfigPatch["relay"];
   mcp?: { injectIntoAgents?: boolean };
   browserTools?: { enabled?: boolean };
+  externalProxy?: { enabled?: boolean };
   clientAccess?: MutableDaemonConfigPatch["clientAccess"];
   projectIndexing?: MutableDaemonConfigPatch["projectIndexing"];
   knowledge?: MutableDaemonConfig["knowledge"];
@@ -211,6 +212,7 @@ const RELOADABLE_PATHS = [
   "daemon.mcp.enabled",
   "daemon.mcp.injectIntoAgents",
   "daemon.browserTools.enabled",
+  "daemon.externalProxy.enabled",
   "daemon.clientAccess.requireApproval",
   "daemon.projectIndexing.updateIntervalMinutes",
   "daemon.knowledge",
@@ -238,6 +240,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.mcp.enabled", "mcp.enabled"],
   ["daemon.mcp.injectIntoAgents", "mcp.injectIntoAgents"],
   ["daemon.browserTools.enabled", "browserTools.enabled"],
+  ["daemon.externalProxy.enabled", "externalProxy.enabled"],
   ["daemon.clientAccess.requireApproval", "clientAccess.requireApproval"],
   ["daemon.projectIndexing.updateIntervalMinutes", "projectIndexing.updateIntervalMinutes"],
   ["daemon.knowledge", "knowledge"],
@@ -307,6 +310,9 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.browserTools?.enabled !== undefined
       ? { browserTools: { enabled: patch.browserTools.enabled } }
       : {}),
+    ...(patch.externalProxy?.enabled !== undefined
+      ? { externalProxy: { enabled: patch.externalProxy.enabled } }
+      : {}),
     ...(patch.clientAccess !== undefined ? { clientAccess: patch.clientAccess } : {}),
     ...(patch.projectIndexing !== undefined ? { projectIndexing: patch.projectIndexing } : {}),
     ...(patch.knowledge !== undefined ? { knowledge: patch.knowledge } : {}),
@@ -361,6 +367,7 @@ export class DaemonConfigStore {
   private readonly applyListeners = new Set<ConfigApplyListener>();
   private readonly fieldChangeHandlers = new Map<string, Set<FieldChangeHandler>>();
   private readonly relayEnabledMutable: boolean;
+  private readonly externalProxyAvailable: boolean;
   private readonly reloadSource: DaemonConfigReloadSource | undefined;
   private readonly startupPersisted: PersistedConfig;
   private lastKnownPersisted: PersistedConfig;
@@ -371,16 +378,25 @@ export class DaemonConfigStore {
     logger?: LoggerLike,
     options: {
       relayEnabledMutable?: boolean;
+      externalProxyAvailable?: boolean;
       reloadSource?: DaemonConfigReloadSource;
       startupPersisted?: PersistedConfig;
     } = {},
   ) {
     this.paseoHome = paseoHome;
     this.logger = getLogger(logger);
-    this.current = MutableDaemonConfigSchema.parse({
+    const parsedInitial = MutableDaemonConfigSchema.parse({
       ...initial,
       relay: initial.relay ?? { enabled: true },
     });
+    this.externalProxyAvailable = options.externalProxyAvailable ?? false;
+    this.current =
+      this.externalProxyAvailable || parsedInitial.externalProxy.enabled === false
+        ? parsedInitial
+        : {
+            ...parsedInitial,
+            externalProxy: { ...parsedInitial.externalProxy, enabled: false },
+          };
     this.relayEnabledMutable = options.relayEnabledMutable ?? true;
     this.reloadSource = options.reloadSource;
     this.startupPersisted = options.startupPersisted ?? loadPersistedConfig(paseoHome, this.logger);
@@ -393,6 +409,9 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = pickSupportedPatchFields(MutableDaemonConfigPatchSchema.parse(partial));
+    if (parsedPatch.externalProxy?.enabled === true && !this.externalProxyAvailable) {
+      throw new Error("外部代理仅支持 Debian 服务器");
+    }
     if (parsedPatch.relay?.enabled !== undefined && !this.relayEnabledMutable) {
       throw new Error(
         "Relay is controlled by a daemon launch override. Remove PASEO_RELAY_ENABLED or the relay CLI flag before changing it here.",
@@ -462,10 +481,17 @@ export class DaemonConfigStore {
     const resolved = this.reloadSource.resolve(persisted);
     // Plugin source changes require the plugin lifecycle operation or a daemon
     // restart. The global switch is independently reloadable.
-    const desired = MutableDaemonConfigSchema.parse({
+    const parsedDesired = MutableDaemonConfigSchema.parse({
       ...resolved.mutable,
       plugins: this.current.plugins,
     });
+    const desired =
+      this.externalProxyAvailable || parsedDesired.externalProxy.enabled === false
+        ? parsedDesired
+        : {
+            ...parsedDesired,
+            externalProxy: { ...parsedDesired.externalProxy, enabled: false },
+          };
     const changedSinceLastApply = diffPaths(this.lastKnownPersisted, persisted);
     const overrideControlledPaths = compactOwnedPaths(
       changedSinceLastApply.filter((path) =>
@@ -723,6 +749,12 @@ function mergeMutableDaemonPatch(
   }
   if (patch.browserTools?.enabled !== undefined) {
     next.browserTools = { ...next.browserTools, enabled: patch.browserTools.enabled };
+  }
+  if (patch.externalProxy?.enabled !== undefined) {
+    next.externalProxy = {
+      ...next.externalProxy,
+      enabled: patch.externalProxy.enabled,
+    };
   }
   if (patch.clientAccess?.requireApproval !== undefined) {
     next.clientAccess = {

@@ -5,6 +5,7 @@ import { normalizeMutableDaemonConfig } from "@/data/daemon-config-normalization
 const daemonConfig: MutableDaemonConfig = {
   mcp: { injectIntoAgents: true },
   browserTools: { enabled: false },
+  externalProxy: { enabled: false },
   clientAccess: { requireApproval: true },
   projectIndexing: { updateIntervalMinutes: 1440 },
   relay: {

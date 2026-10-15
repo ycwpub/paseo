@@ -119,4 +119,55 @@ describe("ProjectCallAuthorizer", () => {
       }),
     ).resolves.toMatchObject({ allowed: true, matchedRuleId: "allow-plugin-api" });
   });
+
+  it("bypasses HTTP whitelist and blacklist rules while the global proxy is off", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-project-direct-http-"));
+    const project = { projectId: "project-direct", rootPath: "/repo/project-direct" };
+    expect(
+      writeProjectConfigForProject({
+        paseoHome,
+        project,
+        config: {
+          project: {
+            permissions: {
+              enabled: true,
+              defaultAction: "deny",
+              httpRules: [
+                {
+                  id: "deny-everything",
+                  action: "deny",
+                  hosts: [{ type: "glob", value: "*" }],
+                },
+              ],
+            },
+          },
+        },
+        expectedRevision: null,
+      }).ok,
+    ).toBe(true);
+    const authorizer = new ProjectCallAuthorizer({
+      paseoHome,
+      isExternalProxyEnabled: () => false,
+      workspaceRegistry: { get: async () => null },
+      projectRegistry: {
+        get: async (projectId) => (projectId === project.projectId ? project : null),
+      },
+    });
+
+    await expect(
+      authorizer.authorize({
+        projectId: project.projectId,
+        source: "managed_http",
+        request: {
+          kind: "http",
+          url: "https://blocked.example.com/jobs",
+          method: "GET",
+        },
+      }),
+    ).resolves.toMatchObject({
+      allowed: true,
+      reason: "policy_disabled",
+      matchedRuleId: null,
+    });
+  });
 });

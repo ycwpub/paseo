@@ -87,6 +87,7 @@ import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon
 import { restartDaemonFromSettings } from "./daemon-restart";
 import { resolveConnectionProbePresentation } from "./host-connection-presentation";
 import { LocalRelayConfigurationSection } from "./host-local-relay-section";
+import { ExternalProxyCard } from "./external-proxy-card";
 import { InstructionTemplatesEntrySection } from "./agents/instruction-templates-section";
 export {
   HostAssistantEditorPage,
@@ -296,6 +297,9 @@ export function HostConnectionsPage({
   return (
     <View>
       <HostConnectionError serverId={serverId} />
+      <SettingsSection title="Project 网络">
+        <ExternalProxyCard serverId={serverId} />
+      </SettingsSection>
       <HostResourceSyncEntrySection serverId={serverId} />
       <RelayConfigurationSection serverId={serverId} onOpenLocalRelay={onOpenLocalRelay} />
       <ConnectionsSection host={host} />

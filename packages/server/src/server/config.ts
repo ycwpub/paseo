@@ -440,6 +440,10 @@ function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedCo
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
 
+function resolveExternalProxyEnabled(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
+  return persisted.daemon?.externalProxy?.enabled ?? false;
+}
+
 /**
  * Both profile lists stay `undefined` when absent rather than defaulting to an
  * empty array: for terminal profiles that is what selects the built-in
@@ -469,6 +473,7 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    externalProxyEnabled: resolveExternalProxyEnabled(persisted),
     clientAccessRequireApproval: resolveClientAccessRequireApproval(persisted),
     projectIndexUpdateIntervalMinutes:
       persisted.daemon?.projectIndexing?.updateIntervalMinutes ?? 1440,

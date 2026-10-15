@@ -13,6 +13,7 @@ import { ProjectCallAuthorizer } from "./project-call-permissions/project-call-a
 import { ProjectCallAuditStore } from "./project-call-permissions/project-call-audit-store.js";
 import { ProjectNetworkEnforcer } from "./project-call-permissions/project-network-enforcer.js";
 import { LinuxProjectNetworkIsolationAdapter } from "./project-call-permissions/linux-project-network-isolation-adapter.js";
+import { detectDebianExternalProxyCapability } from "./project-call-permissions/debian-external-proxy-platform.js";
 import { ProjectEgressProxyCredentials } from "./project-call-permissions/project-egress-proxy-credentials.js";
 import { ProjectEgressProxyServer } from "./project-call-permissions/project-egress-proxy-server.js";
 
@@ -457,6 +458,7 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
+  externalProxyEnabled?: boolean;
   git?: {
     maxProcessesPerSecond: number;
     maxProcessConcurrency: number;
@@ -565,6 +567,7 @@ export interface PaseoDaemonDependencies {
   serverFeatureOverrides?: {
     daemonStatusRpc?: boolean;
     relayConfig?: boolean;
+    projectExternalProxy?: boolean;
   };
 }
 
@@ -644,6 +647,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
       ? { catalogRefreshTimeoutMs: config.providerCatalogRefreshTimeoutMs }
       : {}),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    externalProxy: { enabled: config.externalProxyEnabled ?? false },
     clientAccess: {
       requireApproval: config.clientAccessRequireApproval ?? false,
     },
@@ -724,8 +728,10 @@ export async function createPaseoDaemon(
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
+  const externalProxyCapability = detectDebianExternalProxyCapability();
   const initialMutableConfig = createInitialMutableDaemonConfig(config);
   const daemonConfigStore = new DaemonConfigStore(config.paseoHome, initialMutableConfig, logger, {
+    externalProxyAvailable: externalProxyCapability.available,
     relayEnabledMutable: config.relayEnabledMutable ?? true,
     startupPersisted: config.configReload?.startupPersisted,
     reloadSource: {
@@ -1617,6 +1623,7 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     workspaceRegistry,
     projectRegistry,
+    isExternalProxyEnabled: () => daemonConfigStore.get().externalProxy.enabled,
     auditStore: projectCallAuditStore,
   });
   const projectEgressProxyCredentials = new ProjectEgressProxyCredentials();
@@ -1629,7 +1636,9 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     workspaceRegistry,
     projectRegistry,
+    isExternalProxyEnabled: () => daemonConfigStore.get().externalProxy.enabled,
     adapter: new LinuxProjectNetworkIsolationAdapter({
+      externalProxyAvailable: externalProxyCapability.available,
       helperPath: process.env.PASEO_LINUX_NETWORK_HELPER_PATH,
       proxyServer: projectEgressProxyServer,
       credentials: projectEgressProxyCredentials,
@@ -2494,6 +2503,9 @@ export async function createPaseoDaemon(
                 getHostnames: () => configuredHostnames,
                 daemonStatusRpc: dependencies.serverFeatureOverrides?.daemonStatusRpc,
                 relayConfig: dependencies.serverFeatureOverrides?.relayConfig,
+                projectExternalProxy:
+                  dependencies.serverFeatureOverrides?.projectExternalProxy ??
+                  externalProxyCapability.available,
                 startPaused: true,
               },
               workspaceAutoName,

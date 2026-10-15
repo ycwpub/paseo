@@ -26,7 +26,6 @@ describe("Linux Project network helper packaging", () => {
     expect(
       builder.match(/afterInstall: scripts\/linux-network-helper-after-install\.sh/gu),
     ).toHaveLength(2);
-    expect(builder).toMatch(/deb:\n  depends:\n    - iproute2\n    - iptables/u);
-    expect(builder).toMatch(/rpm:\n  depends:\n    - iproute\n    - iptables/u);
+    expect(builder).not.toMatch(/^\s+- (?:iproute2?|iptables)$/mu);
   });
 });

@@ -51,8 +51,6 @@ jobs:
             curl \
             fakeroot \
             git \
-            iproute2 \
-            iptables \
             pkg-config \
             procps \
             python3 \

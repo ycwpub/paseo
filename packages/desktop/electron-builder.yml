@@ -74,14 +74,8 @@ linux:
     - rpm
     - tar.gz
 deb:
-  depends:
-    - iproute2
-    - iptables
   afterInstall: scripts/linux-network-helper-after-install.sh
 rpm:
-  depends:
-    - iproute
-    - iptables
   afterInstall: scripts/linux-network-helper-after-install.sh
 appImage:
   # Keep the AppImage filename stable across versions (no ${version}) so

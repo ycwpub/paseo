@@ -34,17 +34,19 @@ HTTP 规则分别匹配协议、主机、端口、方法和路径。主机匹配
 - `unavailable`：用户要求严格模式，但当前平台没有可用的操作系统强制能力。此状态
   必须阻止相关 Project 启动新的执行任务，不能降级为仅注入代理环境变量。
 
-Linux 严格模式使用独立 network namespace 和防火墙规则。macOS 严格模式使用受控网络
-扩展或特权辅助进程。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider 工具白名单只能作为兼容
-配置，不能把执行状态提升为 `strict`。
+Linux 严格模式使用独立 network namespace。macOS 严格模式使用受控网络扩展或特权辅助
+进程。`HTTP_PROXY`、`HTTPS_PROXY` 和 Provider 工具白名单只能作为兼容配置，不能把执行
+状态提升为 `strict`。
 
-Linux 桌面包包含一个最小权限的 setuid launcher。它创建新的 network namespace 和 veth，
-不配置默认路由，并在该 namespace 的 iptables OUTPUT 链只允许访问本次执行分配的代理
-IP:Port 和 loopback。规则随 namespace 删除，不修改宿主 INPUT/FORWARD 链。随后
-helper 清空附加组、降回调用用户、设置 `no_new_privs`，再执行 Provider、Workflow 或
-Plugin 进程树。代理凭据通过环境传入 helper，转换为标准 HTTP 代理 URL 后删除原始变量。
-只有 helper、受控代理、所有 Project 进程入口和允许/拒绝/DNS rebinding/逃逸测试同时
-通过时，helper 才报告 `project_proxy` 和 `strict_ready=true`。
+Linux 桌面包包含一个最小权限的 setuid launcher。它创建仅启用 loopback 的匿名 network
+namespace，并在该 namespace 内创建只监听本次代理端口的 socket；宿主 namespace 中受
+保护的 relay 仅把这个 socket 转发到宿主 loopback 上同一 Paseo 代理端口。隔离环境没有
+veth、默认路由或其他网络接口，因此 Project 进程不能绕过 relay 访问宿主其他端口或公网，
+也不依赖 iproute2、iptables 或 nftables。随后 helper 清空附加组、降回调用用户、设置
+`no_new_privs`，再执行 Provider、Workflow 或 Plugin 进程树。代理凭据通过环境传入
+helper，转换为标准 HTTP 代理 URL 后删除原始变量；relay 不接收动态目标并清除原始凭据。
+只有 helper、受控代理、所有 Project 进程入口和允许/拒绝/DNS rebinding/逃逸测试同时在
+Debian 12 验收通过时，helper 才报告 `project_proxy` 和 `strict_ready=true`。
 
 deb/rpm 安装脚本把 helper 设置为 `root:root`、模式 `4755`。AppImage 挂载内容不能安全地
 获得 setuid 权限，因此 AppImage 在单独安装受信任 helper 前保持 `unavailable`。

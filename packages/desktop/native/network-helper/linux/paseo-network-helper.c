@@ -1,21 +1,30 @@
 #define _GNU_SOURCE
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define PASEO_NETWORK_HELPER_VERSION "2"
+#define PASEO_NETWORK_HELPER_VERSION "3"
 #define PROXY_TOKEN_ENV "PASEO_PROJECT_PROXY_TOKEN"
+#define RELAY_BUFFER_SIZE 16384
+#define RELAY_MAX_WORKERS 64
 
 static void print_usage(FILE *stream) {
   fprintf(stream,
@@ -52,37 +61,6 @@ static int wait_for_child(pid_t child) {
     return 128 + WTERMSIG(status);
   }
   return EXIT_FAILURE;
-}
-
-static bool find_tool(const char *name, char *candidate, size_t candidate_size) {
-  const char *directories[] = {"/usr/sbin", "/sbin", "/usr/bin", "/bin"};
-  for (size_t index = 0; index < sizeof(directories) / sizeof(directories[0]); index += 1) {
-    const int written = snprintf(candidate, candidate_size, "%s/%s", directories[index], name);
-    if (written > 0 && (size_t)written < candidate_size && access(candidate, X_OK) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static int run_tool(const char *tool, char *const arguments[], bool quiet_failure) {
-  const pid_t child = fork();
-  if (child < 0) {
-    perror("paseo-network-helper: fork tool");
-    return EXIT_FAILURE;
-  }
-  if (child == 0) {
-    if (quiet_failure) {
-      const int null_fd = open("/dev/null", O_WRONLY);
-      if (null_fd >= 0) {
-        (void)dup2(null_fd, STDERR_FILENO);
-        close(null_fd);
-      }
-    }
-    execv(tool, arguments);
-    _exit(127);
-  }
-  return wait_for_child(child);
 }
 
 static void restore_default_signals(void) {
@@ -202,193 +180,340 @@ static int configure_proxy_environment(const char *host_ip, int proxy_port) {
   return EXIT_SUCCESS;
 }
 
-static int run_ip(const char *ip_tool, char *const arguments[]) {
-  if (run_tool(ip_tool, arguments, false) != EXIT_SUCCESS) {
-    fprintf(stderr, "paseo-network-helper: ip command failed\n");
+typedef struct {
+  unsigned char data[RELAY_BUFFER_SIZE];
+  size_t offset;
+  size_t length;
+  bool source_eof;
+  bool destination_shutdown;
+} RelayBuffer;
+
+static int open_network_namespace(void) {
+  const int namespace_fd = open("/proc/self/ns/net", O_RDONLY | O_CLOEXEC);
+  if (namespace_fd < 0) {
+    perror("paseo-network-helper: open network namespace");
+  }
+  return namespace_fd;
+}
+
+static int enable_loopback(void) {
+  const int control_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (control_fd < 0) {
+    perror("paseo-network-helper: create loopback control socket");
+    return EXIT_FAILURE;
+  }
+  struct ifreq request;
+  memset(&request, 0, sizeof(request));
+  (void)snprintf(request.ifr_name, sizeof(request.ifr_name), "lo");
+  if (ioctl(control_fd, SIOCGIFFLAGS, &request) != 0) {
+    perror("paseo-network-helper: read loopback flags");
+    close(control_fd);
+    return EXIT_FAILURE;
+  }
+  request.ifr_flags = (short)(request.ifr_flags | IFF_UP);
+  if (ioctl(control_fd, SIOCSIFFLAGS, &request) != 0) {
+    perror("paseo-network-helper: enable loopback");
+    close(control_fd);
+    return EXIT_FAILURE;
+  }
+  close(control_fd);
+  return EXIT_SUCCESS;
+}
+
+static int create_isolated_listener(int proxy_port) {
+  const int listener = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (listener < 0) {
+    perror("paseo-network-helper: create isolated proxy listener");
+    return -1;
+  }
+  const int enabled = 1;
+  if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled)) != 0) {
+    perror("paseo-network-helper: configure isolated proxy listener");
+    close(listener);
+    return -1;
+  }
+  struct sockaddr_in address;
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_port = htons((uint16_t)proxy_port);
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0) {
+    perror("paseo-network-helper: bind isolated proxy listener");
+    close(listener);
+    return -1;
+  }
+  if (listen(listener, RELAY_MAX_WORKERS) != 0) {
+    perror("paseo-network-helper: listen on isolated proxy socket");
+    close(listener);
+    return -1;
+  }
+  return listener;
+}
+
+static int set_nonblocking(int socket_fd) {
+  const int flags = fcntl(socket_fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) != 0) {
+    perror("paseo-network-helper: configure relay socket");
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }
 
-static bool find_namespace_iptables(const char *ip_tool,
-                                    const char *namespace_name,
-                                    char *iptables_tool,
-                                    size_t iptables_tool_size) {
-  const char *candidates[] = {"iptables", "iptables-legacy"};
-  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); index += 1) {
-    if (!find_tool(candidates[index], iptables_tool, iptables_tool_size)) {
-      continue;
+static int connect_host_proxy(int proxy_port) {
+  const int proxy_socket = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (proxy_socket < 0) {
+    perror("paseo-network-helper: create host proxy socket");
+    return -1;
+  }
+  struct sockaddr_in address;
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_port = htons((uint16_t)proxy_port);
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  for (;;) {
+    if (connect(proxy_socket, (struct sockaddr *)&address, sizeof(address)) == 0) {
+      return proxy_socket;
     }
-    // Debian's default iptables-nft backend can sometimes list rules in a
-    // nested container namespace even though the kernel rejects mutations.
-    // Probe the write operation that strict isolation actually depends on,
-    // then fall back to iptables-legacy when nft is read-only/unavailable.
-    char *create_probe_chain[] = {(char *)ip_tool,
-                                  "netns",
-                                  "exec",
-                                  (char *)namespace_name,
-                                  iptables_tool,
-                                  "-N",
-                                  "PASEO_PROBE",
-                                  NULL};
-    if (run_tool(ip_tool, create_probe_chain, true) != EXIT_SUCCESS) {
-      continue;
-    }
-    char *delete_probe_chain[] = {(char *)ip_tool,
-                                  "netns",
-                                  "exec",
-                                  (char *)namespace_name,
-                                  iptables_tool,
-                                  "-X",
-                                  "PASEO_PROBE",
-                                  NULL};
-    if (run_tool(ip_tool, delete_probe_chain, false) == EXIT_SUCCESS) {
-      return true;
+    if (errno != EINTR) {
+      perror("paseo-network-helper: connect host proxy");
+      close(proxy_socket);
+      return -1;
     }
   }
-  return false;
 }
 
-static int configure_proxy_namespace(const char *namespace_name,
-                                     const char *host_interface,
-                                     const char *child_interface,
-                                     const char *host_ip,
-                                     const char *host_cidr,
-                                     const char *child_cidr,
-                                     const char *proxy_port) {
-  char ip_tool[128];
-  char iptables_tool[128];
-  if (!find_tool("ip", ip_tool, sizeof(ip_tool))) {
-    fprintf(stderr, "paseo-network-helper: iproute2 is required\n");
+static bool relay_buffer_has_space(const RelayBuffer *buffer) {
+  return buffer->offset > 0 || buffer->offset + buffer->length < sizeof(buffer->data);
+}
+
+static int read_relay_buffer(int source, RelayBuffer *buffer) {
+  if (buffer->source_eof) {
+    return EXIT_SUCCESS;
+  }
+  if (buffer->offset > 0 &&
+      buffer->offset + buffer->length == sizeof(buffer->data)) {
+    memmove(buffer->data, buffer->data + buffer->offset, buffer->length);
+    buffer->offset = 0;
+  }
+  const size_t available = sizeof(buffer->data) - buffer->offset - buffer->length;
+  if (available == 0) {
+    return EXIT_SUCCESS;
+  }
+  const ssize_t received =
+      recv(source, buffer->data + buffer->offset + buffer->length, available, 0);
+  if (received > 0) {
+    buffer->length += (size_t)received;
+    return EXIT_SUCCESS;
+  }
+  if (received == 0) {
+    buffer->source_eof = true;
+    return EXIT_SUCCESS;
+  }
+  if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+    return EXIT_SUCCESS;
+  }
+  return EXIT_FAILURE;
+}
+
+static int write_relay_buffer(int destination, RelayBuffer *buffer) {
+  while (buffer->length > 0) {
+    const ssize_t written = send(
+        destination, buffer->data + buffer->offset, buffer->length, MSG_NOSIGNAL);
+    if (written > 0) {
+      buffer->offset += (size_t)written;
+      buffer->length -= (size_t)written;
+      if (buffer->length == 0) {
+        buffer->offset = 0;
+      }
+      continue;
+    }
+    if (written < 0 && errno == EINTR) {
+      continue;
+    }
+    if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      return EXIT_SUCCESS;
+    }
+    return EXIT_FAILURE;
+  }
+  if (buffer->source_eof && !buffer->destination_shutdown) {
+    (void)shutdown(destination, SHUT_WR);
+    buffer->destination_shutdown = true;
+  }
+  return EXIT_SUCCESS;
+}
+
+static int relay_connection(int client_socket, int proxy_socket) {
+  if (set_nonblocking(client_socket) != EXIT_SUCCESS ||
+      set_nonblocking(proxy_socket) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
 
-  char *netns_add[] = {(char *)ip_tool, "netns", "add", (char *)namespace_name, NULL};
-  char *link_add[] = {(char *)ip_tool,
-                      "link",
-                      "add",
-                      (char *)host_interface,
-                      "type",
-                      "veth",
-                      "peer",
-                      "name",
-                      (char *)child_interface,
-                      NULL};
-  char *peer_move[] = {(char *)ip_tool,
-                       "link",
-                       "set",
-                       (char *)child_interface,
-                       "netns",
-                       (char *)namespace_name,
-                       NULL};
-  char *host_address[] = {
-      (char *)ip_tool, "addr", "add", (char *)host_cidr, "dev", (char *)host_interface, NULL};
-  char *host_up[] = {
-      (char *)ip_tool, "link", "set", (char *)host_interface, "up", NULL};
-  char *child_address[] = {(char *)ip_tool,
-                           "-n",
-                           (char *)namespace_name,
-                           "addr",
-                           "add",
-                           (char *)child_cidr,
-                           "dev",
-                           (char *)child_interface,
-                           NULL};
-  char *child_up[] = {(char *)ip_tool,
-                      "-n",
-                      (char *)namespace_name,
-                      "link",
-                      "set",
-                      (char *)child_interface,
-                      "up",
-                      NULL};
-  char *loopback_up[] = {(char *)ip_tool,
-                         "-n",
-                         (char *)namespace_name,
-                         "link",
-                         "set",
-                         "lo",
-                         "up",
-                         NULL};
+  RelayBuffer client_to_proxy = {0};
+  RelayBuffer proxy_to_client = {0};
+  for (;;) {
+    if (write_relay_buffer(proxy_socket, &client_to_proxy) != EXIT_SUCCESS ||
+        write_relay_buffer(client_socket, &proxy_to_client) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if (client_to_proxy.source_eof && client_to_proxy.length == 0 &&
+        proxy_to_client.source_eof && proxy_to_client.length == 0) {
+      return EXIT_SUCCESS;
+    }
 
-  if (run_ip(ip_tool, netns_add) != EXIT_SUCCESS ||
-      run_ip(ip_tool, link_add) != EXIT_SUCCESS ||
-      run_ip(ip_tool, peer_move) != EXIT_SUCCESS ||
-      run_ip(ip_tool, host_address) != EXIT_SUCCESS ||
-      run_ip(ip_tool, host_up) != EXIT_SUCCESS ||
-      run_ip(ip_tool, child_address) != EXIT_SUCCESS ||
-      run_ip(ip_tool, child_up) != EXIT_SUCCESS ||
-      run_ip(ip_tool, loopback_up) != EXIT_SUCCESS) {
+    struct pollfd sockets[2];
+    memset(sockets, 0, sizeof(sockets));
+    sockets[0].fd = client_socket;
+    sockets[1].fd = proxy_socket;
+    if (!client_to_proxy.source_eof && relay_buffer_has_space(&client_to_proxy)) {
+      sockets[0].events |= POLLIN;
+    }
+    if (proxy_to_client.length > 0) {
+      sockets[0].events |= POLLOUT;
+    }
+    if (!proxy_to_client.source_eof && relay_buffer_has_space(&proxy_to_client)) {
+      sockets[1].events |= POLLIN;
+    }
+    if (client_to_proxy.length > 0) {
+      sockets[1].events |= POLLOUT;
+    }
+
+    const int ready = poll(sockets, 2, -1);
+    if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return EXIT_FAILURE;
+    }
+    if ((sockets[0].revents & POLLNVAL) != 0 ||
+        (sockets[1].revents & POLLNVAL) != 0) {
+      return EXIT_FAILURE;
+    }
+    if ((sockets[0].revents & (POLLIN | POLLHUP)) != 0 &&
+        read_relay_buffer(client_socket, &client_to_proxy) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if ((sockets[1].revents & (POLLIN | POLLHUP)) != 0 &&
+        read_relay_buffer(proxy_socket, &proxy_to_client) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if ((sockets[0].revents & POLLOUT) != 0 &&
+        write_relay_buffer(client_socket, &proxy_to_client) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if ((sockets[1].revents & POLLOUT) != 0 &&
+        write_relay_buffer(proxy_socket, &client_to_proxy) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
+    }
+    if ((sockets[0].revents & POLLERR) != 0 ||
+        (sockets[1].revents & POLLERR) != 0) {
+      return EXIT_FAILURE;
+    }
+  }
+}
+
+static int harden_relay_process(void) {
+  if (setgroups(0, NULL) != 0 || setresgid(0, 0, 0) != 0 ||
+      setresuid(0, 0, 0) != 0) {
+    perror("paseo-network-helper: protect relay credentials");
     return EXIT_FAILURE;
   }
-  if (!find_namespace_iptables(
-          ip_tool, namespace_name, iptables_tool, sizeof(iptables_tool))) {
-    fprintf(stderr,
-            "paseo-network-helper: no working iptables backend is available in the namespace\n");
+  if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0 ||
+      prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
+    perror("paseo-network-helper: protect relay process");
     return EXIT_FAILURE;
   }
-
-  char *allow_loopback[] = {(char *)ip_tool,
-                            "netns",
-                            "exec",
-                            (char *)namespace_name,
-                            (char *)iptables_tool,
-                            "-A",
-                            "OUTPUT",
-                            "-o",
-                            "lo",
-                            "-j",
-                            "ACCEPT",
-                            NULL};
-  char *allow_proxy[] = {(char *)ip_tool,
-                         "netns",
-                         "exec",
-                         (char *)namespace_name,
-                         (char *)iptables_tool,
-                         "-A",
-                         "OUTPUT",
-                         "-d",
-                         (char *)host_ip,
-                         "-p",
-                         "tcp",
-                         "--dport",
-                         (char *)proxy_port,
-                         "-j",
-                         "ACCEPT",
-                         NULL};
-  char *drop_other[] = {(char *)ip_tool,
-                        "netns",
-                        "exec",
-                        (char *)namespace_name,
-                        (char *)iptables_tool,
-                        "-A",
-                        "OUTPUT",
-                        "-j",
-                        "DROP",
-                        NULL};
-  if (run_tool(ip_tool, allow_loopback, false) != EXIT_SUCCESS ||
-      run_tool(ip_tool, allow_proxy, false) != EXIT_SUCCESS ||
-      run_tool(ip_tool, drop_other, false) != EXIT_SUCCESS) {
-    fprintf(stderr, "paseo-network-helper: failed to install namespace firewall rules\n");
+  if (set_parent_death_signal() != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  if (unsetenv(PROXY_TOKEN_ENV) != 0) {
+    perror("paseo-network-helper: clear relay proxy token");
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }
 
-static void cleanup_proxy_namespace(const char *namespace_name, const char *host_interface) {
-  char ip_tool[128];
-  if (find_tool("ip", ip_tool, sizeof(ip_tool))) {
-    char *delete_namespace[] = {
-        (char *)ip_tool, "netns", "del", (char *)namespace_name, NULL};
-    (void)run_tool(ip_tool, delete_namespace, true);
-    char *delete_link[] = {
-        (char *)ip_tool, "link", "del", (char *)host_interface, NULL};
-    (void)run_tool(ip_tool, delete_link, true);
+static void handle_relay_child_exit(int signal_number) {
+  (void)signal_number;
+}
+
+static int run_relay_server(int listener, int proxy_port) {
+  if (setpgid(0, 0) != 0 && errno != EACCES) {
+    perror("paseo-network-helper: create relay process group");
+    return EXIT_FAILURE;
+  }
+  if (harden_relay_process() != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  restore_default_signals();
+  (void)signal(SIGPIPE, SIG_IGN);
+  struct sigaction child_action;
+  memset(&child_action, 0, sizeof(child_action));
+  child_action.sa_handler = handle_relay_child_exit;
+  sigemptyset(&child_action.sa_mask);
+  if (sigaction(SIGCHLD, &child_action, NULL) != 0) {
+    perror("paseo-network-helper: configure relay child signal");
+    return EXIT_FAILURE;
+  }
+
+  size_t active_workers = 0;
+  for (;;) {
+    int worker_status = 0;
+    while (waitpid(-1, &worker_status, WNOHANG) > 0) {
+      if (active_workers > 0) {
+        active_workers -= 1;
+      }
+    }
+
+    const int client_socket = accept4(listener, NULL, NULL, SOCK_CLOEXEC);
+    if (client_socket < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      perror("paseo-network-helper: accept isolated proxy connection");
+      return EXIT_FAILURE;
+    }
+    if (active_workers >= RELAY_MAX_WORKERS) {
+      close(client_socket);
+      continue;
+    }
+
+    const pid_t worker = fork();
+    if (worker < 0) {
+      perror("paseo-network-helper: fork relay worker");
+      close(client_socket);
+      continue;
+    }
+    if (worker == 0) {
+      close(listener);
+      if (set_parent_death_signal() != EXIT_SUCCESS) {
+        close(client_socket);
+        _exit(EXIT_FAILURE);
+      }
+      const int proxy_socket = connect_host_proxy(proxy_port);
+      if (proxy_socket < 0) {
+        close(client_socket);
+        _exit(EXIT_FAILURE);
+      }
+      const int status = relay_connection(client_socket, proxy_socket);
+      close(proxy_socket);
+      close(client_socket);
+      _exit(status);
+    }
+    active_workers += 1;
+    close(client_socket);
   }
 }
 
-static int enter_named_network(const char *namespace_name,
-                               const char *host_ip,
+static void stop_relay_process_group(pid_t relay_pid) {
+  if (relay_pid <= 0) {
+    return;
+  }
+  (void)kill(-relay_pid, SIGKILL);
+  (void)kill(relay_pid, SIGKILL);
+  (void)wait_for_child(relay_pid);
+}
+
+static int enter_proxy_network(int isolated_namespace_fd,
                                int proxy_port,
                                uid_t caller_uid,
                                gid_t caller_gid,
@@ -396,24 +521,12 @@ static int enter_named_network(const char *namespace_name,
   if (set_parent_death_signal() != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
-  char namespace_path[128];
-  const int written =
-      snprintf(namespace_path, sizeof(namespace_path), "/run/netns/%s", namespace_name);
-  if (written <= 0 || (size_t)written >= sizeof(namespace_path)) {
+  if (setns(isolated_namespace_fd, CLONE_NEWNET) != 0) {
+    perror("paseo-network-helper: enter isolated proxy namespace");
     return EXIT_FAILURE;
   }
-  const int namespace_fd = open(namespace_path, O_RDONLY | O_CLOEXEC);
-  if (namespace_fd < 0) {
-    perror("paseo-network-helper: open network namespace");
-    return EXIT_FAILURE;
-  }
-  if (setns(namespace_fd, CLONE_NEWNET) != 0) {
-    perror("paseo-network-helper: setns");
-    close(namespace_fd);
-    return EXIT_FAILURE;
-  }
-  close(namespace_fd);
-  if (configure_proxy_environment(host_ip, proxy_port) != EXIT_SUCCESS) {
+  close(isolated_namespace_fd);
+  if (configure_proxy_environment("127.0.0.1", proxy_port) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
   return drop_privileges_and_exec(caller_uid, caller_gid, command);
@@ -423,52 +536,80 @@ static int launch_proxy_network(uid_t caller_uid,
                                 gid_t caller_gid,
                                 int proxy_port,
                                 char **command) {
-  const long helper_pid = (long)getpid();
-  char namespace_name[32];
-  char host_interface[16];
-  char child_interface[16];
-  char host_ip[32];
-  char child_ip[32];
-  char host_cidr[40];
-  char child_cidr[40];
-  char proxy_port_text[8];
-  const unsigned int slot = ((unsigned int)helper_pid % 16000U) + 1U;
-  const unsigned int address = slot * 4U;
-  const unsigned int third = address / 256U;
-  const unsigned int fourth = address % 256U;
-  (void)snprintf(namespace_name, sizeof(namespace_name), "paseo-%ld", helper_pid);
-  (void)snprintf(host_interface, sizeof(host_interface), "pvh%08lx", helper_pid & 0xffffffffL);
-  (void)snprintf(child_interface, sizeof(child_interface), "pvn%08lx", helper_pid & 0xffffffffL);
-  (void)snprintf(host_ip, sizeof(host_ip), "169.254.%u.%u", third, fourth + 1U);
-  (void)snprintf(child_ip, sizeof(child_ip), "169.254.%u.%u", third, fourth + 2U);
-  (void)snprintf(host_cidr, sizeof(host_cidr), "%s/30", host_ip);
-  (void)snprintf(child_cidr, sizeof(child_cidr), "%s/30", child_ip);
-  (void)snprintf(proxy_port_text, sizeof(proxy_port_text), "%d", proxy_port);
-
-  cleanup_proxy_namespace(namespace_name, host_interface);
-  if (configure_proxy_namespace(namespace_name,
-                                host_interface,
-                                child_interface,
-                                host_ip,
-                                host_cidr,
-                                child_cidr,
-                                proxy_port_text) != EXIT_SUCCESS) {
-    cleanup_proxy_namespace(namespace_name, host_interface);
+  if (set_parent_death_signal() != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  const int host_namespace_fd = open_network_namespace();
+  if (host_namespace_fd < 0) {
+    return EXIT_FAILURE;
+  }
+  if (unshare(CLONE_NEWNET) != 0) {
+    perror("paseo-network-helper: create isolated proxy namespace");
+    close(host_namespace_fd);
+    return EXIT_FAILURE;
+  }
+  if (enable_loopback() != EXIT_SUCCESS) {
+    (void)setns(host_namespace_fd, CLONE_NEWNET);
+    close(host_namespace_fd);
+    return EXIT_FAILURE;
+  }
+  const int listener = create_isolated_listener(proxy_port);
+  if (listener < 0) {
+    (void)setns(host_namespace_fd, CLONE_NEWNET);
+    close(host_namespace_fd);
+    return EXIT_FAILURE;
+  }
+  const int isolated_namespace_fd = open_network_namespace();
+  if (isolated_namespace_fd < 0) {
+    close(listener);
+    (void)setns(host_namespace_fd, CLONE_NEWNET);
+    close(host_namespace_fd);
+    return EXIT_FAILURE;
+  }
+  if (setns(host_namespace_fd, CLONE_NEWNET) != 0) {
+    perror("paseo-network-helper: return to host network namespace");
+    close(isolated_namespace_fd);
+    close(listener);
+    close(host_namespace_fd);
     return EXIT_FAILURE;
   }
 
-  const pid_t child = fork();
-  if (child < 0) {
+  const pid_t relay_pid = fork();
+  if (relay_pid < 0) {
+    perror("paseo-network-helper: fork proxy relay");
+    close(isolated_namespace_fd);
+    close(listener);
+    close(host_namespace_fd);
+    return EXIT_FAILURE;
+  }
+  if (relay_pid == 0) {
+    close(isolated_namespace_fd);
+    close(host_namespace_fd);
+    _exit(run_relay_server(listener, proxy_port));
+  }
+  (void)setpgid(relay_pid, relay_pid);
+
+  const pid_t command_pid = fork();
+  if (command_pid < 0) {
     perror("paseo-network-helper: fork proxy child");
-    cleanup_proxy_namespace(namespace_name, host_interface);
+    stop_relay_process_group(relay_pid);
+    close(isolated_namespace_fd);
+    close(listener);
+    close(host_namespace_fd);
     return EXIT_FAILURE;
   }
-  if (child == 0) {
-    return enter_named_network(
-        namespace_name, host_ip, proxy_port, caller_uid, caller_gid, command);
+  if (command_pid == 0) {
+    close(listener);
+    close(host_namespace_fd);
+    return enter_proxy_network(
+        isolated_namespace_fd, proxy_port, caller_uid, caller_gid, command);
   }
-  const int status = wait_for_child(child);
-  cleanup_proxy_namespace(namespace_name, host_interface);
+
+  close(isolated_namespace_fd);
+  close(listener);
+  close(host_namespace_fd);
+  const int status = wait_for_child(command_pid);
+  stop_relay_process_group(relay_pid);
   return status;
 }
 

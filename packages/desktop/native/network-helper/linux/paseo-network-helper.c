@@ -43,17 +43,7 @@ static int print_status(void) {
   return privilege_active ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-static int wait_for_child(pid_t child) {
-  int status = 0;
-  for (;;) {
-    if (waitpid(child, &status, 0) >= 0) {
-      break;
-    }
-    if (errno != EINTR) {
-      perror("paseo-network-helper: waitpid");
-      return EXIT_FAILURE;
-    }
-  }
+static int decode_child_status(int status) {
   if (WIFEXITED(status)) {
     return WEXITSTATUS(status);
   }
@@ -61,6 +51,19 @@ static int wait_for_child(pid_t child) {
     return 128 + WTERMSIG(status);
   }
   return EXIT_FAILURE;
+}
+
+static int wait_for_child(pid_t child) {
+  int status = 0;
+  for (;;) {
+    if (waitpid(child, &status, 0) >= 0) {
+      return decode_child_status(status);
+    }
+    if (errno != EINTR) {
+      perror("paseo-network-helper: waitpid");
+      return EXIT_FAILURE;
+    }
+  }
 }
 
 static void restore_default_signals(void) {
@@ -513,6 +516,34 @@ static void stop_relay_process_group(pid_t relay_pid) {
   (void)wait_for_child(relay_pid);
 }
 
+static int wait_for_proxy_execution(pid_t command_pid, pid_t relay_pid) {
+  for (;;) {
+    int status = 0;
+    const pid_t finished = waitpid(-1, &status, 0);
+    if (finished < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      perror("paseo-network-helper: wait for proxy execution");
+      (void)kill(command_pid, SIGKILL);
+      stop_relay_process_group(relay_pid);
+      (void)wait_for_child(command_pid);
+      return EXIT_FAILURE;
+    }
+    if (finished == command_pid) {
+      stop_relay_process_group(relay_pid);
+      return decode_child_status(status);
+    }
+    if (finished == relay_pid) {
+      fprintf(stderr,
+              "paseo-network-helper: proxy relay exited before the Project command\n");
+      (void)kill(command_pid, SIGKILL);
+      (void)wait_for_child(command_pid);
+      return EXIT_FAILURE;
+    }
+  }
+}
+
 static int enter_proxy_network(int isolated_namespace_fd,
                                int proxy_port,
                                uid_t caller_uid,
@@ -608,9 +639,7 @@ static int launch_proxy_network(uid_t caller_uid,
   close(isolated_namespace_fd);
   close(listener);
   close(host_namespace_fd);
-  const int status = wait_for_child(command_pid);
-  stop_relay_process_group(relay_pid);
-  return status;
+  return wait_for_proxy_execution(command_pid, relay_pid);
 }
 
 int main(int argc, char **argv) {

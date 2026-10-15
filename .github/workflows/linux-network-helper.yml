@@ -80,7 +80,22 @@ jobs:
           echo "Testing on $PRETTY_NAME"
 
       - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
+        shell: bash
+        run: |
+          set +e
+          log_file="$RUNNER_TEMP/npm-ci.log"
+          node scripts/npm-retry.mjs ci >"$log_file" 2>&1
+          status=$?
+          cat "$log_file"
+          if (( status != 0 )); then
+            diagnostic="$(
+              tail -120 "$log_file" |
+                sed -e 's/%/%25/g' -e 's/\r/%0D/g' |
+                awk '{printf "%s%%0A", $0}'
+            )"
+            echo "::error title=Debian npm ci failed::$diagnostic"
+          fi
+          exit "$status"
 
       - name: Build Protocol declarations
         run: npm run build:protocol

@@ -29,7 +29,7 @@ jobs:
   escape-tests:
     name: namespace escape tests
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -78,3 +78,40 @@ jobs:
           npx vitest run \
             packages/server/src/server/project-call-permissions/linux-project-network-isolation.local.e2e.test.ts \
             --bail=1
+
+      - name: Build Linux desktop packages
+        env:
+          EP_GH_IGNORE_TIME: "true"
+        run: npm run build:desktop -- --publish never --linux --x64
+
+      - name: Install and upgrade deb package
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="$(find packages/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb"
+          package_name="$(dpkg-deb -f "$deb" Package)"
+          sudo dpkg -i "$deb"
+          test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
+            "root:root:4755"
+          sudo dpkg -i "$deb"
+          test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
+            "root:root:4755"
+          sudo dpkg -r "$package_name"
+
+      - name: Install and upgrade rpm package
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rpm
+          rpm_file="$(find packages/desktop/release -maxdepth 1 -type f -name '*.rpm' -print -quit)"
+          test -n "$rpm_file"
+          package_name="$(rpm -qp --queryformat '%{NAME}' "$rpm_file")"
+          sudo rpm -i --nodeps "$rpm_file"
+          test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
+            "root:root:4755"
+          sudo rpm -U --replacepkgs --nodeps "$rpm_file"
+          test "$(stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper)" = \
+            "root:root:4755"
+          sudo rpm -e "$package_name"

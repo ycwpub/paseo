@@ -1,4 +1,4 @@
-name: Linux network helper
+name: Debian network helper
 
 on:
   workflow_dispatch:
@@ -33,15 +33,51 @@ permissions:
 
 jobs:
   escape-tests:
-    name: namespace escape tests
+    name: Debian 12 namespace, proxy, and package tests
     runs-on: ubuntu-22.04
+    container:
+      image: debian:12
+      options: --privileged
     timeout-minutes: 40
     steps:
+      - name: Prepare Debian test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential \
+            ca-certificates \
+            curl \
+            fakeroot \
+            git \
+            iproute2 \
+            iptables \
+            pkg-config \
+            procps \
+            python3 \
+            rpm \
+            sudo \
+            tar \
+            unzip \
+            xz-utils
+          useradd --create-home --shell /bin/bash paseo
+          echo 'paseo ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/paseo
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Assert Debian runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          test "$ID" = "debian"
+          test "$VERSION_ID" = "12"
+          echo "Testing on $PRETTY_NAME"
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
@@ -49,12 +85,17 @@ jobs:
       - name: Build Protocol declarations
         run: npm run build:protocol
 
+      - name: Prepare non-root execution user
+        run: chown -R paseo:paseo "$GITHUB_WORKSPACE"
+
       - name: Compile helper and run process-tree escape tests
         shell: bash
         run: |
           set +e
           log_file="$RUNNER_TEMP/linux-network-helper.log"
-          npm run test:linux-network-helper --workspace=@getpaseo/desktop >"$log_file" 2>&1
+          sudo -H -u paseo env PATH="$PATH" \
+            npm run test:linux-network-helper --workspace=@getpaseo/desktop \
+            >"$log_file" 2>&1
           status=$?
           cat "$log_file"
           {
@@ -81,9 +122,13 @@ jobs:
         run: |
           sudo ip address add 11.0.0.2/32 dev lo
           echo '127.0.0.1 paseo-rebind.test' | sudo tee -a /etc/hosts
-          npx vitest run \
-            packages/server/src/server/project-call-permissions/linux-project-network-isolation.local.e2e.test.ts \
-            --bail=1
+          sudo -H -u paseo env \
+            PATH="$PATH" \
+            PASEO_LINUX_NETWORK_HELPER_TEST_PATH="$PASEO_LINUX_NETWORK_HELPER_TEST_PATH" \
+            PASEO_LINUX_NETWORK_TARGET_ADDRESS="$PASEO_LINUX_NETWORK_TARGET_ADDRESS" \
+            npx vitest run \
+              packages/server/src/server/project-call-permissions/linux-project-network-isolation.local.e2e.test.ts \
+              --bail=1
 
       - name: Build Linux desktop packages
         shell: bash
@@ -92,7 +137,9 @@ jobs:
         run: |
           set +e
           log_file="$RUNNER_TEMP/linux-desktop-packages.log"
-          npm run build:desktop -- --publish never --linux deb rpm --x64 >"$log_file" 2>&1
+          sudo -H -u paseo env PATH="$PATH" EP_GH_IGNORE_TIME=true \
+            npm run build:desktop -- --publish never --linux deb rpm --x64 \
+            >"$log_file" 2>&1
           status=$?
           cat "$log_file"
           if (( status != 0 )); then
@@ -124,8 +171,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y rpm
           rpm_file="$(find packages/desktop/release -maxdepth 1 -type f -name '*.rpm' -print -quit)"
           test -n "$rpm_file"
           package_name="$(rpm -qp --queryformat '%{NAME}' "$rpm_file")"

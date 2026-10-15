@@ -23,12 +23,26 @@ cleanup() {
     kill "$second_server_pid" 2>/dev/null || true
     wait "$second_server_pid" 2>/dev/null || true
   fi
+  if [[ -n "${proxy_failure_helper_pid:-}" ]]; then
+    kill "$proxy_failure_helper_pid" 2>/dev/null || true
+    wait "$proxy_failure_helper_pid" 2>/dev/null || true
+  fi
   if [[ "${package_install_created:-0}" == "1" ]]; then
     sudo rm -f /opt/Paseo/resources/network-helper/paseo-network-helper
     sudo rmdir /opt/Paseo/resources/network-helper /opt/Paseo/resources /opt/Paseo 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
+
+is_live_process() {
+  local pid="$1"
+  if [[ ! -r "/proc/$pid/stat" ]]; then
+    return 1
+  fi
+  local state
+  state="$(awk '{print $3}' "/proc/$pid/stat")"
+  [[ "$state" != "Z" && "$state" != "X" ]]
+}
 
 port="$(
   python3 - <<'PY'
@@ -109,6 +123,61 @@ if PASEO_PROJECT_PROXY_TOKEN="$proxy_token" "$helper" --proxy-port "$port" -- \
   exit 1
 fi
 
+PASEO_PROJECT_PROXY_TOKEN="$proxy_token" "$helper" --proxy-port "$port" -- sleep 30 &
+proxy_failure_helper_pid=$!
+relay_pid=""
+proxy_command_pid=""
+for _ in $(seq 1 50); do
+  while read -r child_pid; do
+    [[ -n "$child_pid" ]] || continue
+    child_uid="$(awk '/^Uid:/{print $2}' "/proc/$child_pid/status" 2>/dev/null || true)"
+    if [[ "$child_uid" == "0" ]]; then
+      relay_pid="$child_pid"
+    elif [[ "$child_uid" == "$caller_uid" ]]; then
+      proxy_command_pid="$child_pid"
+    fi
+  done < <(pgrep -P "$proxy_failure_helper_pid" || true)
+  if [[ -n "$relay_pid" && -n "$proxy_command_pid" ]]; then
+    break
+  fi
+  sleep 0.05
+done
+if [[ -z "$relay_pid" || -z "$proxy_command_pid" ]]; then
+  echo "helper did not launch distinct relay and command children" >&2
+  exit 1
+fi
+sudo kill -KILL "$relay_pid"
+for _ in $(seq 1 50); do
+  if ! is_live_process "$proxy_failure_helper_pid"; then
+    break
+  fi
+  sleep 0.05
+done
+if is_live_process "$proxy_failure_helper_pid"; then
+  echo "helper did not fail closed after relay termination" >&2
+  exit 1
+fi
+set +e
+wait "$proxy_failure_helper_pid"
+proxy_failure_status=$?
+set -e
+proxy_failure_helper_pid=""
+if [[ "$proxy_failure_status" == "0" ]]; then
+  echo "helper reported success after relay termination" >&2
+  exit 1
+fi
+for _ in $(seq 1 50); do
+  if ! is_live_process "$proxy_command_pid"; then
+    break
+  fi
+  sleep 0.05
+done
+if is_live_process "$proxy_command_pid"; then
+  echo "proxy command survived relay termination" >&2
+  sudo kill -KILL "$proxy_command_pid" 2>/dev/null || true
+  exit 1
+fi
+
 "$helper" -- sleep 30 &
 helper_pid=$!
 for _ in $(seq 1 50); do
@@ -124,15 +193,6 @@ if [[ -z "${child_pid:-}" ]]; then
 fi
 kill "$helper_pid"
 wait "$helper_pid" 2>/dev/null || true
-is_live_process() {
-  local pid="$1"
-  if [[ ! -r "/proc/$pid/stat" ]]; then
-    return 1
-  fi
-  local state
-  state="$(awk '{print $3}' "/proc/$pid/stat")"
-  [[ "$state" != "Z" && "$state" != "X" ]]
-}
 for _ in $(seq 1 50); do
   if ! is_live_process "$child_pid"; then
     break

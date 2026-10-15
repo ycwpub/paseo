@@ -210,6 +210,45 @@ static int run_ip(const char *ip_tool, char *const arguments[]) {
   return EXIT_SUCCESS;
 }
 
+static bool find_namespace_iptables(const char *ip_tool,
+                                    const char *namespace_name,
+                                    char *iptables_tool,
+                                    size_t iptables_tool_size) {
+  const char *candidates[] = {"iptables", "iptables-legacy"};
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); index += 1) {
+    if (!find_tool(candidates[index], iptables_tool, iptables_tool_size)) {
+      continue;
+    }
+    // Debian's default iptables-nft backend can sometimes list rules in a
+    // nested container namespace even though the kernel rejects mutations.
+    // Probe the write operation that strict isolation actually depends on,
+    // then fall back to iptables-legacy when nft is read-only/unavailable.
+    char *create_probe_chain[] = {(char *)ip_tool,
+                                  "netns",
+                                  "exec",
+                                  (char *)namespace_name,
+                                  iptables_tool,
+                                  "-N",
+                                  "PASEO_PROBE",
+                                  NULL};
+    if (run_tool(ip_tool, create_probe_chain, true) != EXIT_SUCCESS) {
+      continue;
+    }
+    char *delete_probe_chain[] = {(char *)ip_tool,
+                                  "netns",
+                                  "exec",
+                                  (char *)namespace_name,
+                                  iptables_tool,
+                                  "-X",
+                                  "PASEO_PROBE",
+                                  NULL};
+    if (run_tool(ip_tool, delete_probe_chain, false) == EXIT_SUCCESS) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static int configure_proxy_namespace(const char *namespace_name,
                                      const char *host_interface,
                                      const char *child_interface,
@@ -219,9 +258,8 @@ static int configure_proxy_namespace(const char *namespace_name,
                                      const char *proxy_port) {
   char ip_tool[128];
   char iptables_tool[128];
-  if (!find_tool("ip", ip_tool, sizeof(ip_tool)) ||
-      !find_tool("iptables", iptables_tool, sizeof(iptables_tool))) {
-    fprintf(stderr, "paseo-network-helper: iproute2 and iptables are required\n");
+  if (!find_tool("ip", ip_tool, sizeof(ip_tool))) {
+    fprintf(stderr, "paseo-network-helper: iproute2 is required\n");
     return EXIT_FAILURE;
   }
 
@@ -281,6 +319,12 @@ static int configure_proxy_namespace(const char *namespace_name,
       run_ip(ip_tool, child_address) != EXIT_SUCCESS ||
       run_ip(ip_tool, child_up) != EXIT_SUCCESS ||
       run_ip(ip_tool, loopback_up) != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  if (!find_namespace_iptables(
+          ip_tool, namespace_name, iptables_tool, sizeof(iptables_tool))) {
+    fprintf(stderr,
+            "paseo-network-helper: no working iptables backend is available in the namespace\n");
     return EXIT_FAILURE;
   }
 

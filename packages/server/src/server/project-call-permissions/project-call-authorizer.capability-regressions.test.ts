@@ -71,4 +71,52 @@ describe("ProjectCallAuthorizer", () => {
       }),
     );
   });
+
+  it("authorizes a Project-bound plugin task without requiring a Workspace", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-project-direct-policy-"));
+    const project = { projectId: "project-plugin", rootPath: "/repo/project-plugin" };
+    expect(
+      writeProjectConfigForProject({
+        paseoHome,
+        project,
+        config: {
+          project: {
+            directoryMode: "single",
+            permissions: {
+              enabled: true,
+              defaultAction: "deny",
+              httpRules: [
+                {
+                  id: "allow-plugin-api",
+                  action: "allow",
+                  protocols: ["https"],
+                  hosts: [{ type: "exact", value: "plugin.example.com" }],
+                },
+              ],
+            },
+          },
+        },
+        expectedRevision: null,
+      }).ok,
+    ).toBe(true);
+    const authorizer = new ProjectCallAuthorizer({
+      paseoHome,
+      workspaceRegistry: { get: async () => null },
+      projectRegistry: {
+        get: async (projectId) => (projectId === project.projectId ? project : null),
+      },
+    });
+
+    await expect(
+      authorizer.authorize({
+        projectId: project.projectId,
+        source: "plugin_process",
+        request: {
+          kind: "http",
+          url: "https://plugin.example.com/jobs",
+          method: "CONNECT",
+        },
+      }),
+    ).resolves.toMatchObject({ allowed: true, matchedRuleId: "allow-plugin-api" });
+  });
 });

@@ -23,6 +23,10 @@ cleanup() {
     kill "$second_server_pid" 2>/dev/null || true
     wait "$second_server_pid" 2>/dev/null || true
   fi
+  if [[ "${package_install_created:-0}" == "1" ]]; then
+    sudo rm -f /opt/Paseo/resources/network-helper/paseo-network-helper
+    sudo rmdir /opt/Paseo/resources/network-helper /opt/Paseo/resources /opt/Paseo 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -138,6 +142,30 @@ done
 if is_live_process "$child_pid"; then
   echo "isolated child survived helper termination" >&2
   kill -KILL "$child_pid" 2>/dev/null || true
+  exit 1
+fi
+
+if [[ -e /opt/Paseo ]]; then
+  echo "refusing to modify an existing /opt/Paseo during helper install-hook test" >&2
+  exit 1
+fi
+package_install_created=1
+sudo install -D -m 0755 "$helper" /opt/Paseo/resources/network-helper/paseo-network-helper
+sudo "$desktop_root/scripts/linux-network-helper-after-install.sh"
+installed_metadata="$(
+  stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper
+)"
+if [[ "$installed_metadata" != "root:root:4755" ]]; then
+  echo "unexpected installed helper ownership/mode: $installed_metadata" >&2
+  exit 1
+fi
+sudo chmod 0755 /opt/Paseo/resources/network-helper/paseo-network-helper
+sudo "$desktop_root/scripts/linux-network-helper-after-install.sh"
+upgrade_metadata="$(
+  stat -c '%U:%G:%a' /opt/Paseo/resources/network-helper/paseo-network-helper
+)"
+if [[ "$upgrade_metadata" != "root:root:4755" ]]; then
+  echo "upgrade did not restore helper ownership/mode: $upgrade_metadata" >&2
   exit 1
 fi
 

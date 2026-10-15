@@ -10,6 +10,7 @@ import { writeProjectConfigForProject } from "../project/project-config-storage.
 import { ProjectCallAuthorizer } from "./project-call-authorizer.js";
 import { ProjectEgressProxyCredentials } from "./project-egress-proxy-credentials.js";
 import { ProjectEgressProxyServer } from "./project-egress-proxy-server.js";
+import { execCommand } from "../../utils/spawn.js";
 
 const execFileAsync = promisify(execFile);
 const helperPath = process.env.PASEO_LINUX_NETWORK_HELPER_TEST_PATH!;
@@ -155,5 +156,23 @@ describe("Linux Project network isolation", () => {
         `http://paseo-rebind.test:${targetPort}/allowed`,
       ]),
     ).rejects.toThrow();
+  });
+
+  it("enforces the same helper through the shared Provider/Workflow/Plugin process wrapper", async () => {
+    const result = await execCommand(
+      "curl",
+      ["--fail", "--silent", "--show-error", `http://${targetAddress}:${targetPort}/allowed`],
+      {
+        env: {
+          ...process.env,
+          PASEO_PROJECT_NETWORK_ISOLATION: "1",
+          PASEO_LINUX_NETWORK_HELPER_PATH: helperPath,
+          PASEO_PROJECT_PROXY_PORT: String(proxyPort),
+          PASEO_PROJECT_PROXY_TOKEN: token,
+        },
+        timeout: 10_000,
+      },
+    );
+    expect(result.stdout).toBe("target-ok");
   });
 });
